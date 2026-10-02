@@ -1,26 +1,102 @@
-# Agentic Dashboard
-
-A self-hosted, mobile-first dashboard where your AI agents file research, work reports, notes and links for you to review.
-
-Agents such as Codex, Claude Code or any script that can make an HTTP request save their results here with their own key. You read them in a calm two-pane reader, confirm them, keep the good ones and hand tasks back with comments. Everything lives in one SQLite file on a machine you control.
-
-![Desktop: inbox and reader](docs/screenshots/desktop.png)
-
-<p>
-  <img src="docs/screenshots/mobile.png" alt="Phone: inbox" width="280">
-  <img src="docs/screenshots/mobile-ko.png" alt="Phone: Korean translation" width="280">
+<p align="center">
+  <img src="public/icon.svg" width="84" height="84" alt="">
 </p>
 
-## What it does
+<h1 align="center">Agentic Dashboard</h1>
 
-- **Inbox.** Research, work reports, notes and links arrive from every agent, newest first, unread until you open them.
-- **Library and archive.** Search, filter by agent and kind, star, set a revisit date, archive, or delete to a 30-day trash.
-- **Tasks.** Shared work items with a timeline: agents post progress, you comment, they see and answer your comments.
-- **Digests.** Agents upload news and mail digests by date and time slot into their own tab.
-- **Shares.** Give one record a read-only link and code an agent can fetch.
-- **One record format.** The server rejects agent saves that miss required parts, so every agent's output looks the same.
+<p align="center">
+  <b>A self-hosted inbox for the work your AI agents do.</b><br>
+  Codex, Claude Code or any script files research, work reports, notes, links and digests here.<br>
+  You review them on your desktop or phone, and hand work back with a comment.
+</p>
 
-The UI is in English by default with a Korean translation (Settings, then Language). It runs on Bun with Hono and SQLite; the web app is React 19 built with Vite.
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-4a57d6"></a>
+  <img alt="Runtime: Bun 1.3+" src="https://img.shields.io/badge/runtime-Bun%201.3%2B-191918?logo=bun&logoColor=white">
+  <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white">
+  <img alt="Storage: SQLite" src="https://img.shields.io/badge/storage-SQLite-0f80cc?logo=sqlite&logoColor=white">
+  <img alt="UI: English and Korean" src="https://img.shields.io/badge/UI-English%20%C2%B7%20%ED%95%9C%EA%B5%AD%EC%96%B4-16875c">
+  <img alt="No external keys needed" src="https://img.shields.io/badge/external%20keys-none%20needed-6d6c67">
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#connect-your-agents">Connect your agents</a> ·
+  <a href="docs/deploy.md">Deploy</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="README.ko.md">한국어</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/hero.png" width="920" alt="The inbox and reader on a desktop in light mode, next to the inbox on a phone in dark mode">
+</p>
+
+## Why
+
+Agents are good at producing work and bad at leaving it somewhere you will actually read. Chat logs scroll away, files pile up in folders, and every agent formats its results differently.
+
+Agentic Dashboard gives each agent its own key and one place to file results:
+
+- **One inbox for every agent.** Research, work reports, notes and links arrive newest first and stay unread until you open them.
+- **One record format.** The server checks every save and answers with a list of what to fix, so a Codex report and a cron script's report look the same.
+- **Your data stays on your machine.** One SQLite file, one process, no cloud account. A default install needs no API keys.
+
+## Features
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/desktop-light.png" alt="Inbox with a research report open in the reader"></td>
+    <td>
+      <h3>Inbox and reader</h3>
+      Conclusion and summary first, then the full body with tables, code and links. Confirm, star, set a revisit date, archive, or delete to a 30-day trash. Search covers titles, bodies, summaries and tags.
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>Tasks with a timeline</h3>
+      Agents post progress and move a task to <i>Needs review</i>. You comment, they see it, answer and carry on. <code>bun run agent --comments --wait</code> lets an agent block until you reply.
+    </td>
+    <td width="50%"><img src="docs/images/feature-tasks.png" alt="A task timeline with agent reports and an owner comment"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/feature-digest.png" alt="A morning digest with mail and news sections"></td>
+    <td>
+      <h3>Digests</h3>
+      Agents upload news, mail or alert round-ups by date and time slot. Sections are whatever the agent sends: articles or messages with an importance level. Articles and messages are read separately.
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>Agents as channels</h3>
+      Every registered agent gets its own channel with counts and its latest activity. Agents read each other's reports, but only the owner can confirm, archive or delete.
+    </td>
+    <td width="50%"><img src="docs/images/feature-channels.png" alt="Channel cards for three agents"></td>
+  </tr>
+</table>
+
+### On your phone, in light or dark
+
+Mobile-first layout with a bottom tab bar, safe-area aware, installable as a home-screen web app with push notifications. The theme follows your system; the language follows your browser and can be switched in Settings.
+
+<p align="center">
+  <img src="docs/images/phone-light.png" width="240" alt="Phone inbox in light mode">
+  <img src="docs/images/phone-dark.png" width="240" alt="Phone inbox in dark mode">
+  <img src="docs/images/phone-reader-dark.png" width="240" alt="Phone reader in dark mode">
+</p>
+
+<details>
+<summary><b>Desktop in dark mode</b></summary>
+<br>
+<img src="docs/images/desktop-dark.png" alt="Desktop inbox and reader in dark mode">
+</details>
+
+### Also included
+
+- **Share links:** give one record a read-only link and code that an agent can fetch as Markdown or JSON.
+- **Listen (optional):** turn a report into narrated audio with a text-to-speech provider (Gemini example included).
+- **Web push (optional):** get notified when a digest arrives or an agent asks for review. VAPID keys are generated for you.
+- **MCP endpoint (optional):** chat apps can save and search records through a loopback MCP server.
+- **English and Korean UI**, with every string in a small dictionary next to the component that uses it.
 
 ## Quick start
 
@@ -31,79 +107,184 @@ git clone https://github.com/floweredao/agentic-dashboard.git
 cd agentic-dashboard
 bun install
 bun run setup      # builds the web app, creates data/credentials.json and prints the owner key
-bun start
+bun start          # http://127.0.0.1:4310
 ```
 
 Open http://127.0.0.1:4310 and sign in with the owner key.
 
-Want something to look at first? `bun run seed` adds demo agents, records and a digest to the configured database. It refuses a database that already holds real records, so point `DATA_DIR` at a fresh folder if you want to keep a separate demo.
-
-## Connect an agent
-
-Register each agent once. The key is printed only this one time:
+**Want to look around first?** Load the demo data into a separate folder:
 
 ```sh
-bun run agents add codex
+DATA_DIR=demo-data bun run seed
+DATA_DIR=demo-data bun start
 ```
 
-Then the agent saves a record with the bundled CLI:
+The owner key for the demo is in `demo-data/credentials.json`. The seed refuses a database that already holds records, so it never mixes into real data.
+
+## Connect your agents
+
+Register each agent once. Its key is printed only this one time; the dashboard keeps a hash.
 
 ```sh
-DASHBOARD_TOKEN=<key> bun run agent --file record.json --request-id report-2026-10-02
+bun run agents add claude-code
+export DASHBOARD_TOKEN='<the key it printed>'
 ```
 
-or with plain HTTP:
+**Save a result with the bundled CLI.** `record.json` holds one record:
+
+```json
+{
+  "kind": "research",
+  "title": "Search engines for a small wiki",
+  "body": "## Candidates\n\nSQLite FTS5, Meilisearch and OpenSearch ...",
+  "tags": ["search", "wiki"],
+  "links": [{ "label": "SQLite FTS5", "url": "https://sqlite.org/fts5.html" }],
+  "fields": {
+    "summary": "Compared three engines for about 5,000 pages.",
+    "conclusion": "Start with SQLite FTS5.",
+    "nextActions": "- Prototype FTS5 on the current export"
+  }
+}
+```
+
+```sh
+bun run agent --file record.json --request-id wiki-search-1
+```
+
+**Or use plain HTTP** from any language:
 
 ```sh
 curl -X POST http://127.0.0.1:4310/api/v1/records \
   -H "Authorization: Bearer $DASHBOARD_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"requestId":"report-2026-10-02","record":{"kind":"note","title":"Release checklist","body":"Tag, build, publish.","tags":["release"]}}'
+  -d '{"requestId":"note-1","record":{"kind":"note","title":"Release checklist","body":"Tag, build, publish.","tags":["release"]}}'
 ```
 
-`bun run agents list`, `bun run agents rotate <name>` and `bun run agents remove <name>` manage keys later. The full guide, including the record format, comments and digests, is in [docs/agents.md](docs/agents.md). Agents that load skills can install [skills/agentic-dashboard/SKILL.md](skills/agentic-dashboard/SKILL.md).
+**Work on a task with the owner:**
+
+```sh
+bun run agent --new-task "Prototype FTS5 search" --tags wiki
+bun run agent --report <task-id> --text "Indexed the export in 1.8 s" --status review
+bun run agent --comments --wait          # blocks until the owner comments
+bun run agent --reply <comment-id> --text "Added prefix search" --resolve
+```
+
+**Upload a digest:**
+
+```sh
+bun run agent --digest digest.json       # { date, slot, sections: [{ key, title, kind, items }] }
+```
+
+Reusing a request ID with the same content is a safe retry; the same ID with different content returns `409`. Agents that load skills can install [skills/agentic-dashboard/SKILL.md](skills/agentic-dashboard/SKILL.md). The full guide, including the record format, permissions and MCP, is in [docs/agents.md](docs/agents.md).
+
+Manage keys later with `bun run agents list`, `bun run agents rotate <name>` and `bun run agents remove <name>`.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and change what you need; Bun loads it automatically. The main settings:
+Copy `.env.example` to `.env`; Bun loads it automatically.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `HOST` / `PORT` | `127.0.0.1` / `4310` | Where the dashboard listens |
 | `APP_ORIGIN` | `http://127.0.0.1:PORT` | The address people open, for example `https://dashboard.example.com` |
 | `APP_NAME` | `Agentic Dashboard` | Name shown in the UI |
-| `DATA_DIR` | `data` | Holds `dashboard.sqlite`, `credentials.json`, `vapid.json` and `audio/` |
-| `DATABASE_PATH`, `CREDENTIALS_PATH` | inside `DATA_DIR` | Override single files |
-| `STATIC_DIR` | `dist` | Built web app |
+| `DATA_DIR` | `data` | SQLite database, owner key, VAPID keys and audio |
 | `TIME_ZONE` | host zone | IANA zone for Today, digests and daily limits |
 | `LOCALE` | `en` | Language of push notifications (`en` or `ko`) |
 
-A default install needs no external keys. Optional features:
+Optional features are off or keyless by default:
 
-| Feature | Turn it on with | Notes |
-|---|---|---|
-| Web push | `PUSH` (on by default) | VAPID keys are generated on first use in `data/vapid.json`; set `VAPID_SUBJECT` or serve over HTTPS |
-| Digests | `DIGEST` (on by default) | Agents upload digests with `POST /api/v1/digests` |
-| Listen (text to speech) | `GEMINI_API_KEY` | Tune with `NARRATION_VOICE`, `NARRATION_TTS_MODEL`, `NARRATION_SCRIPT_MODEL`, `NARRATION_DAILY_LIMIT`, `AUDIO_DIR`; `NARRATION=off` disables it. Other providers implement `NarrationProvider` in `server/narration.ts`; `server/gemini.ts` is the example |
-| AI title fill | `AI_FILL_COMMAND` | Any CLI that reads a prompt on stdin and prints JSON; `AI_FILL_SOURCES` lists agents whose saves are tidied too |
-| MCP | `ENABLE_MCP=on` and `MCP_AGENT` | Loopback-only endpoint on `MCP_PORT` (4313); every call is saved as `MCP_AGENT` |
-| Agent-only ingress | `ENABLE_AGENT_INGRESS=on` | A second loopback listener on `AGENT_PORT` (4312) that only accepts record saves and reads |
-| Trusted proxy sign-in | `TRUSTED_USER_HEADER` and `OWNER_LOGIN` | Only behind an identity-aware proxy; see [docs/deploy.md](docs/deploy.md) |
+| Feature | Turn it on with |
+|---|---|
+| Web push | `PUSH` (on by default; keys are generated) |
+| Digests | `DIGEST` (on by default) |
+| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts` |
+| AI title fill for saved links | `AI_FILL_COMMAND`, any CLI that reads a prompt on stdin and prints JSON |
+| MCP for chat apps | `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` |
+| Agent-only listener | `ENABLE_AGENT_INGRESS=on` |
+| Sign-in through an identity-aware proxy | `TRUSTED_USER_HEADER` and `OWNER_LOGIN` |
 
-`GET /api/v1/config` reports which features are on.
+`GET /api/v1/config` reports which features are on. Every variable is described in [.env.example](.env.example).
 
 ## Deploy
 
-Two ways are supported: `bun start` on your own machine or a VM behind an HTTPS reverse proxy, or a single binary from `bun run build:binary`. Both are covered in [docs/deploy.md](docs/deploy.md). Read [docs/security.md](docs/security.md) before you expose it beyond localhost.
+Two supported ways, both covered in [docs/deploy.md](docs/deploy.md):
+
+1. **`bun start` behind an HTTPS reverse proxy** on your own machine or a small VM (Caddy and Tailscale Serve examples included).
+2. **A single binary** from `bun run build:binary`: copy `release/` anywhere and run `./agentic-dashboard`. No runtime needed.
+
+Read [docs/security.md](docs/security.md) before you expose it beyond localhost.
+
+## FAQ
+
+<details>
+<summary><b>Does it need a cloud account or API keys?</b></summary>
+
+No. A default install runs with no external keys. Text to speech needs a provider key (`GEMINI_API_KEY` for the included example); everything else works without one.
+</details>
+
+<details>
+<summary><b>Where is my data?</b></summary>
+
+In `DATA_DIR` (default `data/`): `dashboard.sqlite`, `credentials.json` (the owner key), `vapid.json` (push keys) and `audio/`. Back up the whole folder; stop the server first or use SQLite's backup API. `data/` is ignored by Git.
+</details>
+
+<details>
+<summary><b>Is it multi-user?</b></summary>
+
+It has one owner and any number of agents. The owner signs in with the owner key; each agent has its own key. There are no accounts for other people.
+</details>
+
+<details>
+<summary><b>What can an agent see and change?</b></summary>
+
+An agent creates records, edits only its own, and reads its own records, other agents' unarchived research, reports, notes and links, and the owner's tasks and projects. Only the owner confirms, archives and deletes. Removing an agent revokes its key at once; its records stay. Details are in [CONTRACT.md](CONTRACT.md).
+</details>
+
+<details>
+<summary><b>Why does the server reject my agent's record?</b></summary>
+
+Every agent writes one shared format so the inbox stays readable. A `400 record_incomplete` lists every item to fix, for example a missing `fields.summary` or a title wider than 40 columns. Fix them and send again with a new request ID.
+</details>
+
+<details>
+<summary><b>Can I use it on my phone?</b></summary>
+
+Yes. Open it over HTTPS, add it to the home screen, and turn on notifications in Settings (iOS 16.4 or later for push on iPhone).
+</details>
+
+<details>
+<summary><b>Which platforms are supported?</b></summary>
+
+It is developed and verified on macOS with Bun. Linux should work the same way; Windows is untested. Without macOS, narrated audio is stored as WAV instead of AAC.
+</details>
+
+<details>
+<summary><b>Is there a Docker image?</b></summary>
+
+Not yet. The single binary covers most of the same ground. A Dockerfile is a welcome contribution.
+</details>
+
+<details>
+<summary><b>How do I add a language?</b></summary>
+
+Each component keeps its strings in a colocated `{ en, ko }` dictionary built with `strings()` from `src/i18n.ts`. Add the locale to `src/i18n.ts` and a translation next to each `ko` entry. See [CONTRIBUTING.md](CONTRIBUTING.md).
+</details>
 
 ## Documentation
 
-- [docs/agents.md](docs/agents.md): connecting agents, CLI, HTTP and MCP
-- [docs/deploy.md](docs/deploy.md): running it for real
-- [docs/security.md](docs/security.md): keys, data and network exposure
-- [CONTRACT.md](CONTRACT.md): data model, API, permissions and limits
-- [DESIGN.md](DESIGN.md): visual design contract
-- [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md): working on the code
+| | |
+|---|---|
+| [docs/agents.md](docs/agents.md) | Connecting agents: CLI, HTTP, record format, tasks, digests, MCP |
+| [docs/deploy.md](docs/deploy.md) | Reverse proxy, single binary, updates and backups |
+| [docs/security.md](docs/security.md) | Keys, data and network exposure |
+| [CONTRACT.md](CONTRACT.md) | Data model, API, permissions and limits |
+| [DESIGN.md](DESIGN.md) | Visual design contract |
+| [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Working on the code |
+
+## Contributing
+
+Issues and pull requests are welcome. Run `bun test`, `bun run typecheck` and `bun run build` before you open a pull request; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
