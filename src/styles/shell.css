@@ -3,6 +3,12 @@
 .sidebar { display: none; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 40px; color: var(--ink); font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
 .brand img { width: 26px; height: 26px; border-radius: 7px; }
+/* The public demo's marker beside the app name: a quiet outlined chip, no color. */
+.demo-badge {
+  flex-shrink: 0; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 999px;
+  color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0; line-height: 1.4;
+}
+.appbar .brand .brand-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-list { display: grid; gap: 2px; }
 .nav-item {
   display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: var(--r);
@@ -152,7 +158,7 @@
     border-right: 1px solid var(--line); background: var(--canvas);
   }
   .sidebar .brand { justify-content: center; margin-bottom: 8px; }
-  .sidebar .brand-name, .sidebar .nav-label, .sidebar .nav-section, .sidebar .channel-nav, .sidebar .status { display: none; }
+  .sidebar .brand-name, .sidebar .demo-badge, .sidebar .nav-label, .sidebar .nav-section, .sidebar .channel-nav, .sidebar .status { display: none; }
   .sidebar .nav-item { position: relative; justify-content: center; padding: 0; min-height: 40px; }
   .sidebar .nav-count { position: absolute; top: 2px; right: 4px; font-size: 10px; }
   .sidebar .nav-count:not(.strong) { display: none; }
@@ -177,7 +183,7 @@
   .app { grid-template-columns: calc(var(--sidebar) + var(--safe-left)) minmax(0, 1fr); }
   .sidebar { padding: 14px 12px calc(14px + var(--safe-bottom)) calc(12px + var(--safe-left)); }
   .sidebar .brand { justify-content: flex-start; padding: 0 8px; }
-  .sidebar .brand-name, .sidebar .nav-label, .sidebar .status { display: revert; }
+  .sidebar .brand-name, .sidebar .demo-badge, .sidebar .nav-label, .sidebar .status { display: revert; }
   .sidebar .nav-section, .sidebar .channel-nav { display: revert; }
   .sidebar .nav-item { justify-content: flex-start; padding: 0 10px; min-height: 36px; }
   .sidebar .nav-count, .sidebar .nav-count:not(.strong) { position: static; display: revert; font-size: 12px; }

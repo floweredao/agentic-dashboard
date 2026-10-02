@@ -46,6 +46,11 @@ export interface AppOptions {
   readonly digestEnabled?: boolean;
   /** The registered agent every MCP call is attributed to; MCP stays unavailable without one. */
   readonly mcpAgent?: string;
+  /**
+   * Public read-only demo: every browser reads as the owner without a key, and every request other than GET or HEAD
+   * answers 403 demo_read_only, whoever sends it. Never point it at real data.
+   */
+  readonly demo?: boolean;
   readonly rateLimit?: number;
   readonly now?: () => number;
   readonly staticRoot?: string;
@@ -70,7 +75,8 @@ const captureSchema = z.object({
 export function createApp(options: AppOptions = {}) {
   const now = options.now ?? Date.now;
   const store = new Store(options.databasePath ?? "data/dashboard.sqlite", now);
-  const auth = new Auth(store, options.credentialsPath ?? "data/credentials.json");
+  const demo = options.demo === true;
+  const auth = new Auth(store, options.credentialsPath ?? "data/credentials.json", demo);
   const agents = new Agents(store);
   const timeZone = options.timeZone ?? systemTimeZone();
   const pushOn = options.pushEnabled !== false;
@@ -189,6 +195,7 @@ export function createApp(options: AppOptions = {}) {
       const count = (buckets.get(rateKey) ?? 0) + 1;
       buckets.set(rateKey, count);
       if (count > limit) { c.header("Retry-After", "60"); throw new ApiError(429, "rate_limited", "Request limit exceeded"); }
+      if (demo && c.req.method !== "GET" && c.req.method !== "HEAD") throw new ApiError(403, "demo_read_only", "This is a read-only demo; changes are turned off");
       await next();
     });
     app.onError((error, c) => {
@@ -232,7 +239,7 @@ export function createApp(options: AppOptions = {}) {
       /** What the UI needs before sign-in: name, calendar zone, default language and which optional features are on. */
       app.get("/api/v1/config", async c => c.json({
         appName: options.appName ?? "Agentic Dashboard", timeZone, locale: options.locale ?? "en",
-        features: { narration: await narration.available(), push: pushOn, digest: digestOn, trustedLogin: options.trustedIdentity !== undefined },
+        features: { narration: await narration.available(), push: pushOn, digest: digestOn, trustedLogin: options.trustedIdentity !== undefined, demo },
       }));
       app.get("/api/v1/agents", c => {
         if (auth.authenticate(c.req.raw, false).source !== "manual") throw new ApiError(403, "forbidden", "Owner session required");

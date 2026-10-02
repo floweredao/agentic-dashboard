@@ -43,6 +43,7 @@ const text = strings({
     digestList: "Digest list", detail: "Details", pickDigest: "Pick a digest from the list to read it here",
     list: (title: string) => `${title} list`, notFound: "Item not found", pickItem: "Pick an item from the list to read it here",
     count: (count: number) => `${count} items`,
+    demo: "Demo", demoNotice: "A read-only demo with sample data. Look around freely; changes aren't saved.",
   },
   ko: {
     synced: (time: string) => `동기화 ${time}`,
@@ -59,6 +60,7 @@ const text = strings({
     digestList: "다이제스트 목록", detail: "상세", pickDigest: "목록에서 다이제스트를 고르면 여기에 보여요",
     list: (title: string) => `${title} 목록`, notFound: "항목을 찾을 수 없음", pickItem: "목록에서 항목을 고르면 여기에 보여요",
     count: (count: number) => `${count}건`,
+    demo: "데모", demoNotice: "예시 데이터로 채운 읽기 전용 데모예요. 마음껏 둘러보세요. 바꾼 내용은 저장되지 않아요.",
   },
 });
 
@@ -170,7 +172,7 @@ export function App() {
     let mounted = true;
     session().then(async auth => {
       const loaded = await loadAll(cause => { if (mounted) void report(cause); });
-      if (mounted) { setCsrf(auth.csrfToken); store(loaded); }
+      if (mounted) { setCsrf(auth.csrfToken); store(loaded); if (config.features.demo) notify(text().demoNotice); }
     }).catch(() => undefined).finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; window.removeEventListener("hashchange", changed); media.removeEventListener("change", resized); };
   }, []);
@@ -307,6 +309,7 @@ export function App() {
       records, byId, trash, comments, connected, csrfToken: csrf, loading, busy, route, back, navigate, select, open, patch, confirm, create, editDraft, notify,
       digests, digestReads,
       markDigest: async (id, part, read, quiet = false) => {
+        if (quiet && config.features.demo) return;
         try {
           const saved = await markDigestApi(id, part, read, latest.current.csrf);
           const key = `${id}:${part}`;
@@ -346,7 +349,8 @@ export function App() {
       markPending: async record => { await patch(record, { reviewState: "pending" }, text().markedPending, { reviewState: "approved" }); },
       markRead: async record => {
         const now = current(record);
-        if (!isRecord(now) || now.reviewState !== "pending" || reading.current.has(now.id)) return;
+        // A read-only demo keeps its records unread instead of failing a save on every open.
+        if (config.features.demo || !isRecord(now) || now.reviewState !== "pending" || reading.current.has(now.id)) return;
         reading.current.add(now.id);
         try { replace(await patchRecord(now, { reviewState: "approved" }, latest.current.csrf)); }
         catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); }
@@ -492,6 +496,7 @@ export function App() {
     </a></li>;
   };
   const locked = !connected && !loading;
+  const demoBadge = config.features.demo && <span className="demo-badge" title={t.demoNotice}>{t.demo}</span>;
   const toastView = toast && <div key={toast.key} className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>
     <span>{toast.message}</span>
     {toast.undo && <button type="button" className="toast-action" onClick={() => { const undo = toast.undo; setToast(null); undo?.(); }}>{t.undo}</button>}
@@ -503,7 +508,7 @@ export function App() {
     {loading && <div className="loading-line" role="status" aria-label={t.loading} />}
     <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}`}>
       <nav className="sidebar" aria-label={t.mainMenu}>
-        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
+        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
         <button type="button" className="btn btn-primary compose-btn" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.composeShortcut}><Plus size={17} aria-hidden="true" /><span>{t.compose}</span></button>
         <ul className="nav-list">{tabViews().map(navItem)}</ul>
         {connected && <>
@@ -529,7 +534,7 @@ export function App() {
 
       <header className="appbar">
         {back && <button type="button" className="btn appbar-back" onClick={dashboard.goBack}><ArrowLeft size={18} aria-hidden="true" />{backLabel(back.hash)}</button>}
-        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
+        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
         {connected && <button type="button" className="icon-btn appbar-compose" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.compose}><Plus size={20} aria-hidden="true" /></button>}
         {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh}><RefreshCw size={18} aria-hidden="true" /></button>}
       </header>

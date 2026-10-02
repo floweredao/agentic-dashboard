@@ -23,8 +23,11 @@ export function ensureCredentials(credentialsPath: string): boolean {
 }
 export const readCredentials = (credentialsPath: string) => CredentialsSchema.parse(JSON.parse(readFileSync(credentialsPath, "utf8")));
 
+const OWNER: Principal = { id: "owner", source: "manual" };
+
 export class Auth {
-  constructor(readonly store: Store, credentialsPath: string) {
+  /** `demo`: every browser request reads as the owner without a key or session (the app blocks every change in demo mode). */
+  constructor(readonly store: Store, credentialsPath: string, private readonly demo = false) {
     ensureCredentials(credentialsPath);
     const credentials = readCredentials(credentialsPath);
     store.db.query(`INSERT INTO principals(id,source,token_hash,created_at) VALUES('owner','manual',?,?)
@@ -47,6 +50,7 @@ export class Auth {
     return row ? sessionSchema.parse(row) : null;
   }
   session(request: Request) {
+    if (this.demo) return { hash: "", principal_id: "owner", csrf: "demo", expires_at: this.store.now() + 7 * 24 * 60 * 60 * 1000 };
     const session = this.findSession(request);
     if (!session) throw new ApiError(401, "unauthenticated", "Owner session required or expired");
     return session;
@@ -60,6 +64,7 @@ export class Auth {
       return principal;
     }
     if (publicOnly) throw new ApiError(401, "unauthenticated", "Agent Bearer required");
+    if (this.demo) return OWNER;
     const session = this.session(request);
     return principalSchema.parse(this.store.db.query("SELECT id,source FROM principals WHERE id=?").get(session.principal_id));
   }

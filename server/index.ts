@@ -39,6 +39,7 @@ const parsed = z.object({
   AUDIO_DIR: z.string().trim().min(1).optional(),
   AI_FILL_COMMAND: z.string().trim().min(1).optional(),
   AI_FILL_SOURCES: list.default([]),
+  DEMO: onOff.default(false),
 }).safeParse(process.env);
 if (!parsed.success) {
   console.error(`Invalid configuration:\n${parsed.error.issues.map(issue => `  ${issue.path.join(".")}: ${issue.message}`).join("\n")}`);
@@ -47,6 +48,10 @@ if (!parsed.success) {
 const config = parsed.data;
 if ((config.TRUSTED_USER_HEADER === undefined) !== (config.OWNER_LOGIN === undefined)) {
   console.error("Invalid configuration: set TRUSTED_USER_HEADER and OWNER_LOGIN together, or neither.");
+  process.exit(1);
+}
+if (config.DEMO && (config.TRUSTED_USER_HEADER || config.ENABLE_MCP || config.ENABLE_AGENT_INGRESS || config.AI_FILL_COMMAND)) {
+  console.error("Invalid configuration: DEMO=on is a public read-only demo; turn off TRUSTED_USER_HEADER, ENABLE_MCP, ENABLE_AGENT_INGRESS and AI_FILL_COMMAND.");
   process.exit(1);
 }
 if (config.ENABLE_MCP && !config.MCP_AGENT) {
@@ -65,11 +70,12 @@ const app = createApp({
   ...(config.PUBLIC_API_BASE_URL ? { publicApiBaseUrl: config.PUBLIC_API_BASE_URL } : {}),
   mcpPort: config.MCP_PORT,
   ...(config.ENABLE_MCP && config.MCP_AGENT ? { mcpAgent: config.MCP_AGENT } : {}),
-  pushEnabled: config.PUSH, digestEnabled: config.DIGEST,
+  // A demo never sends push or calls a speech provider, whatever else is set.
+  pushEnabled: config.PUSH && !config.DEMO, digestEnabled: config.DIGEST, demo: config.DEMO,
   ...(config.VAPID_PATH ? { vapidPath: config.VAPID_PATH } : {}),
   ...(config.VAPID_SUBJECT ? { push: { subject: config.VAPID_SUBJECT } } : {}),
   ...(config.AI_FILL_COMMAND ? { aiFill: { run: commandRunner(config.AI_FILL_COMMAND.split(/\s+/)), model: config.AI_FILL_COMMAND, sources: config.AI_FILL_SOURCES } } : {}),
-  ...(config.NARRATION ? { narration: {
+  ...(config.NARRATION && !config.DEMO ? { narration: {
     provider: geminiProvider({ key: envKey(), ttsModel: config.NARRATION_TTS_MODEL, scriptModel: config.NARRATION_SCRIPT_MODEL, voice: config.NARRATION_VOICE }),
     dailyLimit: config.NARRATION_DAILY_LIMIT, ...(config.AUDIO_DIR ? { audioDir: config.AUDIO_DIR } : {}),
   } } : {}),
@@ -86,12 +92,13 @@ const privateServer = Bun.serve({ hostname: config.HOST, port: config.PORT, fetc
 const publicServer = config.ENABLE_AGENT_INGRESS
   ? Bun.serve({ hostname: "127.0.0.1", port: config.AGENT_PORT, fetch: app.publicFetch }) : null;
 const mcpServer = config.ENABLE_MCP ? Bun.serve({ hostname: "127.0.0.1", port: config.MCP_PORT, fetch: app.mcpFetch }) : null;
-const narrationOn = config.NARRATION && await app.narration.available();
+const narrationOn = config.NARRATION && !config.DEMO && await app.narration.available();
 console.log([
   `${config.APP_NAME} listening on http://${config.HOST}:${privateServer.port}`,
   `agent ingress ${publicServer ? `127.0.0.1:${publicServer.port}` : "disabled"}`,
   `mcp ${mcpServer ? `http://127.0.0.1:${mcpServer.port}/mcp` : "disabled"}`,
-  `push ${config.PUSH ? "on" : "off"}`, `digest ${config.DIGEST ? "on" : "off"}`,
+  ...(config.DEMO ? ["read-only demo"] : []),
+  `push ${config.PUSH && !config.DEMO ? "on" : "off"}`, `digest ${config.DIGEST ? "on" : "off"}`,
   `narration ${narrationOn ? "on" : "off"}`, `ai fill ${config.AI_FILL_COMMAND ? "on" : "off"}`, `time zone ${config.TIME_ZONE}`,
 ].join("; "));
 const purgeTimer = setInterval(() => app.purgeTrash(), 60 * 60 * 1000);

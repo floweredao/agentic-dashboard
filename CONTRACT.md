@@ -97,7 +97,7 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | Route | Who | Result |
 |---|---|---|
 | `GET /api/health`, `GET /api/v1/health` | anyone | `{ status: "ok" }` |
-| `GET /api/v1/config` | anyone | `{ appName, timeZone, locale, features: { narration, push, digest, trustedLogin } }` |
+| `GET /api/v1/config` | anyone | `{ appName, timeZone, locale, features: { narration, push, digest, trustedLogin, demo } }` |
 | `GET /api/v1/schema` | anyone | kinds, field lists, agent format, JSON Schema of RecordInput, `timeZone` |
 | `POST /api/v1/auth/session` | owner | `{ token }` to `{ csrfToken, expiresAt }` plus cookie |
 | `GET /api/v1/auth/session` | owner | `{ principal, csrfToken, expiresAt }` |
@@ -176,6 +176,14 @@ Only research, work-report, note and social records can be narrated. Limits: 600
 
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`, `127.0.0.1:AGENT_PORT`): only `POST /api/v1/records` and `GET /api/v1/records/:id` with an agent key.
 - **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`, all attributed to `MCP_AGENT`, which must be an active registered agent.
+
+## Demo mode
+
+With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](docs/demo.md)):
+
+- A browser request without `Authorization` reads as the owner, with no cookie or session. `GET /api/v1/auth/session` answers the owner principal and the CSRF token `demo`.
+- Every request other than `GET` or `HEAD` answers `403 demo_read_only`, on every listener and whatever credentials it carries.
+- Push and narration are off. Demo mode refuses to start together with `TRUSTED_USER_HEADER`, `ENABLE_MCP`, `ENABLE_AGENT_INGRESS` or `AI_FILL_COMMAND`.
 
 ## Limits and checks
 

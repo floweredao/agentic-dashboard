@@ -74,6 +74,7 @@ Routes are hash based and the URL owns committed state: `#/inbox`, `#/library`, 
 - **Dialogs:** native `<dialog>`, radius 12, a bottom sheet on phones.
 - **Toasts:** bottom center, ink fill, `role=status`, 4 seconds (6 with Undo).
 - **Empty states:** a 20px muted icon and one factual line.
+- **Demo badge:** in demo mode only, a small outlined "Demo" chip (11.5px, `--muted`, `--line-strong` border) beside the app name in the sidebar and app bar; hidden on the 64px icon rail.
 
 ## Motion
 
