@@ -8,7 +8,7 @@ const port = process.env["PORT"] ?? "4310";
 const origin = process.env["APP_ORIGIN"] ?? `http://127.0.0.1:${port}`;
 
 console.log("Building the web app...");
-const build = Bun.spawnSync(["bun", "x", "vite", "build", "--logLevel", "warn"], { stdout: "inherit", stderr: "inherit" });
+const build = Bun.spawnSync(["bun", "x", "vite", "build", "--logLevel", "error"], { stdout: "inherit", stderr: "inherit" });
 if (build.exitCode !== 0) {
   console.error("The web app build failed; fix the error above and run bun run setup again.");
   process.exit(1);
