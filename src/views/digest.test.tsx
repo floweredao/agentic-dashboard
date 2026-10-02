@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DigestSchema, DigestSummarySchema } from "../../shared/contracts";
+import { setLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { DigestPane, DigestRow, DigestView, digestPart, dayHeading, parseCollapsed, publishedLabel } from "./Digest";
@@ -148,4 +149,22 @@ test("Day headings and publish times read in Seoul time", () => {
   if (!article) throw new Error("fixture");
   expect(publishedLabel(article, "2026-10-01")).toBe("오전 7:04");
   expect(publishedLabel({ ...article, publishedAt: null, publishedDate: "2026-09-29" }, "2026-10-01")).toBe("9월 29일");
+});
+
+test("DigestView and DigestRow render in English when the locale is en", async () => {
+  setLocale("en");
+  try {
+    const html = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
+      <DigestView digest={digest} part="all" /></DashboardContext.Provider>);
+    expect(await scan(html, ".importance")).toEqual(["Act now", "Review"]);
+    expect(await scan(html, ".reader-dates")).toEqual(["Messages 2 · Articles 1"]);
+    expect(await scan(html, "#digest-title")).toEqual(["Thursday, October 1"]);
+    expect(html).toContain("Morning digest · 08:00");
+    expect(html).toContain("Jump to section");
+    expect(html).toContain("2 merged");
+    const summary = DigestSummarySchema.parse({ ...rest, counts: { local: 1, inbox: 2 }, outline, headlines: ["x"], messageHeadline: null, urgent: 1, todo: 0 });
+    const row = renderToStaticMarkup(<ul><DigestRow summary={summary} part="all" selected={false} href="#/digest" onOpen={() => {}} /></ul>);
+    expect(await scan(row, ".digest-row-title")).toEqual(["Unread Morning digest"]);
+    expect(await scan(row, ".digest-row-meta span")).toEqual(["Local 1 · Inbox 2", "Act now 1"]);
+  } finally { setLocale("ko"); }
 });
