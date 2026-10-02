@@ -3,17 +3,46 @@ import type { FormEvent, KeyboardEvent } from "react";
 import { Send } from "lucide-react";
 import type { Comment, DashboardRecord } from "../../shared/contracts";
 import { channelLabel, isChannel, projectStatuses, relativeTime, taskStatuses, timelineOf } from "../model";
+import { strings } from "../i18n";
 import { useDashboard } from "../state";
 import { Markdown } from "./Markdown";
 
+const text = strings({
+  en: {
+    me: "Me", agent: "the agent",
+    handled: (who: string, when: string) => `Handled · ${who} · ${when}`,
+    seen: (who: string, when: string) => `${who} saw this · ${when}`,
+    unseen: "Not seen yet",
+    status: (name: string) => `Status → ${name}`,
+    heading: "Activity",
+    empty: "No reports or comments yet.",
+    comment: "Comment",
+    placeholder: (name: string) => `Message for ${name}`,
+    send: "Send",
+  },
+  ko: {
+    me: "나", agent: "에이전트",
+    handled: (who: string, when: string) => `처리함 · ${who} · ${when}`,
+    seen: (who: string, when: string) => `${who}가 봤어요 · ${when}`,
+    unseen: "아직 안 봤어요",
+    status: (name: string) => `상태 → ${name}`,
+    heading: "진행 기록",
+    empty: "아직 보고나 코멘트가 없어요.",
+    comment: "코멘트",
+    placeholder: (name: string) => `${name}에게 남길 말`,
+    send: "보내기",
+  },
+});
+
 const nameOf = (id: string | null) => id && isChannel(id) ? channelLabel(id) : id ?? "";
-const authorOf = (comment: Comment) => comment.source === "manual" ? "나" : channelLabel(comment.source);
+const authorOf = (comment: Comment) => comment.source === "manual" ? text().me : channelLabel(comment.source);
 const statusName = (record: DashboardRecord, status: string) =>
   (record.kind === "project" ? projectStatuses : taskStatuses)[status as keyof typeof taskStatuses & keyof typeof projectStatuses] ?? status;
 function handling(comment: Comment) {
-  if (comment.doneAt) return <p className="timeline-handled done">처리함 · {nameOf(comment.doneBy)} · {relativeTime(comment.doneAt)}</p>;
-  if (comment.seenAt) return <p className="timeline-handled seen">{nameOf(comment.seenBy)}가 봤어요 · {relativeTime(comment.seenAt)}</p>;
-  return <p className="timeline-handled">아직 안 봤어요</p>;
+  const t = text();
+  if (comment.doneAt) return <p className="timeline-handled done">{t.handled(nameOf(comment.doneBy), relativeTime(comment.doneAt))}</p>;
+  if (comment.seenAt) return <p className="timeline-handled seen">{t.seen(nameOf(comment.seenBy), relativeTime(comment.seenAt))}</p>;
+  return <p className="timeline-handled">{t.unseen}</p>;
 }
 
 function Entry({ record, comment, replies }: { readonly record: DashboardRecord; readonly comment: Comment; readonly replies: readonly Comment[] }) {
@@ -21,7 +50,7 @@ function Entry({ record, comment, replies }: { readonly record: DashboardRecord;
     <div className="timeline-head">
       <span className="timeline-author">{authorOf(comment)}</span>
       <span className="timeline-time">{relativeTime(comment.createdAt)}</span>
-      {comment.status && <span className="tag">상태 → {statusName(record, comment.status)}</span>}
+      {comment.status && <span className="tag">{text().status(statusName(record, comment.status))}</span>}
     </div>
     {comment.body && <div className="prose compact timeline-body"><Markdown text={comment.body} /></div>}
     {comment.source === "manual" && handling(comment)}
@@ -31,14 +60,15 @@ function Entry({ record, comment, replies }: { readonly record: DashboardRecord;
   </li>;
 }
 
-/** 진행 기록: agent reports and the owner's comments on a task or project, oldest first, with the owner's comment box last. */
+/** Activity log: agent reports and the owner's comments on a task or project, oldest first, with the owner's comment box last. */
 export function Timeline({ record }: { readonly record: DashboardRecord }) {
+  const t = text();
   const d = useDashboard();
   const [draft, setDraft] = useState("");
   const entries = timelineOf(d.comments, record.id);
   const ids = new Set(entries.map(entry => entry.id));
   const top = entries.filter(entry => entry.replyTo === null || !ids.has(entry.replyTo));
-  const addressee = record.source === "manual" ? "에이전트" : channelLabel(record.source);
+  const addressee = record.source === "manual" ? t.agent : channelLabel(record.source);
   const send = async () => {
     const body = draft.trim();
     if (!body || d.busy) return;
@@ -49,17 +79,17 @@ export function Timeline({ record }: { readonly record: DashboardRecord }) {
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send(); }
   };
   return <section className="reader-section timeline" aria-labelledby="timeline-title">
-    <h3 id="timeline-title">진행 기록</h3>
-    {top.length === 0 ? <p className="timeline-empty">아직 보고나 코멘트가 없어요.</p>
+    <h3 id="timeline-title">{t.heading}</h3>
+    {top.length === 0 ? <p className="timeline-empty">{t.empty}</p>
       : <ol className="timeline-list">{top.map(entry =>
         <Entry key={entry.id} record={record} comment={entry} replies={entries.filter(reply => reply.replyTo === entry.id)} />)}
       </ol>}
     <form className="comment-form" onSubmit={submit}>
-      <label className="visually-hidden" htmlFor="comment-draft">코멘트</label>
-      <textarea id="comment-draft" rows={3} value={draft} placeholder={`${addressee}에게 남길 말`} maxLength={4000}
+      <label className="visually-hidden" htmlFor="comment-draft">{t.comment}</label>
+      <textarea id="comment-draft" rows={3} value={draft} placeholder={t.placeholder(addressee)} maxLength={4000}
         onChange={event => setDraft(event.currentTarget.value)} onKeyDown={shortcut} />
       <button type="submit" className="btn btn-primary" disabled={d.busy || draft.trim() === ""}>
-        <Send size={16} aria-hidden="true" />보내기
+        <Send size={16} aria-hidden="true" />{t.send}
       </button>
     </form>
   </section>;

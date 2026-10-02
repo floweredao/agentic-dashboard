@@ -1,5 +1,13 @@
 import type { RecordInput, RecordKind } from "../../shared/contracts";
+import { strings } from "../i18n";
 import { blankRecord } from "../model";
+
+const genericLabels = {
+  en: { source: "Source", link: "Link" },
+  ko: { source: "원문", link: "링크" },
+};
+const generic = strings(genericLabels);
+const everyGeneric: readonly string[] = [...Object.values(genericLabels.en), ...Object.values(genericLabels.ko)];
 
 const decode = (path: string) => { try { return decodeURIComponent(path); } catch { return path; } };
 
@@ -21,9 +29,9 @@ export function composeKind(text: string, picked: RecordKind | null): RecordKind
   return text.trim() === "" || urlOf(text) ? "social" : "note";
 }
 
-/** The address for the generic "원문"/"링크" labels or an empty one, otherwise the owner's own label. */
+/** The address for the generic source/link labels or an empty one, otherwise the owner's own label. */
 export function linkText(link: RecordInput["links"][number]): string {
-  if (link.label.trim() && link.label !== "원문" && link.label !== "링크") return link.label;
+  if (!genericLabel(link.label)) return link.label;
   const url = urlOf(link.url);
   return url ? urlTitle(url) : link.url;
 }
@@ -33,7 +41,7 @@ export function draftFromText(text: string, kind: RecordKind, title = ""): Recor
   const base = blankRecord(kind);
   const explicit = title.trim();
   const url = urlOf(text);
-  if (url) return { ...base, title: explicit || urlTitle(url), links: [{ label: "원문", url: text.trim() }] };
+  if (url) return { ...base, title: explicit || urlTitle(url), links: [{ label: generic().source, url: text.trim() }] };
   const lines = text.split(/\r?\n/);
   const index = lines.findIndex(line => line.trim() !== "");
   if (index < 0) return { ...base, title: explicit };
@@ -55,9 +63,13 @@ export function newLinkBlock(url = "", label = ""): LinkBlock {
   return { id: `link-${nextBlock}`, url, label };
 }
 
-const genericLabel = (label: string) => label.trim() === "" || label === "원문" || label === "링크";
+/** Empty, or the generic source/link label of either language (saved links keep the language they were made in). */
+const genericLabel = (label: string) => {
+  const trimmed = label.trim();
+  return trimmed === "" || everyGeneric.includes(label);
+};
 
-/** Saved links as editable blocks; a generic "원문"/"링크" label is left for the placeholder to show. */
+/** Saved links as editable blocks; a generic source/link label is left for the placeholder to show. */
 export function linkBlocks(links: RecordInput["links"]): LinkBlock[] {
   return links.map(link => newLinkBlock(link.url, genericLabel(link.label) ? "" : link.label));
 }
@@ -76,7 +88,7 @@ export function pasteLinks(blocks: readonly LinkBlock[], index: number, text: st
 /**
  * Blocks as record links. Empty blocks are dropped; `invalid` lists the ids of blocks that are not
  * a single http(s) URL. A typed name wins; otherwise an unchanged URL keeps its saved generic label,
- * and a new one is "원문" as the first link of a social record, else "링크".
+ * and a new one is "Source" as the first link of a social record, else "Link" (in the current language).
  */
 export function linksFromBlocks(blocks: readonly LinkBlock[], previous: RecordInput["links"] = [], kind?: RecordKind):
   { readonly links: RecordInput["links"]; readonly invalid: readonly string[] } {
@@ -86,7 +98,7 @@ export function linksFromBlocks(blocks: readonly LinkBlock[], previous: RecordIn
   const invalid = filled.filter(block => block.url.length > linkLimits.url || urlOf(block.url) === null).map(block => block.id);
   const links = filled.map((block, index) => {
     const saved = labels.get(block.url);
-    const label = block.label || (saved !== undefined && genericLabel(saved) ? saved : kind === "social" && index === 0 ? "원문" : "링크");
+    const label = block.label || (saved !== undefined && genericLabel(saved) ? saved : kind === "social" && index === 0 ? generic().source : generic().link);
     return { label: label.slice(0, linkLimits.label), url: block.url };
   });
   return { links, invalid };
