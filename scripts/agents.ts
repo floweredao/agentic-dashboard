@@ -14,7 +14,9 @@ const usage = `Manage the agents that may write to this dashboard.
 Names use lowercase letters, digits and dashes and start with a letter, for example codex, claude-code or research-bot.
 Uses DATABASE_PATH, or DATA_DIR/dashboard.sqlite (default data/dashboard.sqlite), the same database as the server.`;
 
-const [command, name] = Bun.argv.slice(2);
+const args = Bun.argv.slice(2);
+if (args[0] === "agents") args.shift();
+const [command, name] = args;
 const databasePath = process.env["DATABASE_PATH"] ?? join(process.env["DATA_DIR"] ?? "data", "dashboard.sqlite");
 const store = new Store(databasePath, Date.now);
 const agents = new Agents(store);

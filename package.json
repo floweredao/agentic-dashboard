@@ -11,7 +11,8 @@
     "agent": "bun scripts/agent.ts",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "build:binary": "vite build && bun scripts/build-binary.ts"
   },
   "dependencies": {
     "hono": "^4.9.8",
