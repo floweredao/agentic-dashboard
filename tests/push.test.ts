@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, test } from "bun:test";
 import { createDecipheriv, createECDH, createHmac, randomBytes } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -12,6 +12,7 @@ let status = 201;
 const stub = { push: { deliver: async (target: { endpoint: string }, message: PushPayload) => { sent.push({ endpoint: target.endpoint, payload: message }); return status; } } };
 let f = fixture(10000, Date.now, stub);
 afterEach(() => { f.close(); sent = []; status = 201; f = fixture(10000, Date.now, stub); });
+afterAll(() => f.close());
 
 function device(endpoint = `https://fcm.googleapis.com/fcm/send/${crypto.randomUUID()}`) {
   const ecdh = createECDH("prime256v1");

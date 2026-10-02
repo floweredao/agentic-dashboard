@@ -1,9 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, test } from "bun:test";
 import { z } from "zod";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
 let f = fixture();
 afterEach(() => { f.close(); f = fixture(); });
+afterAll(() => f.close());
 const auth = (key: string) => ({ Authorization: `Bearer ${key}` });
 const save = (key: string) => f.call("/api/v1/records", "POST", payload(agentRecord()), auth(key));
 
