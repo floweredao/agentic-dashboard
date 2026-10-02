@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BriefingSummarySchema, DashboardRecordSchema } from "../../shared/contracts";
+import { DashboardRecordSchema, DigestSummarySchema } from "../../shared/contracts";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { InboxPane } from "./Inbox";
@@ -124,40 +124,42 @@ test("InboxPane lists a revisit-due approved row with a 다시 볼 날 chip and 
   expect((await scan(html, ".pane-note")).text).toBe("다시 볼 항목 1");
 });
 
-test("InboxPane mixes briefings into the records by time, with unread marks, filter counts and no swipe", async () => {
-  // Given: a pending link between an unread morning briefing (newer) and a read evening briefing (older).
-  const brief = (id: string, patch: Record<string, unknown>) => BriefingSummarySchema.parse({
+test("InboxPane mixes digests into the records by time, with unread marks, filter counts and no swipe", async () => {
+  // Given: a pending link between an unread morning digest (newer) and a read evening digest (older).
+  const brief = (id: string, patch: Record<string, unknown>) => DigestSummarySchema.parse({
     id, date: "2026-09-21", slot: "morning", scheduledAt: "2026-09-21T00:00:00Z", createdBy: "omo",
-    createdAt: "2026-09-21T00:00:00Z", updatedAt: "2026-09-21T00:00:00Z", version: 1, newsReadAt: null, mailReadAt: null, readAt: null,
-    counts: { mail: 2, domestic: 2, aiDevelopment: 7 }, headlines: ["첫 기사"], mailHeadline: "중요 메일", urgent: 0, todo: 0, ...patch,
+    createdAt: "2026-09-21T00:00:00Z", updatedAt: "2026-09-21T00:00:00Z", version: 1, articlesReadAt: null, messagesReadAt: null, readAt: null,
+    counts: { inbox: 2, local: 2, ai: 7 }, outline: [{ key: "inbox", title: "Inbox", kind: "messages", items: 2 }, { key: "local", title: "Local", kind: "articles", items: 2 }, { key: "ai", title: "AI", kind: "articles", items: 7 }],
+    headlines: ["첫 기사"], messageHeadline: "중요 메일", urgent: 0, todo: 0, ...patch,
   });
   const morning = brief("00000000-0000-4000-8000-000000000021", {});
   const evening = brief("00000000-0000-4000-8000-000000000022", { slot: "evening", scheduledAt: "2026-09-19T12:00:00Z",
-    counts: { domestic: 1 }, headlines: [], mailHeadline: "메일만", newsReadAt: "2026-09-19T13:00:00Z", mailReadAt: "2026-09-19T13:00:00Z" });
+    counts: { local: 1 }, outline: [{ key: "local", title: "Local", kind: "articles", items: 1 }], headlines: [], messageHeadline: "메일만",
+    articlesReadAt: "2026-09-19T13:00:00Z", messagesReadAt: "2026-09-19T13:00:00Z" });
   const records = [make("00000000-0000-4000-8000-000000000023", { title: "새 항목", reviewState: "pending" })];
   const page = { items: [morning, evening], from: "2026-09-08", to: "2026-09-21", unread: 2, earliestDate: "2026-09-19", latestDate: "2026-09-21",
-    parts: { news: { unread: 1, earliestDate: "2026-09-19" }, mail: { unread: 1, earliestDate: "2026-09-21" } } };
+    parts: { articles: { unread: 1, earliestDate: "2026-09-19" }, messages: { unread: 1, earliestDate: "2026-09-21" } } };
   const inbox = (params: Record<string, string> = {}, id: string | null = null) =>
-    renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard(records, { view: "inbox", params, id }, { briefings: page })}>
+    renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard(records, { view: "inbox", params, id }, { digests: page })}>
       <InboxPane />
     </DashboardContext.Provider>);
   // When: the inbox is rendered under 전체.
   const html = inbox();
-  // Then: rows run newest first across both kinds, only the morning briefing and the link read 미확인, and briefing rows have no swipe layer.
-  expect((await scan(html, ".row-title")).text).toBe("미확인 아침 브리핑미확인 새 항목저녁 브리핑");
+  // Then: rows run newest first across both kinds, only the morning digest and the link read 미확인, and digest rows have no swipe layer.
+  expect((await scan(html, ".row-title")).text).toBe("미확인 아침 다이제스트미확인 새 항목저녁 다이제스트");
   expect((await scan(html, ".row.unread")).count).toBe(2);
   expect((await scan(html, ".swipe")).count).toBe(1);
   expect((await scan(html, `#row-${morning.id} .row-summary`)).text).toBe("첫 기사");
-  expect((await scan(html, `#row-${morning.id} .row-meta`)).text).toBe("브리핑 · 메일 2 · 국내 2 · AI 7");
+  expect((await scan(html, `#row-${morning.id} .row-meta`)).text).toBe("다이제스트 · Inbox 2 · Local 2 · AI 7");
   expect((await scan(html, `#row-${evening.id} .row-summary`)).text).toBe("메일만");
   expect(html).toContain(`href="#/inbox/${morning.id}"`);
   // And: 전체/미확인/확인함 count 3/2/1 and the title counts the current list.
   expect((await scan(html, 'div[aria-label="확인 상태"] .chip-count')).text).toBe("321");
   expect((await scan(html, ".pane-title .count")).text).toBe("3");
-  // And: 미확인 drops the read evening unless it is the open one; the search reaches briefing headlines.
+  // And: 미확인 drops the read evening unless it is the open one; the search reaches digest headlines.
   expect((await scan(inbox({ state: "pending" }), ".row")).count).toBe(2);
-  expect((await scan(inbox({ state: "pending" }, evening.id), ".row-title")).text).toBe("미확인 아침 브리핑미확인 새 항목저녁 브리핑");
-  expect((await scan(inbox({ q: "첫 기사" }), ".row-title")).text).toBe("미확인 아침 브리핑");
+  expect((await scan(inbox({ state: "pending" }, evening.id), ".row-title")).text).toBe("미확인 아침 다이제스트미확인 새 항목저녁 다이제스트");
+  expect((await scan(inbox({ q: "첫 기사" }), ".row-title")).text).toBe("미확인 아침 다이제스트");
 });
 
 test("an empty filter combination keeps every active chip and offers to clear all conditions", async () => {

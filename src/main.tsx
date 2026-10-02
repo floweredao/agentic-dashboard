@@ -8,7 +8,7 @@ import "./styles/reader.css";
 import "./styles/forms.css";
 import "./styles/work.css";
 import "./styles/views.css";
-import "./styles/briefing.css";
+import "./styles/digest.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Application root is missing.");

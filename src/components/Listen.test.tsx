@@ -95,7 +95,7 @@ test("a failure is an alert in Korean with 다시 시도; a cancel is not a fail
   expect(labels(cancelled)).toEqual(["음성 만들기"]);
 });
 
-test("a label prefixes the commands and the row text for the briefing 전체 view", () => {
+test("a label prefixes the commands and the row text for the digest 전체 view", () => {
   expect(labels({ narration: null, available: true }, "메일")).toEqual(["메일 음성 만들기"]);
   const html = bar({ narration: { ...base, status: "queued" }, available: true }, { label: "뉴스" });
   expect(text(html)).toContain("뉴스 만들 차례를 기다리는 중");

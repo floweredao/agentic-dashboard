@@ -1,5 +1,5 @@
 // Agentic Dashboard service worker: Web Push only. It caches nothing, so every load still gets the current build.
-// Payload (server/push.ts): { kind, title, body, url, tag }; url is an in-app address such as /#/briefing/<id>.
+// Payload (server/push.ts): { kind, title, body, url, tag }; url is an in-app address such as /#/digest/<id>.
 
 self.addEventListener("install", () => { self.skipWaiting(); });
 self.addEventListener("activate", event => { event.waitUntil(self.clients.claim()); });

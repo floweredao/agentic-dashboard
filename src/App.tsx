@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, Inbox, Library, Newspaper, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
 import type { Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
-import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadBriefings, loadComments, loadRecords, loadTrash, logout as endSession, markBriefing as markBriefingApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
-import type { BriefingPage } from "./api";
+import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
+import type { DigestPage } from "./api";
 import { syncPush } from "./push";
 import { Empty, ChannelMark, DialogToast } from "./components/primitives";
 import { ShareDialog } from "./components/ShareDialog";
 import { isTypingTarget } from "./hooks";
-import { addDays, aiFillRevert, blankRecord, channelKeys, channelOf, channelLabel, confirmationChanges, homeViewOf, inboxBadge, inboxStateOf, isRecord, listedFor, nextInQueue, revisitDue, seoulDate, withBriefingReads } from "./model";
+import { addDays, aiFillRevert, blankRecord, channelKeys, channelOf, channelLabel, confirmationChanges, homeViewOf, inboxBadge, inboxStateOf, isRecord, listedFor, nextInQueue, partReadAt, revisitDue, seoulDate, withDigestReads } from "./model";
 import { backLabel, backOf, formatRoute, legacyRedirect, parseRoute, sectionOf, viewTitles } from "./router";
 import type { Back, Route, Trail, View } from "./router";
 import { DashboardContext } from "./state";
 import type { Dashboard, Destination, ReviewState } from "./state";
 import { ArchivePane } from "./views/Archive";
-import { BriefingPane, BriefingReader, briefingPart, partReadAt } from "./views/Briefing";
+import { DigestPane, DigestReader, digestPart } from "./views/Digest";
 import { ChannelsView, LoginDialog, OwnerGate } from "./views/Channels";
 import { Compose } from "./views/Compose";
 import { Editor } from "./views/Editor";
@@ -26,11 +26,11 @@ import { TrashPane } from "./views/Trash";
 import { WorkPane } from "./views/Work";
 
 const icons: Record<View, typeof Inbox> = {
-  inbox: Inbox, library: Library, briefing: Newspaper, work: BriefcaseBusiness, more: Ellipsis, archive: Archive, trash: Trash2, channels: RadioTower,
+  inbox: Inbox, library: Library, digest: Newspaper, work: BriefcaseBusiness, more: Ellipsis, archive: Archive, trash: Trash2, channels: RadioTower,
   settings: Bell,
 };
 /** The tab screens in the order of the phone's tab bar and the top of the desktop sidebar (더보기 is the sidebar's lower groups). */
-const tabViews = ["inbox", "library", "briefing", "work"] as const;
+const tabViews = ["inbox", "library", "digest", "work"] as const;
 /** Views that fill the workspace alone, with no reader pane beside them. */
 const singlePane = (view: View) => view === "channels" || view === "trash" || view === "more" || view === "settings";
 /** The app's own part of `history.state` (anything else, such as a state from an older build, reads as opened by address). */
@@ -56,8 +56,8 @@ const syncLabel = (date: Date | null) => date
 /** Records, the trash and timelines together. The trash and timelines are secondary: a failure there goes to `report` and never hides the records. */
 async function loadAll(report: (cause: unknown) => void) {
   const secondary = <T,>(load: Promise<T>) => load.catch((cause: unknown) => { report(cause); return null; });
-  const [items, trashed, comments, briefings] = await Promise.all([loadRecords(), secondary(loadTrash()), secondary(loadComments()), secondary(loadBriefings())]);
-  return { items, trashed, comments, briefings };
+  const [items, trashed, comments, digests] = await Promise.all([loadRecords(), secondary(loadTrash()), secondary(loadComments()), secondary(loadDigests())]);
+  return { items, trashed, comments, digests };
 }
 
 export function App() {
@@ -65,8 +65,8 @@ export function App() {
   const [records, setRecords] = useState<DashboardRecord[]>([]);
   const [trash, setTrash] = useState<TrashItem[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
-  const [briefings, setBriefings] = useState<BriefingPage | null>(null);
-  const [briefingReads, setBriefingReads] = useState<ReadonlyMap<string, string | null>>(new Map());
+  const [digests, setDigests] = useState<DigestPage | null>(null);
+  const [digestReads, setDigestReads] = useState<ReadonlyMap<string, string | null>>(new Map());
   const [csrf, setCsrf] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -98,9 +98,9 @@ export function App() {
 
   const report = useCallback(async (cause: unknown) => notify(await errorMessage(cause), "error"), [notify]);
   /** A failed trash or timeline load (null) keeps the last one. */
-  const store = useCallback(({ items, trashed, comments: entries, briefings: page }: Awaited<ReturnType<typeof loadAll>>) => {
+  const store = useCallback(({ items, trashed, comments: entries, digests: page }: Awaited<ReturnType<typeof loadAll>>) => {
     setRecords(items); if (trashed) setTrash(trashed); if (entries) setComments(entries);
-    if (page) { setBriefings(page); setBriefingReads(new Map()); }
+    if (page) { setDigests(page); setDigestReads(new Map()); }
     setSyncedAt(new Date());
   }, []);
 
@@ -174,9 +174,9 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // Pending records plus briefings with an unread part, with the read overlay applied as the 브리핑 list does.
-  const inbox = useMemo(() => inboxBadge(records, (briefings?.items ?? []).map(item => withBriefingReads(item, briefingReads))),
-    [records, briefings, briefingReads]);
+  // Pending records plus digests with an unread part, with the read overlay applied as the 다이제스트 list does.
+  const inbox = useMemo(() => inboxBadge(records, (digests?.items ?? []).map(item => withDigestReads(item, digestReads))),
+    [records, digests, digestReads]);
   useEffect(() => {
     document.title = `Agentic Dashboard · ${viewTitles[route.view]}${inbox ? ` (${inbox})` : ""}`;
   }, [route.view, inbox]);
@@ -261,17 +261,17 @@ export function App() {
     };
     return {
       records, byId, trash, comments, connected, csrfToken: csrf, loading, busy, route, back, navigate, select, open, patch, confirm, create, editDraft, notify,
-      briefings, briefingReads,
-      markBriefing: async (id, part, read, quiet = false) => {
+      digests, digestReads,
+      markDigest: async (id, part, read, quiet = false) => {
         try {
-          const saved = await markBriefingApi(id, part, read, latest.current.csrf);
+          const saved = await markDigestApi(id, part, read, latest.current.csrf);
           const key = `${id}:${part}`;
-          const before = briefings?.items.find(item => item.id === id);
-          const wasUnread = briefingReads.has(key) ? briefingReads.get(key) === null : before ? partReadAt(before, part) === null : !read;
+          const before = digests?.items.find(item => item.id === id);
+          const wasUnread = digestReads.has(key) ? digestReads.get(key) === null : before ? partReadAt(before, part) === null : !read;
           const unread = partReadAt(saved, part) === null;
-          setBriefingReads(reads => new Map(reads).set(key, partReadAt(saved, part)));
+          setDigestReads(reads => new Map(reads).set(key, partReadAt(saved, part)));
           const step = unread === wasUnread ? 0 : unread ? 1 : -1;
-          if (step) setBriefings(page => page && { ...page, unread: Math.max(0, page.unread + step),
+          if (step) setDigests(page => page && { ...page, unread: Math.max(0, page.unread + step),
             parts: { ...page.parts, [part]: { ...page.parts[part], unread: Math.max(0, page.parts[part].unread + step) } } });
           if (!quiet) notify(read ? "읽음으로 표시했어요." : "안 읽음으로 표시했어요.");
         } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); }
@@ -386,10 +386,10 @@ export function App() {
         const auth = await session(token);
         setCsrf(auth.csrfToken); store(await loadAll(report)); setModal(null);
       },
-      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setBriefings(null); navigate({ view: "inbox" }); notify("로그아웃했어요."); },
+      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); navigate({ view: "inbox" }); notify("로그아웃했어요."); },
       importJson: async text => create(recordInputSchema.parse(JSON.parse(text)), crypto.randomUUID()),
     };
-  }, [records, trash, comments, briefings, briefingReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store]);
+  }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store]);
 
   // A tapped notification in an open window: go to the screen it names, as a new history entry.
   useEffect(() => {
@@ -420,8 +420,8 @@ export function App() {
   }, [dashboard]);
 
   const selected = route.id ? dashboard.byId.get(route.id) : undefined;
-  // A briefing opened from 받은 항목 reads there in full (뉴스 and 메일), so back returns to the inbox with its filters.
-  const inboxBriefing = route.view === "inbox" && !selected && route.id !== null && briefings?.items.some(item => item.id === route.id) ? route.id : null;
+  // A digest opened from 받은 항목 reads there in full (기사 and 메시지), so back returns to the inbox with its filters.
+  const inboxDigest = route.view === "inbox" && !selected && route.id !== null && digests?.items.some(item => item.id === route.id) ? route.id : null;
   const hasDetail = connected && !singlePane(route.view) && route.id !== null;
   const counts: Record<View, number> = {
     inbox,
@@ -431,7 +431,7 @@ export function App() {
     more: 0,
     channels: 0,
     trash: trash.length,
-    briefing: briefings?.unread ?? 0,
+    digest: digests?.unread ?? 0,
     settings: 0,
   };
   const link = (view: View) => formatRoute({ view, id: null, params: {} });
@@ -440,7 +440,7 @@ export function App() {
     const Icon = icons[view];
     return <li key={view}><a className="nav-item" href={link(view)} title={viewTitles[view]} aria-current={route.view === view ? "page" : undefined}>
       <Icon size={18} aria-hidden="true" /><span className="nav-label">{viewTitles[view]}</span>
-      {connected && counts[view] > 0 && <span className={`nav-count${view === "inbox" || view === "briefing" ? " strong" : ""}`}>{counts[view]}</span>}
+      {connected && counts[view] > 0 && <span className={`nav-count${view === "inbox" || view === "digest" ? " strong" : ""}`}>{counts[view]}</span>}
     </a></li>;
   };
   const locked = !connected && !loading;
@@ -494,11 +494,11 @@ export function App() {
           : route.view === "channels" ? <section className="pane" aria-label={title}><ChannelsView /></section>
           : route.view === "trash" ? <section className="pane" aria-label={title}><TrashPane /></section>
           : route.view === "settings" ? <section className="pane" aria-label={title}><SettingsPane /></section>
-          : route.view === "briefing" ? <>
-            <section className="pane list-pane" aria-label="브리핑 목록"><BriefingPane /></section>
+          : route.view === "digest" ? <>
+            <section className="pane list-pane" aria-label="다이제스트 목록"><DigestPane /></section>
             <section className="pane reader-pane" aria-label="상세">
-              {route.id ? <BriefingReader key={`${route.id}:${briefingPart(route.params)}`} id={route.id} part={briefingPart(route.params)} />
-                : <div className="reader-empty"><Empty icon={<Newspaper size={20} aria-hidden="true" />}>목록에서 브리핑을 고르면 여기에 보여요</Empty></div>}
+              {route.id ? <DigestReader key={`${route.id}:${digestPart(route.params)}`} id={route.id} part={digestPart(route.params)} />
+                : <div className="reader-empty"><Empty icon={<Newspaper size={20} aria-hidden="true" />}>목록에서 다이제스트를 고르면 여기에 보여요</Empty></div>}
             </section>
           </>
             : <>
@@ -510,15 +510,15 @@ export function App() {
               </section>
               <section className="pane reader-pane" aria-label="상세">
                 {selected ? <Reader key={selected.id} record={selected} />
-                  : inboxBriefing ? <BriefingReader key={`inbox:${inboxBriefing}`} id={inboxBriefing} part="all" />
+                  : inboxDigest ? <DigestReader key={`inbox:${inboxDigest}`} id={inboxDigest} part="all" />
                   : <div className="reader-empty"><Empty>{route.id ? "항목을 찾을 수 없음" : "목록에서 항목을 고르면 여기에 보여요"}</Empty></div>}
               </section>
             </>}
       </main>
 
       <nav className="tabbar" aria-label="주 메뉴">
-        {(["inbox", "library", "briefing"] as const).map(view => <TabLink key={view} view={view} current={route.view}
-          count={connected && (view === "inbox" || view === "briefing") ? counts[view] : 0} />)}
+        {(["inbox", "library", "digest"] as const).map(view => <TabLink key={view} view={view} current={route.view}
+          count={connected && (view === "inbox" || view === "digest") ? counts[view] : 0} />)}
         {(["work", "more"] as const).map(view => <TabLink key={view} view={view} current={route.view}
           count={view === "work" && connected ? records.filter(record => record.kind === "task" && !record.archivedAt && record.status === "review").length : 0} />)}
       </nav>

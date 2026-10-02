@@ -214,98 +214,107 @@ export type Narration = z.infer<typeof NarrationSchema>;
 export const NarrationStateSchema = z.object({ narration: NarrationSchema.nullable(), available: z.boolean() }).strict();
 export type NarrationState = z.infer<typeof NarrationStateSchema>;
 
-/** Briefing sections in the order a briefing shows them: mail first, so what needs action is not buried under the news. */
-export const BRIEFING_SECTIONS = ["mail", "domestic", "international", "aiDevelopment"] as const;
-export const BriefingSectionKeySchema = z.enum(BRIEFING_SECTIONS);
-export type BriefingSectionKey = z.infer<typeof BriefingSectionKeySchema>;
-export const BRIEFING_SECTION_LABELS: Record<BriefingSectionKey, string> = { mail: "메일", domestic: "국내", international: "해외", aiDevelopment: "AI/개발" };
-/** The 브리핑 tab reads a briefing as two parts, each with its own screen and read state: 뉴스 (the news sections) and 메일. */
-export const BRIEFING_PARTS = ["news", "mail"] as const;
-export const BriefingPartSchema = z.enum(BRIEFING_PARTS);
-export type BriefingPart = z.infer<typeof BriefingPartSchema>;
-export const BRIEFING_PART_LABELS: Record<BriefingPart, string> = { news: "뉴스", mail: "메일" };
-export const NEWS_SECTIONS = ["domestic", "international", "aiDevelopment"] as const satisfies readonly BriefingSectionKey[];
-export const PART_SECTIONS: Record<BriefingPart, readonly BriefingSectionKey[]> = { news: NEWS_SECTIONS, mail: ["mail"] };
-export const partOfSection = (key: BriefingSectionKey): BriefingPart => key === "mail" ? "mail" : "news";
+/** The two kinds of digest section; each kind is also a part of a digest that is read and narrated on its own. */
+export const DIGEST_KINDS = ["articles", "messages"] as const;
+export const DigestKindSchema = z.enum(DIGEST_KINDS);
+export type DigestKind = z.infer<typeof DigestKindSchema>;
+/** A part of a digest: the sections of one kind. */
+export const DIGEST_PARTS = DIGEST_KINDS;
+export const DigestPartSchema = DigestKindSchema;
+export type DigestPart = DigestKind;
+/** An agent-chosen section key: lowercase letters, digits and dashes, starting with a letter. */
+export const DigestSectionKeySchema = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, "lowercase letters, digits and dashes, starting with a letter");
 /**
- * The id a part is narrated (듣기) under: the news under the briefing's own id, the mail under the same UUID with its
- * version digit set to 8 (RFC 9562 custom). Briefing ids are version 4, so the two never collide and either maps back.
+ * The id a part is narrated under: the articles under the digest's own id, the messages under the same UUID with its
+ * version digit set to 8 (RFC 9562 custom). Digest ids are version 4, so the two never collide and either maps back.
  */
-export const briefingPartId = (id: string, part: BriefingPart) => part === "news" ? id : `${id.slice(0, 14)}8${id.slice(15)}`;
-export const briefingOfPartId = (id: string): { readonly id: string; readonly part: BriefingPart } =>
-  id[14] === "8" ? { id: `${id.slice(0, 14)}4${id.slice(15)}`, part: "mail" } : { id, part: "news" };
-/** urgent 즉시 조치, todo 할 일, check 확인, info 참고. */
-export const MAIL_IMPORTANCE = ["urgent", "todo", "check", "info"] as const;
-export const MAIL_IMPORTANCE_LABELS: Record<(typeof MAIL_IMPORTANCE)[number], string> = { urgent: "즉시 조치", todo: "할 일", check: "확인", info: "참고" };
-/** A briefing's slot within its Seoul day: morning (08:00), evening (21:00) or another time as HH:MM. */
-export const BriefingSlotSchema = z.string().regex(/^(?:morning|evening|(?:[01]\d|2[0-3]):[0-5]\d)$/, "morning, evening or HH:MM");
-export const BRIEFING_LIMITS = { items: 60, bodyBytes: 256 * 1024, rangeDays: 92 } as const;
-const briefingUrl = z.url({ protocol: /^https?$/ }).max(2048);
-const briefingKey = z.string().trim().min(1).max(200);
-export const BriefingArticleSchema = z.object({
-  key: briefingKey, title: z.string().trim().min(1).max(300), source: z.string().trim().max(100).default(""),
+export const digestPartId = (id: string, part: DigestPart) => part === "articles" ? id : `${id.slice(0, 14)}8${id.slice(15)}`;
+export const digestOfPartId = (id: string): { readonly id: string; readonly part: DigestPart } =>
+  id[14] === "8" ? { id: `${id.slice(0, 14)}4${id.slice(15)}`, part: "messages" } : { id, part: "articles" };
+/** Message importance, most pressing first: urgent (act now), todo, check, info. */
+export const MESSAGE_IMPORTANCE = ["urgent", "todo", "check", "info"] as const;
+export type MessageImportance = (typeof MESSAGE_IMPORTANCE)[number];
+/** A digest's slot within its day: morning (08:00), evening (21:00) or another time as HH:MM. */
+export const DigestSlotSchema = z.string().regex(/^(?:morning|evening|(?:[01]\d|2[0-3]):[0-5]\d)$/, "morning, evening or HH:MM");
+export const DIGEST_LIMITS = { items: 60, sections: 12, bodyBytes: 256 * 1024, rangeDays: 92 } as const;
+const digestUrl = z.url({ protocol: /^https?$/ }).max(2048);
+const itemKey = z.string().trim().min(1).max(200);
+export const DigestArticleSchema = z.object({
+  key: itemKey, title: z.string().trim().min(1).max(300), source: z.string().trim().max(100).default(""),
   summary: z.string().trim().max(2000).default(""),
-  /** The verified link (Google News for domestic and international news, the original for AI/개발); `originalUrl` is the publisher's page. */
-  url: briefingUrl, originalUrl: briefingUrl.nullable().default(null),
+  /** The verified link to open; `originalUrl` is the publisher's page when `url` is an aggregator's. */
+  url: digestUrl, originalUrl: digestUrl.nullable().default(null),
   publishedAt: z.iso.datetime({ offset: true }).nullable().default(null), publishedDate: DateSchema.nullable().default(null),
 }).strict();
-export type BriefingArticle = z.infer<typeof BriefingArticleSchema>;
-export const BriefingMailSchema = z.object({
-  key: briefingKey, importance: z.enum(MAIL_IMPORTANCE), from: z.string().trim().min(1).max(200), address: z.string().trim().max(320).default(""),
+export type DigestArticle = z.infer<typeof DigestArticleSchema>;
+export const DigestMessageSchema = z.object({
+  key: itemKey, importance: z.enum(MESSAGE_IMPORTANCE), from: z.string().trim().min(1).max(200), address: z.string().trim().max(320).default(""),
   subject: z.string().trim().min(1).max(300), summary: z.string().trim().max(2000).default(""), action: z.string().trim().max(1000).default(""),
-  url: briefingUrl.nullable().default(null), merged: z.number().int().min(1).max(100).default(1),
+  url: digestUrl.nullable().default(null), merged: z.number().int().min(1).max(100).default(1),
 }).strict();
-export type BriefingMail = z.infer<typeof BriefingMailSchema>;
-const shortfall = z.string().trim().min(1).max(500).nullable().default(null);
-const NewsSectionSchema = z.object({ items: z.array(BriefingArticleSchema).max(BRIEFING_LIMITS.items), shortfall }).strict();
-const MailSectionSchema = z.object({ items: z.array(BriefingMailSchema).max(BRIEFING_LIMITS.items), shortfall }).strict();
-const sectionsShape = {
-  mail: MailSectionSchema.optional(), domestic: NewsSectionSchema.optional(),
-  international: NewsSectionSchema.optional(), aiDevelopment: NewsSectionSchema.optional(),
-};
+export type DigestMessage = z.infer<typeof DigestMessageSchema>;
+const sectionHead = { key: DigestSectionKeySchema, title: z.string().trim().min(1).max(60), shortfall: z.string().trim().min(1).max(500).nullable().default(null) };
+export const DigestSectionInputSchema = z.discriminatedUnion("kind", [
+  z.object({ ...sectionHead, kind: z.literal("articles"), items: z.array(DigestArticleSchema).max(DIGEST_LIMITS.items) }).strict(),
+  z.object({ ...sectionHead, kind: z.literal("messages"), items: z.array(DigestMessageSchema).max(DIGEST_LIMITS.items) }).strict(),
+]);
+export type DigestSectionInput = z.infer<typeof DigestSectionInputSchema>;
 /**
- * One upload of a briefing: the sections it carries replace those sections of the (date, slot) briefing and the rest stay.
- * `scheduledAt` defaults to the slot's time in Seoul; `notify: false` keeps the upload silent (backfills).
+ * One upload of a digest: each section replaces the stored section with the same key in place, the others stay and new keys
+ * are appended. `scheduledAt` defaults to the slot's time in the dashboard's time zone; `notify: false` keeps it silent (backfills).
  */
-export const BriefingInputSchema = z.object({
-  date: DateSchema, slot: BriefingSlotSchema, scheduledAt: z.iso.datetime({ offset: true }).optional(),
-  sections: z.object(sectionsShape).strict().refine(sections => Object.keys(sections).length > 0, "Include at least one section"),
+export const DigestInputSchema = z.object({
+  date: DateSchema, slot: DigestSlotSchema, scheduledAt: z.iso.datetime({ offset: true }).optional(),
+  sections: z.array(DigestSectionInputSchema).min(1).max(DIGEST_LIMITS.sections).superRefine((sections, ctx) => {
+    const seen = new Set<string>();
+    sections.forEach((section, index) => {
+      if (seen.has(section.key)) ctx.addIssue({ code: "custom", path: [index, "key"], message: "Section keys must be unique" });
+      seen.add(section.key);
+    });
+  }),
   notify: z.boolean().default(true),
 }).strict();
-export type BriefingInput = z.infer<typeof BriefingInputSchema>;
-const storedSection = <T extends z.ZodTypeAny>(item: T) => z.object({ items: z.array(item), shortfall: z.string().nullable(), updatedAt: z.iso.datetime() }).strict();
-export const BriefingSchema = z.object({
-  id: z.string().uuid(), date: DateSchema, slot: BriefingSlotSchema, scheduledAt: z.iso.datetime(),
-  sections: z.object({
-    mail: storedSection(BriefingMailSchema).optional(), domestic: storedSection(BriefingArticleSchema).optional(),
-    international: storedSection(BriefingArticleSchema).optional(), aiDevelopment: storedSection(BriefingArticleSchema).optional(),
-  }).strict(),
+export type DigestInput = z.infer<typeof DigestInputSchema>;
+const storedHead = { key: DigestSectionKeySchema, title: z.string(), shortfall: z.string().nullable(), updatedAt: z.iso.datetime() };
+export const DigestSectionSchema = z.discriminatedUnion("kind", [
+  z.object({ ...storedHead, kind: z.literal("articles"), items: z.array(DigestArticleSchema) }).strict(),
+  z.object({ ...storedHead, kind: z.literal("messages"), items: z.array(DigestMessageSchema) }).strict(),
+]);
+export type DigestSection = z.infer<typeof DigestSectionSchema>;
+export const DigestSchema = z.object({
+  id: z.string().uuid(), date: DateSchema, slot: DigestSlotSchema, scheduledAt: z.iso.datetime(),
+  /** In upload order: a replaced section keeps its place, a new key goes last. */
+  sections: z.array(DigestSectionSchema),
   createdBy: z.string(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(), version: z.number().int().positive(),
   /**
    * When each part was read; null while it waits to be read. A part with nothing to read (no items) counts as read.
    * `readAt` is when both were read (the later time), null while either waits.
    */
-  newsReadAt: z.iso.datetime().nullable(), mailReadAt: z.iso.datetime().nullable(), readAt: z.iso.datetime().nullable(),
+  articlesReadAt: z.iso.datetime().nullable(), messagesReadAt: z.iso.datetime().nullable(), readAt: z.iso.datetime().nullable(),
 }).strict();
-export type Briefing = z.infer<typeof BriefingSchema>;
+export type Digest = z.infer<typeof DigestSchema>;
+/** A section as the list sees it: its key, title, kind and number of items. */
+export const DigestOutlineSchema = z.object({ key: DigestSectionKeySchema, title: z.string(), kind: DigestKindSchema, items: z.number().int().nonnegative() }).strict();
+export type DigestOutline = z.infer<typeof DigestOutlineSchema>;
 /**
- * A briefing in the list: item counts per present section, the first three news headlines, the most important mail's
- * subject, and the numbers of 즉시 조치 (`urgent`) and 할 일 (`todo`) mails.
+ * A digest in the list: item counts per section key, the outline of its sections in order, the first three headlines taken
+ * round-robin across the article sections, the most important message's subject, and the numbers of urgent and todo messages.
  */
-export const BriefingSummarySchema = BriefingSchema.omit({ sections: true }).extend({
-  counts: z.object({ mail: z.number().int().optional(), domestic: z.number().int().optional(), international: z.number().int().optional(), aiDevelopment: z.number().int().optional() }).strict(),
-  headlines: z.array(z.string()), mailHeadline: z.string().nullable(), urgent: z.number().int().nonnegative(), todo: z.number().int().nonnegative(),
+export const DigestSummarySchema = DigestSchema.omit({ sections: true }).extend({
+  counts: z.record(z.string(), z.number().int().nonnegative()), outline: z.array(DigestOutlineSchema),
+  headlines: z.array(z.string()), messageHeadline: z.string().nullable(), urgent: z.number().int().nonnegative(), todo: z.number().int().nonnegative(),
 }).strict();
-export type BriefingSummary = z.infer<typeof BriefingSummarySchema>;
-export const BriefingHitSchema = z.object({
-  briefingId: z.string().uuid(), date: DateSchema, slot: BriefingSlotSchema, scheduledAt: z.iso.datetime(), section: BriefingSectionKeySchema,
-  item: z.union([BriefingMailSchema, BriefingArticleSchema]),
+export type DigestSummary = z.infer<typeof DigestSummarySchema>;
+export const DigestHitSchema = z.object({
+  digestId: z.string().uuid(), date: DateSchema, slot: DigestSlotSchema, scheduledAt: z.iso.datetime(),
+  section: DigestSectionKeySchema, sectionTitle: z.string(), kind: DigestKindSchema,
+  item: z.union([DigestMessageSchema, DigestArticleSchema]),
 }).strict();
-export type BriefingHit = z.infer<typeof BriefingHitSchema>;
+export type DigestHit = z.infer<typeof DigestHitSchema>;
 
 /** What a device can be told about; each device turns each kind on or off. */
-export const PUSH_KINDS = ["briefing", "review", "reply"] as const;
-export const PushKindsSchema = z.object({ briefing: z.boolean(), review: z.boolean(), reply: z.boolean() }).strict();
+export const PUSH_KINDS = ["digest", "review", "reply"] as const;
+export const PushKindsSchema = z.object({ digest: z.boolean(), review: z.boolean(), reply: z.boolean() }).strict();
 export type PushKinds = z.infer<typeof PushKindsSchema>;
 export const PushSubscriptionSchema = z.object({
   endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(),
@@ -315,7 +324,7 @@ export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, createdAt: z.
 export type PushDevice = z.infer<typeof PushDeviceSchema>;
 /** The JSON a notification carries; `url` is the in-app address the tap opens. */
 export const PushPayloadSchema = z.object({
-  kind: z.enum(["briefing", "review", "reply", "test"]), title: z.string(), body: z.string(), url: z.string(), tag: z.string(),
+  kind: z.enum(["digest", "review", "reply", "test"]), title: z.string(), body: z.string(), url: z.string(), tag: z.string(),
 }).strict();
 export type PushPayload = z.infer<typeof PushPayloadSchema>;
 

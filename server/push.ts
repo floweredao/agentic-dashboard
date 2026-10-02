@@ -2,9 +2,9 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { dirname } from "node:path";
 import webpush from "web-push";
 import { z } from "zod";
-import { BRIEFING_SECTION_LABELS, PushKindsSchema, PushSubscriptionSchema } from "../shared/contracts";
-import type { Briefing, BriefingSectionKey, Comment, DashboardRecord, PushDevice, PushKinds, PushPayload, Source } from "../shared/contracts";
-import { headlines, slotLabel } from "./briefings";
+import { PushKindsSchema, PushSubscriptionSchema } from "../shared/contracts";
+import type { Comment, Digest, DashboardRecord, PushDevice, PushKinds, PushPayload, Source } from "../shared/contracts";
+import { headlines } from "./digests";
 import { ApiError } from "./errors";
 import { messages, type Locale } from "./messages";
 import type { Store } from "./store";
@@ -23,8 +23,8 @@ export interface PushOptions {
 }
 export type Push = ReturnType<typeof createPush>;
 
-export const DEFAULT_PUSH_KINDS: PushKinds = { briefing: true, review: true, reply: true };
-/** A queued alert matters for hours, not days: a stale briefing alert is noise. */
+export const DEFAULT_PUSH_KINDS: PushKinds = { digest: true, review: true, reply: true };
+/** A queued alert matters for hours, not days: a stale digest alert is noise. */
 const TTL_SECONDS = 12 * 60 * 60;
 const TIMEOUT_MS = 10_000;
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(?:^|\.)push\.apple\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(?:^|\.)notify\.windows\.com$/];
@@ -37,29 +37,20 @@ const decoded = (value: string) => /^[A-Za-z0-9_-]+=*$/.test(value) ? Buffer.fro
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 const firstLine = (text: string) => text.trim().split("\n")[0]?.trim() ?? "";
 
-/** 이 after a final consonant, 가 after a vowel (Hangul only; anything else reads as a vowel). */
-function subjectParticle(word: string) {
-  const code = (word.at(-1) ?? "").charCodeAt(0);
-  return code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0 ? "이" : "가";
-}
-const SECTION_NAMES: Record<BriefingSectionKey, string> = { mail: "메일", domestic: "국내 뉴스", international: "해외 뉴스", aiDevelopment: `${BRIEFING_SECTION_LABELS.aiDevelopment} 소식` };
-
-export function briefingPayload(briefing: Briefing, added: readonly BriefingSectionKey[], created: boolean): PushPayload {
-  const label = `${slotLabel(briefing.slot)} 브리핑`;
-  const names = added.map(key => SECTION_NAMES[key]).join("·");
+export function digestPayload(digest: Digest, added: readonly string[], created: boolean, locale: Locale = "en"): PushPayload {
+  const text = messages(locale);
+  const label = text.digestLabel(digest.slot);
+  const addedSections = digest.sections.filter(section => added.includes(section.key));
   const lines: string[] = [];
-  const mail = added.includes("mail") ? briefing.sections.mail?.items ?? [] : [];
-  if (mail.length) {
-    const urgent = mail.filter(item => item.importance === "urgent").length;
-    lines.push(`메일 ${mail.length}건${urgent ? ` · 즉시 조치 ${urgent}건` : ""}`);
-  }
-  for (const title of headlines(briefing, 3, added)) lines.push(`· ${clip(title, 80)}`);
-  // Only mail added opens 메일, only news 뉴스; both open 전체 (no part).
-  const hasMail = added.includes("mail");
-  const hasNews = added.some(key => key !== "mail");
-  const part = hasMail && !hasNews ? "?part=mail" : hasNews && !hasMail ? "?part=news" : "";
-  return { kind: "briefing", title: created ? `${label} 왔어요` : `${label}에 ${names}${subjectParticle(names)} 추가됐어요`,
-    body: lines.join("\n"), url: `/#/briefing/${briefing.id}${part}`, tag: `briefing-${briefing.id}` };
+  const messageItems = addedSections.flatMap(section => section.kind === "messages" ? section.items : []);
+  if (messageItems.length) lines.push(text.digestMessages(messageItems.length, messageItems.filter(item => item.importance === "urgent").length));
+  for (const title of headlines(digest, 3, added)) lines.push(`· ${clip(title, 80)}`);
+  // Only messages added opens the messages part, only articles the articles part; both open the whole digest.
+  const hasMessages = addedSections.some(section => section.kind === "messages");
+  const hasArticles = addedSections.some(section => section.kind === "articles");
+  const part = hasMessages && !hasArticles ? "?part=messages" : hasArticles && !hasMessages ? "?part=articles" : "";
+  return { kind: "digest", title: created ? text.digestArrived(label) : text.digestAdded(label, addedSections.map(section => section.title).join("·")),
+    body: lines.join("\n"), url: `/#/digest/${digest.id}${part}`, tag: `digest-${digest.id}` };
 }
 export function reviewPayload(record: DashboardRecord, source: Source, report: string, locale: Locale = "en"): PushPayload {
   const line = firstLine(report);

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { briefingPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
+import { digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
 import { normalizeScript, ProviderError, splitChunks } from "../server/narration";
 import type { NarrationProvider } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
@@ -167,7 +167,7 @@ test("a new request after a cancel runs to ready and reuses the saved script", a
   expect(tts.calls.speak).toHaveLength(2);
 });
 
-test("cancel is owner-only with CSRF, answers 404 for unknown ids and works for briefings", async () => {
+test("cancel is owner-only with CSRF, answers 404 for unknown ids and works for digests", async () => {
   const { f, tts, idle } = setup();
   const owner = await f.login();
   const record = await research(f, owner);
@@ -187,11 +187,11 @@ test("cancel is owner-only with CSRF, answers 404 for unknown ids and works for 
   expect(await agent.text()).toContain("Owner session required");
   expect((await f.call(`${narration(crypto.randomUUID())}/cancel`, "POST", {}, owner)).status).toBe(404);
 
-  // A briefing's narration is cancelled through its own route.
-  const created = await f.call("/api/v1/briefings", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections: {
-    domestic: { items: [{ key: "a", title: "국내 소식", source: "연합뉴스", summary: "요약", url: "https://news.example.com/a" }] } } }, bearer("omo"));
-  const id = (await created.json() as { briefing: { id: string } }).briefing.id;
-  const path = `/api/v1/briefings/${id}/narration`;
+  // A digest's narration is cancelled through its own route.
+  const created = await f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections: [
+    { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "a", title: "국내 소식", source: "연합뉴스", summary: "요약", url: "https://news.example.com/a" }] }] }, bearer("omo"));
+  const id = (await created.json() as { digest: { id: string } }).digest.id;
+  const path = `/api/v1/digests/${id}/narration`;
   const gate = hold(tts);
   expect((await f.call(path, "POST", {}, owner)).status).toBe(202);
   await gate.entered.promise;
@@ -202,7 +202,7 @@ test("cancel is owner-only with CSRF, answers 404 for unknown ids and works for 
   expect((await read(stopped)).narration).toMatchObject({ status: "failed", error: "cancelled" });
   await idle();
   expect(tts.calls.speak).toHaveLength(1);
-  expect((await f.call(`/api/v1/briefings/${crypto.randomUUID()}/narration/cancel`, "POST", {}, owner)).status).toBe(404);
+  expect((await f.call(`/api/v1/digests/${crypto.randomUUID()}/narration/cancel`, "POST", {}, owner)).status).toBe(404);
 });
 
 test("the owner makes a narration and plays it, with byte ranges for seeking", async () => {
@@ -410,60 +410,60 @@ test("the listening script drops URLs and Markdown and splits into bounded chunk
   expect(chunks.join("").replace(/\s/g, "")).toBe(script.replace(/\s/g, ""));
 });
 
-test("the owner narrates a briefing's news; its audio lives under the briefing, survives pruning and goes stale when news is added", async () => {
+test("the owner narrates a digest's articles; its audio lives under the digest, survives pruning and goes stale when articles are added", async () => {
   const { f, tts, idle } = setup();
   const owner = await f.login();
-  const upload = (sections: Record<string, unknown>) => f.call("/api/v1/briefings", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections }, bearer("omo"));
-  const created = await upload({ domestic: { items: [{ key: "a", title: "국내 소식", source: "연합뉴스", summary: "요약", url: "https://news.example.com/a" }] } });
-  const id = (await created.json() as { briefing: { id: string } }).briefing.id;
-  const path = `/api/v1/briefings/${id}/narration`;
-  // When: the owner asks for the briefing's narration.
+  const upload = (sections: unknown[]) => f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections }, bearer("omo"));
+  const created = await upload([{ key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "a", title: "국내 소식", source: "연합뉴스", summary: "요약", url: "https://news.example.com/a" }] }]);
+  const id = (await created.json() as { digest: { id: string } }).digest.id;
+  const path = `/api/v1/digests/${id}/narration`;
+  // When: the owner asks for the digest's narration.
   expect((await f.call(path, "POST", {}, owner)).status).toBe(202);
   await idle();
   f.app.purgeTrash();
-  // Then: it is ready, made from the briefing's news, with audio under the briefing's path.
+  // Then: it is ready, made from the digest's articles, with audio under the digest's path.
   const state = await read(await f.call(path, "GET", undefined, owner));
   expect(state.narration).toMatchObject({ status: "ready", stale: false });
   expect(state.narration?.audio?.url).toStartWith(`${path}/audio?v=`);
   expect((await f.call(state.narration?.audio?.url ?? "", "GET", undefined, owner)).status).toBe(200);
   expect(tts.calls.script).toBe(1);
   expect(tts.calls.prompts[0]).toContain("국내 소식");
-  // When: mail arrives later the news audio stays current; more news makes it stale. Agents and unknown briefings get no narration.
-  await upload({ mail: { items: [{ key: "m", importance: "check", from: "KT", subject: "접속 알림" }] } });
+  // When: messages arrive later the articles audio stays current; more articles make it stale. Agents and unknown digests get no narration.
+  await upload([{ key: "inbox", title: "Inbox", kind: "messages", items: [{ key: "m", importance: "check", from: "Carrier", subject: "접속 알림" }] }]);
   expect((await read(await f.call(path, "GET", undefined, owner))).narration?.stale).toBe(false);
-  await upload({ aiDevelopment: { items: [{ key: "z", title: "AI 소식", source: "Blog", summary: "요약", url: "https://news.example.com/z" }] } });
+  await upload([{ key: "ai", title: "AI", kind: "articles", items: [{ key: "z", title: "AI 소식", source: "Blog", summary: "요약", url: "https://news.example.com/z" }] }]);
   expect((await read(await f.call(path, "GET", undefined, owner))).narration?.stale).toBe(true);
   expect((await f.call(path, "GET", undefined, bearer("omo"))).status).toBe(403);
-  expect((await f.call(`/api/v1/briefings/${crypto.randomUUID()}/narration`, "GET", undefined, owner)).status).toBe(404);
+  expect((await f.call(`/api/v1/digests/${crypto.randomUUID()}/narration`, "GET", undefined, owner)).status).toBe(404);
 });
 
-test("the owner narrates a briefing's mail on its own: the mail part has its own id, script and audio", async () => {
+test("the owner narrates a digest's messages on their own: the messages part has its own id, script and audio", async () => {
   const { f, tts, idle } = setup();
   const owner = await f.login();
-  const created = await f.call("/api/v1/briefings", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections: {
-    domestic: { items: [{ key: "a", title: "국내 소식", source: "연합뉴스", summary: "요약", url: "https://news.example.com/a" }] },
-    mail: { items: [{ key: "m", importance: "urgent", from: "KT", subject: "접속 알림" }] } } }, bearer("omo"));
-  const id = (await created.json() as { briefing: { id: string } }).briefing.id;
-  const mailId = briefingPartId(id, "mail");
+  const created = await f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections: [
+    { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "a", title: "국내 소식", source: "연합뉴스", summary: "요약", url: "https://news.example.com/a" }] },
+    { key: "inbox", title: "Inbox", kind: "messages", items: [{ key: "m", importance: "urgent", from: "Carrier", subject: "접속 알림" }] }] }, bearer("omo"));
+  const id = (await created.json() as { digest: { id: string } }).digest.id;
+  const mailId = digestPartId(id, "messages");
   expect(mailId).not.toBe(id);
-  expect(briefingPartId(id, "news")).toBe(id);
-  const path = `/api/v1/briefings/${mailId}/narration`;
-  // When: the owner asks for the mail's narration.
+  expect(digestPartId(id, "articles")).toBe(id);
+  const path = `/api/v1/digests/${mailId}/narration`;
+  // When: the owner asks for the messages' narration.
   expect((await f.call(path, "POST", {}, owner)).status).toBe(202);
   await idle();
   f.app.purgeTrash();
-  // Then: it is made from the mail alone, as a mail briefing, and its audio lives under the mail part's path.
+  // Then: it is made from the messages alone, labelled as digest messages, and its audio lives under the messages part's path.
   expect(tts.calls.prompts[0]).toContain("접속 알림");
-  expect(tts.calls.prompts[0]).toContain("메일 브리핑");
+  expect(tts.calls.prompts[0]).toContain("Digest messages");
   expect(tts.calls.prompts[0]).not.toContain("국내 소식");
   const state = await read(await f.call(path, "GET", undefined, owner));
   expect(state.narration).toMatchObject({ recordId: mailId, status: "ready", stale: false });
   expect(state.narration?.audio?.url).toStartWith(`${path}/audio?v=`);
   expect((await f.call(state.narration?.audio?.url ?? "", "GET", undefined, owner)).status).toBe(200);
-  // And: the news has no narration yet, and a briefing without mail has no mail part.
-  expect((await read(await f.call(`/api/v1/briefings/${id}/narration`, "GET", undefined, owner))).narration).toBeNull();
-  const evening = await f.call("/api/v1/briefings", "POST", { date: "2026-10-01", slot: "evening", notify: false, sections: {
-    domestic: { items: [{ key: "e", title: "저녁 소식", source: "", summary: "", url: "https://news.example.com/e" }] } } }, bearer("omo"));
-  const eveningId = (await evening.json() as { briefing: { id: string } }).briefing.id;
-  expect((await f.call(`/api/v1/briefings/${briefingPartId(eveningId, "mail")}/narration`, "GET", undefined, owner)).status).toBe(404);
+  // And: the articles have no narration yet, and a digest without messages has no messages part.
+  expect((await read(await f.call(`/api/v1/digests/${id}/narration`, "GET", undefined, owner))).narration).toBeNull();
+  const evening = await f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "evening", notify: false, sections: [
+    { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "e", title: "저녁 소식", source: "", summary: "", url: "https://news.example.com/e" }] }] }, bearer("omo"));
+  const eveningId = (await evening.json() as { digest: { id: string } }).digest.id;
+  expect((await f.call(`/api/v1/digests/${digestPartId(eveningId, "messages")}/narration`, "GET", undefined, owner)).status).toBe(404);
 });

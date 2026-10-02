@@ -225,8 +225,8 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
 }
 
 /**
- * Loads the narration of a record (or a briefing part), follows a running job every few seconds and runs the owner's commands.
- * `record: null` turns it off (tasks, projects, a briefing not yet loaded). Returns the menu items and the bar to show.
+ * Loads the narration of a record (or a digest part), follows a running job every few seconds and runs the owner's commands.
+ * `record: null` turns it off (tasks, projects, a digest not yet loaded). Returns the menu items and the bar to show.
  */
 export function useNarration({ record, collection = "records", label }: {
   readonly record: Pick<DashboardRecord, "id" | "title" | "version"> | null; readonly collection?: NarrationCollection; readonly label?: string | undefined;

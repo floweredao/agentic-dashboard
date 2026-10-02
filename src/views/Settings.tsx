@@ -8,7 +8,7 @@ import { deviceState, disablePush, enablePush, pushSupport, testPush } from "../
 import { useDashboard } from "../state";
 
 const KINDS: readonly { readonly key: keyof PushKinds; readonly label: string; readonly note: string; readonly icon: ReactNode }[] = [
-  { key: "briefing", label: "브리핑 도착", note: "아침·저녁 브리핑이 올라오면 헤드라인과 함께", icon: <Newspaper size={18} aria-hidden="true" /> },
+  { key: "digest", label: "다이제스트 도착", note: "에이전트가 다이제스트를 올리면 헤드라인과 함께", icon: <Newspaper size={18} aria-hidden="true" /> },
   { key: "review", label: "확인 필요", note: "에이전트가 할 일을 확인 필요로 바꾸면", icon: <SquareCheck size={18} aria-hidden="true" /> },
   { key: "reply", label: "답글", note: "내 코멘트에 에이전트가 답하면", icon: <MessageSquareReply size={18} aria-hidden="true" /> },
 ];

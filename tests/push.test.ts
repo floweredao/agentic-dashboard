@@ -20,14 +20,16 @@ function device(endpoint = `https://fcm.googleapis.com/fcm/send/${crypto.randomU
   return { ecdh, auth, subscription: { endpoint, expirationTime: null,
     keys: { p256dh: ecdh.getPublicKey().toString("base64url"), auth: auth.toString("base64url") } } };
 }
-const deviceView = z.object({ device: z.object({ kinds: z.object({ briefing: z.boolean(), review: z.boolean(), reply: z.boolean() }) }).nullable() });
+const deviceView = z.object({ device: z.object({ kinds: z.object({ digest: z.boolean(), review: z.boolean(), reply: z.boolean() }) }).nullable() });
 async function subscribe(body: Record<string, unknown>, headers?: Record<string, string>) {
   return f.call("/api/v1/push/subscription", "PUT", body, headers ?? await f.login());
 }
 const settle = () => f.app.push.idle();
-const morning = (sections: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ date: "2026-10-01", slot: "morning", sections, ...extra });
+const morning = (sections: unknown[], extra: Record<string, unknown> = {}) => ({ date: "2026-10-01", slot: "morning", sections, ...extra });
+const articles = (key: string, title: string, items: unknown[]) => ({ key, title, kind: "articles", items });
+const messages = (key: string, title: string, items: unknown[]) => ({ key, title, kind: "messages", items });
 const article = (key: string, title: string) => ({ key, title, source: "연합뉴스", summary: "요약", url: `https://news.example.com/${key}` });
-const upload = (body: unknown) => f.call("/api/v1/briefings", "POST", body, bearer("omo"));
+const upload = (body: unknown) => f.call("/api/v1/digests", "POST", body, bearer("omo"));
 
 test("The owner gets the public VAPID key; the key pair is stored owner-only and the private key never leaves", async () => {
   const response = await f.call("/api/v1/push", "GET", undefined, await f.login());
@@ -54,14 +56,14 @@ test("A device subscribes with every kind on, changes its kinds, and unsubscribe
   const owner = await f.login();
   expect((await subscribe({ subscription }, owner)).status).toBe(200);
   const query = `/api/v1/push?endpoint=${encodeURIComponent(subscription.endpoint)}`;
-  expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device?.kinds).toEqual({ briefing: true, review: true, reply: true });
-  // When: the device turns briefings off, then subscribes again without kinds (a reload).
-  await subscribe({ subscription, kinds: { briefing: false, review: true, reply: true } }, owner);
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device?.kinds).toEqual({ digest: true, review: true, reply: true });
+  // When: the device turns digests off, then subscribes again without kinds (a reload).
+  await subscribe({ subscription, kinds: { digest: false, review: true, reply: true } }, owner);
   await subscribe({ subscription }, owner);
-  expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device?.kinds).toEqual({ briefing: false, review: true, reply: true });
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device?.kinds).toEqual({ digest: false, review: true, reply: true });
   f.restart();
   const fresh = await f.login();
-  expect(deviceView.parse(await (await f.call(query, "GET", undefined, fresh)).json()).device?.kinds.briefing).toBe(false);
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, fresh)).json()).device?.kinds.digest).toBe(false);
   // Then: deleting it leaves nothing to send to.
   expect((await f.call("/api/v1/push/subscription", "DELETE", { endpoint: subscription.endpoint }, fresh)).status).toBe(204);
   expect(deviceView.parse(await (await f.call(query, "GET", undefined, fresh)).json()).device).toBeNull();
@@ -94,41 +96,53 @@ test("The test button sends one confirmation to that device only", async () => {
   expect((await f.call("/api/v1/push/test", "POST", { endpoint: "https://fcm.googleapis.com/fcm/send/unknown" }, owner)).status).toBe(404);
 });
 
-test("A new briefing notifies devices that want briefings, with its first headlines and a link to it", async () => {
+test("A new digest notifies devices that want digests, with its first headlines and a link to it", async () => {
   const owner = await f.login();
   const wants = device().subscription;
   const quiet = device().subscription;
   await subscribe({ subscription: wants }, owner);
-  await subscribe({ subscription: quiet, kinds: { briefing: false, review: true, reply: true } }, owner);
-  // When: the morning briefing arrives with news and mail.
-  const response = await upload(morning({
-    domestic: { items: [article("a", "국내 첫 소식"), article("b", "국내 둘째")] }, international: { items: [article("c", "해외 첫 소식")] },
-    aiDevelopment: { items: [article("d", "AI 첫 소식")] },
-    mail: { items: [{ key: "m", importance: "urgent", from: "X", subject: "계정 확인", url: "https://mail.example.com/1" }, { key: "n", importance: "check", from: "KT", subject: "접속 알림" }] },
-  }));
-  const id = z.object({ briefing: z.object({ id: z.string() }), notified: z.boolean() }).parse(await response.json());
+  await subscribe({ subscription: quiet, kinds: { digest: false, review: true, reply: true } }, owner);
+  // When: the morning digest arrives with articles and messages.
+  const response = await upload(morning([
+    articles("domestic", "Domestic", [article("a", "국내 첫 소식"), article("b", "국내 둘째")]), articles("world", "World", [article("c", "해외 첫 소식")]),
+    articles("ai", "AI", [article("d", "AI 첫 소식")]),
+    messages("inbox", "Inbox", [{ key: "m", importance: "urgent", from: "X", subject: "계정 확인", url: "https://mail.example.com/1" }, { key: "n", importance: "check", from: "Carrier", subject: "접속 알림" }]),
+  ]));
+  const id = z.object({ digest: z.object({ id: z.string() }), notified: z.boolean() }).parse(await response.json());
   await settle();
-  // Then: one push to the device that wants briefings.
+  // Then: one push to the device that wants digests.
   expect(id.notified).toBe(true);
-  expect(sent).toEqual([{ endpoint: wants.endpoint, payload: { kind: "briefing", title: "아침 브리핑 왔어요",
-    body: "메일 2건 · 즉시 조치 1건\n· 국내 첫 소식\n· 해외 첫 소식\n· AI 첫 소식", url: `/#/briefing/${id.briefing.id}`, tag: `briefing-${id.briefing.id}` } }]);
-  // When: the same briefing is sent again, a filled section is corrected, and a quiet backfill arrives.
+  expect(sent).toEqual([{ endpoint: wants.endpoint, payload: { kind: "digest", title: "Morning digest arrived",
+    body: "2 messages · 1 urgent\n· 국내 첫 소식\n· 해외 첫 소식\n· AI 첫 소식", url: `/#/digest/${id.digest.id}`, tag: `digest-${id.digest.id}` } }]);
+  // When: the same digest is sent again, a filled section is corrected, and a quiet backfill arrives.
   sent = [];
-  await upload(morning({ domestic: { items: [article("a", "국내 첫 소식"), article("b", "국내 둘째")] } }));
-  await upload(morning({ domestic: { items: [article("a", "국내 첫 소식 (수정)")] } }));
-  await upload({ date: "2026-09-29", slot: "evening", notify: false, sections: { domestic: { items: [article("z", "지난 소식")] } } });
+  await upload(morning([articles("domestic", "Domestic", [article("a", "국내 첫 소식"), article("b", "국내 둘째")])]));
+  await upload(morning([articles("domestic", "Domestic", [article("a", "국내 첫 소식 (수정)")])]));
+  await upload({ date: "2026-09-29", slot: "evening", notify: false, sections: [articles("domestic", "Domestic", [article("z", "지난 소식")])] });
   await settle();
   expect(sent).toEqual([]);
   // When: a section that was missing arrives later, the device hears about the addition.
-  const evening = z.object({ briefing: z.object({ id: z.string() }) }).parse(await (await upload({ date: "2026-10-01", slot: "evening",
-    sections: { domestic: { items: [article("e", "저녁 소식")] } } })).json()).briefing.id;
+  const evening = z.object({ digest: z.object({ id: z.string() }) }).parse(await (await upload({ date: "2026-10-01", slot: "evening",
+    sections: [articles("domestic", "Domestic", [article("e", "저녁 소식")])] })).json()).digest.id;
   await settle();
-  // Both parts open 전체 (above); news alone opens 뉴스; mail alone opens 메일.
-  expect(sent.map(item => item.payload.url)).toEqual([`/#/briefing/${evening}?part=news`]);
+  // Both parts open the whole digest (above); articles alone open the articles part; messages alone the messages part.
+  expect(sent.map(item => item.payload.url)).toEqual([`/#/digest/${evening}?part=articles`]);
   sent = [];
-  await upload({ date: "2026-10-01", slot: "evening", sections: { mail: { items: [{ key: "q", importance: "todo", from: "은행", subject: "서류 제출" }] } } });
+  await upload({ date: "2026-10-01", slot: "evening", sections: [messages("inbox", "Inbox", [{ key: "q", importance: "todo", from: "Bank", subject: "서류 제출" }])] });
   await settle();
-  expect(sent.map(item => [item.payload.title, item.payload.body, item.payload.url])).toEqual([["저녁 브리핑에 메일이 추가됐어요", "메일 1건", `/#/briefing/${evening}?part=mail`]]);
+  expect(sent.map(item => [item.payload.title, item.payload.body, item.payload.url])).toEqual([["Evening digest: Inbox added", "1 message", `/#/digest/${evening}?part=messages`]]);
+});
+
+test("Digest notifications follow LOCALE: Korean titles name the slot and the added sections", async () => {
+  f.close();
+  f = fixture(10000, Date.now, { ...stub, locale: "ko" });
+  await subscribe({ subscription: device().subscription });
+  await upload(morning([articles("domestic", "국내", [article("a", "국내 첫 소식")])]));
+  await upload(morning([messages("inbox", "메일함", [{ key: "q", importance: "urgent", from: "Bank", subject: "서류 제출" }])]));
+  await settle();
+  expect(sent.map(item => [item.payload.title, item.payload.body])).toEqual([
+    ["아침 다이제스트 왔어요", "· 국내 첫 소식"], ["아침 다이제스트에 메일함이 추가됐어요", "메시지 1건 · 즉시 조치 1건"],
+  ]);
 });
 
 test("An agent asking for review or replying to the owner notifies devices by kind", async () => {
@@ -136,7 +150,7 @@ test("An agent asking for review or replying to the owner notifies devices by ki
   const all = device().subscription;
   const replies = device().subscription;
   await subscribe({ subscription: all }, owner);
-  await subscribe({ subscription: replies, kinds: { briefing: true, review: false, reply: true } }, owner);
+  await subscribe({ subscription: replies, kinds: { digest: true, review: false, reply: true } }, owner);
   const created = await f.call("/api/v1/records", "POST", payload(agentRecord({ kind: "task", title: "푸시 작업", status: "active" })), bearer("omo"));
   const task = recordResult.parse(await created.json()).record;
   // When: OmO reports and moves its task to 확인 필요.

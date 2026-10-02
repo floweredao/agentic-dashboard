@@ -27,7 +27,7 @@ export class ProviderError extends Error {
 }
 /** Turns the finished WAV into the stored file (for example AAC), or returns it unchanged. */
 export type Encoder = (wavPath: string, signal: AbortSignal) => Promise<{ path: string; mime: string }>;
-/** Narratable content that is not a record (a briefing), shaped as a record, with its kind label and the API path its audio lives under. */
+/** Narratable content that is not a record (a digest part), shaped as a record, with its kind label and the API path its audio lives under. */
 export interface NarrationSource { readonly record: DashboardRecord; readonly label: string; readonly audioBase: string }
 export interface NarrationOptions {
   readonly store: Store;

@@ -29,12 +29,12 @@ async function worker(windows: { focus: () => Promise<unknown>; posted: unknown[
 
 test("a push shows its title and body and keeps the in-app address; a malformed one still shows a notification", async () => {
   const { fire, shown } = await worker([]);
-  const payload = { kind: "briefing", title: "아침 브리핑 왔어요", body: "· 국내 첫 소식", url: "/#/briefing/abc", tag: "briefing-abc" };
+  const payload = { kind: "digest", title: "Morning digest arrived", body: "· 국내 첫 소식", url: "/#/digest/abc", tag: "digest-abc" };
   await fire("push", { data: { json: () => payload, text: () => JSON.stringify(payload) } });
   await fire("push", { data: { json: () => { throw new SyntaxError("bad"); }, text: () => "plain text" } });
   await fire("push", { data: { json: () => ({ title: "x", url: "https://evil.example/" }), text: () => "" } });
   expect(shown.map(item => [item.title, item.options.body, item.options.tag, item.options.data.url])).toEqual([
-    ["아침 브리핑 왔어요", "· 국내 첫 소식", "briefing-abc", "/#/briefing/abc"],
+    ["Morning digest arrived", "· 국내 첫 소식", "digest-abc", "/#/digest/abc"],
     ["Agentic Dashboard", "plain text", "Agentic Dashboard", "/"],
     ["x", "", "Agentic Dashboard", "/"],
   ]);

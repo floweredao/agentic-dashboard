@@ -1,5 +1,5 @@
-import { BRIEFING_SECTIONS, PART_SECTIONS } from "../shared/contracts";
-import type { BriefingPart, BriefingSectionKey, BriefingSummary, Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch } from "../shared/contracts";
+import { DIGEST_PARTS } from "../shared/contracts";
+import type { Comment, DigestPart, DigestSummary, DashboardRecord, RecordInput, RecordKind, RecordPatch } from "../shared/contracts";
 import type { Route } from "./router";
 
 export type Screen = "home" | "projects" | "tasks" | "research" | "social" | "archive" | "mobile";
@@ -61,41 +61,46 @@ export function matchesQuery(record: DashboardRecord, query: string) {
   return [record.title, record.body, textField(record, "summary"), textField(record, "conclusion"), record.tags.join(" "), record.links.map(link => link.url).join(" ")]
     .join("\n").toLocaleLowerCase().includes(needle);
 }
-/** The App's per-part read overlay (`<id>:<part>` -> readAt) applied over a loaded briefing summary. */
-export function withBriefingReads(item: BriefingSummary, reads: ReadonlyMap<string, string | null>): BriefingSummary {
-  const news = reads.has(`${item.id}:news`) ? { newsReadAt: reads.get(`${item.id}:news`) ?? null } : {};
-  const mail = reads.has(`${item.id}:mail`) ? { mailReadAt: reads.get(`${item.id}:mail`) ?? null } : {};
-  return { ...item, ...news, ...mail };
+/** When a part of a digest (or its summary) was read; null while it waits. */
+export const partReadAt = (item: Pick<DigestSummary, "articlesReadAt" | "messagesReadAt">, part: DigestPart) => part === "messages" ? item.messagesReadAt : item.articlesReadAt;
+/** The number of items a part holds, from a digest's sections or a summary's outline. */
+export const digestPartItems = (item: { readonly sections: readonly { kind: DigestPart; items: readonly unknown[] }[] } | Pick<DigestSummary, "outline">, part: DigestPart) =>
+  "outline" in item ? item.outline.reduce((sum, section) => sum + (section.kind === part ? section.items : 0), 0)
+    : item.sections.reduce((sum, section) => sum + (section.kind === part ? section.items.length : 0), 0);
+/** Whether a summary has any section of a part, even an empty one. */
+export const digestHasPart = (item: Pick<DigestSummary, "outline">, part: DigestPart) => item.outline.some(section => section.kind === part);
+/** The App's per-part read overlay (`<id>:<part>` -> readAt) applied over a loaded digest summary. */
+export function withDigestReads(item: DigestSummary, reads: ReadonlyMap<string, string | null>): DigestSummary {
+  const articles = reads.has(`${item.id}:articles`) ? { articlesReadAt: reads.get(`${item.id}:articles`) ?? null } : {};
+  const messages = reads.has(`${item.id}:messages`) ? { messagesReadAt: reads.get(`${item.id}:messages`) ?? null } : {};
+  return { ...item, ...articles, ...messages };
 }
-const briefingParts: readonly BriefingPart[] = ["mail", "news"];
-/** A briefing waits to be read while any part with items is unread. */
-export const briefingUnread = (item: BriefingSummary) => briefingParts.some(part =>
-  PART_SECTIONS[part].some(key => (item.counts[key] ?? 0) > 0) && (part === "mail" ? item.mailReadAt : item.newsReadAt) === null);
-const shortSectionLabels: Record<BriefingSectionKey, string> = { mail: "메일", domestic: "국내", international: "해외", aiDevelopment: "AI" };
-/** `메일 2 · 국내 2 · AI 7`: the sections with items, 메일 first. */
-export const briefingCounts = (item: BriefingSummary) =>
-  BRIEFING_SECTIONS.filter(key => (item.counts[key] ?? 0) > 0).map(key => `${shortSectionLabels[key]} ${item.counts[key]}`).join(" · ");
-/** Case-insensitive match over a briefing's title (its slot title, passed in), news headlines and mail headline. */
-export function briefingMatches(item: BriefingSummary, query: string, title: string) {
+/** A digest waits to be read while any part with items is unread. */
+export const digestUnread = (item: DigestSummary) => DIGEST_PARTS.some(part => digestPartItems(item, part) > 0 && partReadAt(item, part) === null);
+/** `Inbox 2 · World 2 · AI 7`: the sections with items, in their stored order. */
+export const digestCounts = (item: DigestSummary) =>
+  item.outline.filter(section => section.items > 0).map(section => `${section.title} ${section.items}`).join(" · ");
+/** Case-insensitive match over a digest's title (its slot title, passed in), article headlines and message headline. */
+export function digestMatches(item: DigestSummary, query: string, title: string) {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return true;
-  return [title, ...item.headlines, item.mailHeadline ?? ""].join("\n").toLocaleLowerCase().includes(needle);
+  return [title, ...item.headlines, item.messageHeadline ?? ""].join("\n").toLocaleLowerCase().includes(needle);
 }
-/** Briefings for one 확인 filter, newest first: 전체 every one, 미확인 those with an unread part, 확인함 the fully read ones. */
-export function inboxBriefingView(items: readonly BriefingSummary[], state: InboxState) {
-  return items.filter(item => state === "all" || (state === "pending") === briefingUnread(item))
+/** Digests for one 확인 filter, newest first: 전체 every one, 미확인 those with an unread part, 확인함 the fully read ones. */
+export function inboxDigestView(items: readonly DigestSummary[], state: InboxState) {
+  return items.filter(item => state === "all" || (state === "pending") === digestUnread(item))
     .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
 }
-/** The briefings the inbox lists for a route: the filter's, plus the open one while it stays selected, narrowed by the search. */
-export function listedBriefingsFor(route: Route, items: readonly BriefingSummary[], titleOf: (slot: string) => string) {
-  const view = inboxBriefingView(items, inboxStateOf(route.params));
+/** The digests the inbox lists for a route: the filter's, plus the open one while it stays selected, narrowed by the search. */
+export function listedDigestsFor(route: Route, items: readonly DigestSummary[], titleOf: (slot: string) => string) {
+  const view = inboxDigestView(items, inboxStateOf(route.params));
   const opened = route.id !== null && !view.some(item => item.id === route.id) ? items.find(item => item.id === route.id) : undefined;
   return (opened ? [...view, opened].sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt)) : view)
-    .filter(item => briefingMatches(item, route.params.q ?? "", titleOf(item.slot)));
+    .filter(item => digestMatches(item, route.params.q ?? "", titleOf(item.slot)));
 }
-/** The 받은 항목 badge (tab, sidebar, document title): queued records plus briefings with an unread part. */
-export const inboxBadge = (records: readonly DashboardRecord[], briefings: readonly BriefingSummary[], today = seoulDate()) =>
-  inboxItems(records, today).length + briefings.filter(briefingUnread).length;
+/** The 받은 항목 badge (tab, sidebar, document title): queued records plus digests with an unread part. */
+export const inboxBadge = (records: readonly DashboardRecord[], digests: readonly DigestSummary[], today = seoulDate()) =>
+  inboxItems(records, today).length + digests.filter(digestUnread).length;
 export type LibraryFilter = {
   readonly type?: string; readonly channel?: string; readonly starred?: boolean; readonly q?: string;
 };

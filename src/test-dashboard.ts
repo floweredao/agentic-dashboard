@@ -10,7 +10,7 @@ export function fakeDashboard(records: readonly DashboardRecord[], route: Partia
     connected: true, csrfToken: "", loading: false, busy: false,
     route: { view: "inbox", id: null, params: {}, ...route }, back: null, goBack: () => {},
     navigate: () => {}, setParams: () => {}, select: () => {}, open: () => {}, notify: () => {},
-    briefings: null, briefingReads: new Map(), markBriefing: unexpected("markBriefing"),
+    digests: null, digestReads: new Map(), markDigest: unexpected("markDigest"),
     patch: unexpected("patch"), confirm: unexpected("confirm"), markRead: unexpected("markRead"), markPending: unexpected("markPending"), clearRevisit: unexpected("clearRevisit"), toggleStar: unexpected("toggleStar"),
     snooze: unexpected("snooze"), toggleArchive: unexpected("toggleArchive"), revertAiFill: unexpected("revertAiFill"), remove: unexpected("remove"),
     restore: unexpected("restore"), purge: unexpected("purge"), emptyTrash: unexpected("emptyTrash"),

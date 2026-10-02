@@ -3,14 +3,14 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import type { Context } from "hono";
-import { BRIEFING_LIMITS, BriefingInputSchema, BriefingPartSchema, CommentInputSchema, PushKindsSchema, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
+import { CommentInputSchema, DIGEST_LIMITS, DigestInputSchema, DigestPartSchema, PushKindsSchema, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
 import type { Comment, DashboardRecord, PushPayload } from "../shared/contracts";
 import { createAiFill, type AiFillOptions } from "./ai-fill";
 import { systemTimeZone } from "../shared/time";
 import { Agents } from "./agents";
 import { Auth, hash, SESSION_COOKIE } from "./auth";
-import { Briefings } from "./briefings";
-import { briefingPayload, createPush, replyPayload, reviewPayload, type PushOptions } from "./push";
+import { Digests } from "./digests";
+import { digestPayload, createPush, replyPayload, reviewPayload, type PushOptions } from "./push";
 import { Comments } from "./comments";
 import { enrichCapture, type CaptureEnrichment } from "./capture-enrichment";
 import { ApiError } from "./errors";
@@ -77,7 +77,7 @@ export function createApp(options: AppOptions = {}) {
   const digestOn = options.digestEnabled !== false;
   const aiFillSources = new Set(options.aiFill?.sources ?? []);
   const comments = new Comments(store);
-  const briefings = new Briefings(store);
+  const digests = new Digests(store, timeZone);
   const capturing = new Map<string, Promise<CaptureEnrichment>>();
   const aiFill = options.aiFill ? createAiFill({ store, ...options.aiFill }) : null;
   aiFill?.sweep();
@@ -85,8 +85,8 @@ export function createApp(options: AppOptions = {}) {
     timeZone,
     audioDir: options.narration?.audioDir ?? join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "audio"),
     lookup: id => {
-      const source = briefings.narrationSource(id);
-      return source ? { ...source, audioBase: `/api/v1/briefings/${id}` } : null;
+      const source = digests.narrationSource(id);
+      return source ? { ...source, audioBase: `/api/v1/digests/${id}` } : null;
     } });
   store.purgeTrash();
   narration.prune();
@@ -127,7 +127,7 @@ export function createApp(options: AppOptions = {}) {
       push.notify([{ kind: "review", payload: reviewPayload(after, after.source, "", options.locale) }]);
     }
   };
-  /** Byte-range audio of a narration (a record's or a briefing's). The URL carries the file's version, so caching never outlives it. */
+  /** Byte-range audio of a narration (a record's or a digest part's). The URL carries the file's version, so caching never outlives it. */
   const serveAudio = (c: Context, audio: { path: string; mime: string }) => {
     const file = Bun.file(audio.path);
     const size = file.size;
@@ -338,47 +338,48 @@ export function createApp(options: AppOptions = {}) {
         return c.json(await narration.cancel(record));
       });
       app.get("/api/v1/records/:id/narration/audio", c => serveAudio(c, narration.audioFile(narratable(c.req.raw, c.req.param("id")).record.id)));
-      /** The owner and every registered agent read briefings. */
-      const briefingReader = (request: Request) => { digestRoute(); return auth.authenticate(request, false); };
-      app.post("/api/v1/briefings", async c => {
+      /** The owner and every registered agent read digests. */
+      const digestReader = (request: Request) => { digestRoute(); return auth.authenticate(request, false); };
+      app.post("/api/v1/digests", async c => {
         digestRoute();
         const principal = auth.authenticate(c.req.raw, false);
-        if (principal.source === "manual") throw new ApiError(403, "forbidden", "Agents upload briefings");
-        const input = BriefingInputSchema.parse(await json(c.req.raw, BRIEFING_LIMITS.bodyBytes));
-        const result = briefings.upsert(principal, input);
+        if (principal.source === "manual") throw new ApiError(403, "forbidden", "Agents upload digests");
+        const input = DigestInputSchema.parse(await json(c.req.raw, DIGEST_LIMITS.bodyBytes));
+        const result = digests.upsert(principal, input);
         const notified = pushOn && input.notify && result.added.length > 0
-          && push.notify([{ kind: "briefing", payload: briefingPayload(result.briefing, result.added, result.created) }]) > 0;
-        return c.json({ briefing: result.briefing, created: result.created, changed: result.changed, notified }, result.created ? 201 : 200);
+          && push.notify([{ kind: "digest", payload: digestPayload(result.digest, result.added, result.created, options.locale) }]) > 0;
+        return c.json({ digest: result.digest, created: result.created, changed: result.changed, notified }, result.created ? 201 : 200);
       });
-      app.get("/api/v1/briefings", c => { briefingReader(c.req.raw); return c.json(briefings.list(c.req.query())); });
-      app.get("/api/v1/briefings/search", c => { briefingReader(c.req.raw); return c.json(briefings.search(c.req.query())); });
-      app.get("/api/v1/briefings/:id", c => { briefingReader(c.req.raw); return c.json({ briefing: briefings.get(c.req.param("id")) }); });
-      app.post("/api/v1/briefings/:id/read", async c => {
+      app.get("/api/v1/digests", c => { digestReader(c.req.raw); return c.json(digests.list(c.req.query())); });
+      app.get("/api/v1/digests/search", c => { digestReader(c.req.raw); return c.json(digests.search(c.req.query())); });
+      app.get("/api/v1/digests/:id", c => { digestReader(c.req.raw); return c.json({ digest: digests.get(c.req.param("id")) }); });
+      app.post("/api/v1/digests/:id/read", async c => {
         owner(c.req.raw, true);
-        const input = z.object({ read: z.boolean(), part: BriefingPartSchema.optional() }).strict().parse(await json(c.req.raw));
-        return c.json({ briefing: briefings.markRead(c.req.param("id"), input.read, input.part) });
+        const input = z.object({ read: z.boolean(), part: DigestPartSchema.optional() }).strict().parse(await json(c.req.raw));
+        return c.json({ digest: digests.markRead(c.req.param("id"), input.read, input.part) });
       });
-      /** 듣기 for one part of a briefing (`:id` is the part's id, `briefingPartId`): owner only; the same jobs, limits and audio store as record narration. */
-      const briefingSource = (request: Request, id: string, mutation: boolean) => {
+      /** Narration of one part of a digest (`:id` is the part's id, `digestPartId`): owner only; the same jobs, limits and audio store as record narration. */
+      const digestSource = (request: Request, id: string, mutation: boolean) => {
         owner(request, mutation);
-        const source = briefings.narrationSource(id);
-        if (!source) throw new ApiError(404, "not_found", "Briefing not found");
+        digestRoute();
+        const source = digests.narrationSource(id);
+        if (!source) throw new ApiError(404, "not_found", "Digest not found");
         return source.record;
       };
-      app.get("/api/v1/briefings/:id/narration", async c => c.json(await narration.state(briefingSource(c.req.raw, c.req.param("id"), false))));
-      app.post("/api/v1/briefings/:id/narration", async c => {
-        const record = briefingSource(c.req.raw, c.req.param("id"), true);
+      app.get("/api/v1/digests/:id/narration", async c => c.json(await narration.state(digestSource(c.req.raw, c.req.param("id"), false))));
+      app.post("/api/v1/digests/:id/narration", async c => {
+        const record = digestSource(c.req.raw, c.req.param("id"), true);
         const input = z.object({ force: z.boolean().optional() }).strict().parse(await json(c.req.raw));
         const result = await narration.request({ id: "owner", source: "manual" }, record, input.force === true);
         return c.json(result.state, result.started ? 202 : 200);
       });
-      app.delete("/api/v1/briefings/:id/narration", c => { narration.remove(briefingSource(c.req.raw, c.req.param("id"), true).id); return c.body(null, 204); });
-      app.post("/api/v1/briefings/:id/narration/cancel", async c => {
-        const record = briefingSource(c.req.raw, c.req.param("id"), true);
+      app.delete("/api/v1/digests/:id/narration", c => { narration.remove(digestSource(c.req.raw, c.req.param("id"), true).id); return c.body(null, 204); });
+      app.post("/api/v1/digests/:id/narration/cancel", async c => {
+        const record = digestSource(c.req.raw, c.req.param("id"), true);
         await cancelBody(c.req.raw);
         return c.json(await narration.cancel(record));
       });
-      app.get("/api/v1/briefings/:id/narration/audio", c => serveAudio(c, narration.audioFile(briefingSource(c.req.raw, c.req.param("id"), false).id)));
+      app.get("/api/v1/digests/:id/narration/audio", c => serveAudio(c, narration.audioFile(digestSource(c.req.raw, c.req.param("id"), false).id)));
       app.get("/api/v1/push", c => {
         pushRoute();
         owner(c.req.raw, false);

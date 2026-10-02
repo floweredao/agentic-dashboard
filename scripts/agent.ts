@@ -3,15 +3,15 @@ import { HTTPError } from "ky";
 import { z } from "zod";
 import { NarrationStateSchema } from "../shared/contracts";
 import type { NarrationState } from "../shared/contracts";
-import { getNarration, getRecord, listBriefings, listComments, markComment, postBriefing, postComment, readShared, requestNarration, searchRecords, sendRecord, updateRecord } from "./agent-client";
+import { getNarration, getRecord, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, updateRecord } from "./agent-client";
 
 let readingShared = false;
-type Action = "save" | "get" | "update" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "briefing" | "briefings";
+type Action = "save" | "get" | "update" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "digest" | "digests";
 let action: Action = "save";
 const labels: Record<Action, string> = {
   save: "Save", get: "Read", update: "Update", search: "Search", task: "Create task", report: "Report",
   comments: "List comments", mark: "Mark comment", reply: "Reply", timeline: "Read timeline", narrate: "Narration",
-  briefing: "Upload briefing", briefings: "List briefings",
+  digest: "Upload digest", digests: "List digests",
 };
 /** What an agent needs from a narration: its state, and an absolute audio URL once there is audio. */
 const narrationSummary = (state: NarrationState, base: string) => {
@@ -76,9 +76,9 @@ try {
       narrate: { type: "string" },
       narration: { type: "string" },
       force: { type: "boolean" },
-      briefing: { type: "string" },
+      digest: { type: "string" },
       quiet: { type: "boolean" },
-      briefings: { type: "boolean" },
+      digests: { type: "boolean" },
       from: { type: "string" },
       to: { type: "string" },
       help: { type: "boolean" },
@@ -106,22 +106,22 @@ try {
         "Timeline:    bun run agent --timeline <task-id>\n" +
         "Narrate:     bun run agent --narrate <record-id> [--force] [--wait] [--interval 5] [--timeout 900]   (done 0, failed 1, timeout 2)\n" +
         "Narration:   bun run agent --narration <record-id>\n" +
-        "Briefing:    bun run agent --briefing briefing.json [--quiet]   (the POST /api/v1/briefings body)\n" +
-        "Briefings:   bun run agent --briefings [--from YYYY-MM-DD] [--to YYYY-MM-DD]",
+        "Digest:      bun run agent --digest digest.json [--quiet]   (the POST /api/v1/digests body)\n" +
+        "Digests:     bun run agent --digests [--from YYYY-MM-DD] [--to YYYY-MM-DD]",
     );
-  } else if (values.briefing !== undefined) {
-    action = "briefing";
-    const input = z.record(z.string(), z.unknown()).parse(await Bun.file(z.string().min(1).parse(values.briefing)).json());
+  } else if (values.digest !== undefined) {
+    action = "digest";
+    const input = z.record(z.string(), z.unknown()).parse(await Bun.file(z.string().min(1).parse(values.digest)).json());
     if (values.quiet) input["notify"] = false;
-    const result = z.object({ briefing: z.object({ id: z.string(), date: z.string(), slot: z.string(), version: z.number(),
-      sections: z.record(z.string(), z.object({ items: z.array(z.unknown()) }).passthrough()) }).passthrough(),
-      created: z.boolean(), changed: z.array(z.string()), notified: z.boolean() }).parse(await postBriefing(await connect(), input));
-    const { briefing } = result;
-    print({ id: briefing.id, date: briefing.date, slot: briefing.slot, version: briefing.version, created: result.created, changed: result.changed,
-      notified: result.notified, counts: Object.fromEntries(Object.entries(briefing.sections).map(([key, section]) => [key, section.items.length])) });
-  } else if (values.briefings) {
-    action = "briefings";
-    print(await listBriefings(await connect(), { ...(values.from ? { from: values.from } : {}), ...(values.to ? { to: values.to } : {}) }));
+    const result = z.object({ digest: z.object({ id: z.string(), date: z.string(), slot: z.string(), version: z.number(),
+      sections: z.array(z.object({ key: z.string(), items: z.array(z.unknown()) }).passthrough()) }).passthrough(),
+      created: z.boolean(), changed: z.array(z.string()), notified: z.boolean() }).parse(await postDigest(await connect(), input));
+    const { digest } = result;
+    print({ id: digest.id, date: digest.date, slot: digest.slot, version: digest.version, created: result.created, changed: result.changed,
+      notified: result.notified, counts: Object.fromEntries(digest.sections.map(section => [section.key, section.items.length])) });
+  } else if (values.digests) {
+    action = "digests";
+    print(await listDigests(await connect(), { ...(values.from ? { from: values.from } : {}), ...(values.to ? { to: values.to } : {}) }));
   } else if (values.shared !== undefined) {
     readingShared = true;
     const shared = z.string().trim().min(1).parse(values.shared);
@@ -256,8 +256,8 @@ try {
       task: "the title or target id, --status (todo|active|review|paused|done)",
       report: "the title or target id, --status (todo|active|review|paused|done)",
       reply: "the title or target id, --status (todo|active|review|paused|done)",
-      briefing: "the briefing JSON file, --from/--to (YYYY-MM-DD)",
-      briefings: "--from/--to (YYYY-MM-DD)",
+      digest: "the digest JSON file, --quiet",
+      digests: "--from/--to (YYYY-MM-DD)",
       comments: "--state (new|open|all), --interval (2-300 s), --timeout (s)",
       narrate: "the record id, --interval (2-300 s), --timeout (s)",
     };

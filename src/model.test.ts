@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { BriefingSummarySchema, DashboardRecordSchema } from "../shared/contracts";
-import { briefingCounts, briefingUnread, inboxBadge, listedBriefingsFor, withBriefingReads } from "./model";
+import { DashboardRecordSchema, DigestSummarySchema } from "../shared/contracts";
+import { digestCounts, digestUnread, inboxBadge, listedDigestsFor, withDigestReads } from "./model";
 import { aiFilled, aiFillRevert, channelOf, confirmationChanges, digest, viewRecords, weekBounds, excerpt, groupByDay, homeRouteOf, hostOf, inboxItems, inboxStateOf, inQueue, libraryItems, listedFor, nextInQueue, revisitDue } from "./model";
 
 const record = DashboardRecordSchema.parse({
@@ -230,55 +230,58 @@ test("the week runs Sunday to Saturday in Seoul", () => {
   expect(viewRecords([task], "tasks", "week", "2026-10-04")).toEqual([]);
 });
 
-const brief = (id: string, patch: Record<string, unknown> = {}) => BriefingSummarySchema.parse({
+const brief = (id: string, patch: Record<string, unknown> = {}) => DigestSummarySchema.parse({
   id, date: "2026-09-21", slot: "morning", scheduledAt: "2026-09-20T23:00:00Z", createdBy: "omo",
-  createdAt: "2026-09-20T23:00:00Z", updatedAt: "2026-09-20T23:00:00Z", version: 1, newsReadAt: null, mailReadAt: null, readAt: null,
-  counts: { mail: 2, domestic: 2, aiDevelopment: 7 }, headlines: ["첫 기사"], mailHeadline: "중요 메일", urgent: 0, todo: 0, ...patch,
+  createdAt: "2026-09-20T23:00:00Z", updatedAt: "2026-09-20T23:00:00Z", version: 1, articlesReadAt: null, messagesReadAt: null, readAt: null,
+  counts: { inbox: 2, local: 2, ai: 7 }, outline: [{ key: "inbox", title: "Inbox", kind: "messages", items: 2 }, { key: "local", title: "Local", kind: "articles", items: 2 }, { key: "ai", title: "AI", kind: "articles", items: 7 }],
+  headlines: ["첫 기사"], messageHeadline: "중요 메일", urgent: 0, todo: 0, ...patch,
 });
-const title = (slot: string) => slot === "morning" ? "아침 브리핑" : "저녁 브리핑";
+const articlesOnly = (items: number) => ({ counts: { local: items }, outline: [{ key: "local", title: "Local", kind: "articles", items }] });
+const title = (slot: string) => slot === "morning" ? "아침 다이제스트" : "저녁 다이제스트";
 
-test("a briefing is unread while any part with items is unread, and the read overlay wins over the summary", () => {
-  // Given: a morning briefing with news and mail, a news-only evening whose news is read, and a mail-less one with empty mail unread.
+test("a digest is unread while any part with items is unread, and the read overlay wins over the summary", () => {
+  // Given: a morning digest with articles and messages, an articles-only evening whose articles are read, and one with an empty messages section.
   const morning = brief("00000000-0000-4000-8000-0000000000e1");
-  const evening = brief("00000000-0000-4000-8000-0000000000e2", { slot: "evening", counts: { domestic: 3 }, newsReadAt: "2026-09-21T13:00:00Z" });
-  const emptyMail = brief("00000000-0000-4000-8000-0000000000e3", { counts: { mail: 0, domestic: 1 }, newsReadAt: "2026-09-21T13:00:00Z" });
-  // Then: the morning waits, the read evening and the read news with an empty mail section do not.
-  expect([morning, evening, emptyMail].map(briefingUnread)).toEqual([true, false, false]);
-  // When: the overlay marks the morning's news read, the mail still waits; with both read it is done.
-  const newsRead = new Map([[`${morning.id}:news`, "2026-09-21T00:00:00Z"]]);
-  expect(briefingUnread(withBriefingReads(morning, newsRead))).toBe(true);
-  expect(briefingUnread(withBriefingReads(morning, new Map([...newsRead, [`${morning.id}:mail`, "2026-09-21T00:00:00Z"]])))).toBe(false);
-  // And: the meta counts list sections with items, 메일 first.
-  expect(briefingCounts(morning)).toBe("메일 2 · 국내 2 · AI 7");
+  const evening = brief("00000000-0000-4000-8000-0000000000e2", { slot: "evening", ...articlesOnly(3), articlesReadAt: "2026-09-21T13:00:00Z" });
+  const emptyMessages = brief("00000000-0000-4000-8000-0000000000e3", { counts: { inbox: 0, local: 1 },
+    outline: [{ key: "inbox", title: "Inbox", kind: "messages", items: 0 }, { key: "local", title: "Local", kind: "articles", items: 1 }], articlesReadAt: "2026-09-21T13:00:00Z" });
+  // Then: the morning waits, the read evening and the read articles with an empty messages section do not.
+  expect([morning, evening, emptyMessages].map(digestUnread)).toEqual([true, false, false]);
+  // When: the overlay marks the morning's articles read, the messages still wait; with both read it is done.
+  const articlesRead = new Map([[`${morning.id}:articles`, "2026-09-21T00:00:00Z"]]);
+  expect(digestUnread(withDigestReads(morning, articlesRead))).toBe(true);
+  expect(digestUnread(withDigestReads(morning, new Map([...articlesRead, [`${morning.id}:messages`, "2026-09-21T00:00:00Z"]])))).toBe(false);
+  // And: the meta counts list sections with items under their titles, in stored order.
+  expect(digestCounts(morning)).toBe("Inbox 2 · Local 2 · AI 7");
 });
 
-test("the inbox lists briefings per 확인 filter newest first, keeps the open one under 미확인 and matches the search", () => {
+test("the inbox lists digests per 확인 filter newest first, keeps the open one under 미확인 and matches the search", () => {
   // Given: an unread morning, a read evening of the day before, and an unread older morning.
   const unread = brief("00000000-0000-4000-8000-0000000000f1", { scheduledAt: "2026-09-21T23:00:00Z", headlines: ["반도체 소식"] });
   const read = brief("00000000-0000-4000-8000-0000000000f2", { slot: "evening", scheduledAt: "2026-09-21T12:00:00Z",
-    newsReadAt: "2026-09-21T13:00:00Z", mailReadAt: "2026-09-21T13:00:00Z" });
-  const older = brief("00000000-0000-4000-8000-0000000000f3", { scheduledAt: "2026-09-19T23:00:00Z", mailHeadline: "계약서 회신" });
+    articlesReadAt: "2026-09-21T13:00:00Z", messagesReadAt: "2026-09-21T13:00:00Z" });
+  const older = brief("00000000-0000-4000-8000-0000000000f3", { scheduledAt: "2026-09-19T23:00:00Z", messageHeadline: "계약서 회신" });
   const all = [older, read, unread];
-  const ids = (params: Record<string, string>, id: string | null = null) => listedBriefingsFor({ view: "inbox", id, params }, all, title).map(item => item.id);
-  // Then: 전체 lists every briefing newest first, 미확인 the unread ones, 확인함 the read one.
+  const ids = (params: Record<string, string>, id: string | null = null) => listedDigestsFor({ view: "inbox", id, params }, all, title).map(item => item.id);
+  // Then: 전체 lists every digest newest first, 미확인 the unread ones, 확인함 the read one.
   expect(ids({})).toEqual([unread.id, read.id, older.id]);
   expect(ids({ state: "pending" })).toEqual([unread.id, older.id]);
   expect(ids({ state: "approved" })).toEqual([read.id]);
-  // And: the open, read briefing stays listed under 미확인 in its place.
+  // And: the open, read digest stays listed under 미확인 in its place.
   expect(ids({ state: "pending" }, read.id)).toEqual([unread.id, read.id, older.id]);
-  // And: the search matches the slot title, a news headline and the mail headline.
+  // And: the search matches the slot title, an article headline and the message headline.
   expect(ids({ q: "저녁" })).toEqual([read.id]);
   expect(ids({ q: "반도체" })).toEqual([unread.id]);
   expect(ids({ q: "계약서" })).toEqual([older.id]);
   expect(ids({ state: "pending", q: "없는 말" }, read.id)).toEqual([]);
 });
 
-test("the 받은 항목 badge counts queued records plus briefings with an unread part", () => {
-  // Given: one pending record, one approved record, one unread and one read briefing.
+test("the 받은 항목 badge counts queued records plus digests with an unread part", () => {
+  // Given: one pending record, one approved record, one unread and one read digest.
   const records = [make("00000000-0000-4000-8000-0000000000f4", { reviewState: "pending" }), make("00000000-0000-4000-8000-0000000000f5", {})];
-  const briefings = [brief("00000000-0000-4000-8000-0000000000f6"),
-    brief("00000000-0000-4000-8000-0000000000f7", { newsReadAt: "2026-09-21T00:00:00Z", mailReadAt: "2026-09-21T00:00:00Z" })];
-  // Then: the badge is 1 record + 1 briefing.
-  expect(inboxBadge(records, briefings, "2026-09-22")).toBe(2);
+  const digests = [brief("00000000-0000-4000-8000-0000000000f6"),
+    brief("00000000-0000-4000-8000-0000000000f7", { articlesReadAt: "2026-09-21T00:00:00Z", messagesReadAt: "2026-09-21T00:00:00Z" })];
+  // Then: the badge is 1 record + 1 digest.
+  expect(inboxBadge(records, digests, "2026-09-22")).toBe(2);
   expect(inboxBadge(records, [], "2026-09-22")).toBe(1);
 });

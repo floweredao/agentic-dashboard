@@ -1,14 +1,14 @@
 import ky, { HTTPError } from "ky";
 import { z } from "zod";
 import {
-  BriefingHitSchema,
-  BriefingSchema,
-  BriefingSummarySchema,
+  DigestHitSchema,
+  DigestSchema,
+  DigestSummarySchema,
   PushDeviceSchema,
-  type Briefing,
-  type BriefingHit,
-  type BriefingPart,
-  type BriefingSummary,
+  type Digest,
+  type DigestHit,
+  type DigestPart,
+  type DigestSummary,
   type PushDevice,
   type PushKinds,
   CommentSchema as commentSchema,
@@ -128,8 +128,8 @@ export async function deleteShare(recordId: string, csrfToken: string): Promise<
   await http.delete(`records/${recordId}/share`, { headers: { "X-CSRF-Token": csrfToken } });
 }
 
-/** What can be narrated: a record, or a briefing (owner only). */
-export type NarrationCollection = "records" | "briefings";
+/** What can be narrated: a record, or a digest part (owner only). */
+export type NarrationCollection = "records" | "digests";
 
 /** A record's narration state and whether the server has a TTS key. */
 export async function loadNarration(recordId: string, collection: NarrationCollection = "records"): Promise<NarrationState> {
@@ -157,34 +157,34 @@ export async function deleteNarration(recordId: string, csrfToken: string, colle
 }
 
 const partTotalsSchema = z.object({ unread: z.number(), earliestDate: z.string().nullable() });
-const briefingPageSchema = z.object({
-  items: z.array(BriefingSummarySchema), from: z.string(), to: z.string(), unread: z.number(),
+const digestPageSchema = z.object({
+  items: z.array(DigestSummarySchema), from: z.string(), to: z.string(), unread: z.number(),
   earliestDate: z.string().nullable(), latestDate: z.string().nullable(),
-  parts: z.object({ news: partTotalsSchema, mail: partTotalsSchema }),
+  parts: z.object({ articles: partTotalsSchema, messages: partTotalsSchema }),
 });
 /**
- * Briefing summaries from `from` to `to` (Seoul dates; the server defaults to the last 14 days), newest first, with the
- * unread parts in total and per part (뉴스, 메일).
+ * Digest summaries from `from` to `to` (the server defaults to the last 14 days), newest first, with the unread parts in
+ * total and per part (articles, messages).
  */
-export type BriefingPage = z.infer<typeof briefingPageSchema>;
-export async function loadBriefings(range: { readonly from?: string; readonly to?: string } = {}): Promise<BriefingPage> {
+export type DigestPage = z.infer<typeof digestPageSchema>;
+export async function loadDigests(range: { readonly from?: string; readonly to?: string } = {}): Promise<DigestPage> {
   const searchParams: Record<string, string> = {};
   if (range.from) searchParams.from = range.from;
   if (range.to) searchParams.to = range.to;
-  return briefingPageSchema.parse(await http.get("briefings", { searchParams }).json());
+  return digestPageSchema.parse(await http.get("digests", { searchParams }).json());
 }
-export async function loadBriefing(id: string): Promise<Briefing> {
-  return z.object({ briefing: BriefingSchema }).parse(await http.get(`briefings/${id}`).json()).briefing;
+export async function loadDigest(id: string): Promise<Digest> {
+  return z.object({ digest: DigestSchema }).parse(await http.get(`digests/${id}`).json()).digest;
 }
-/** Articles and mail matching `q`; without `part` both. */
-export async function searchBriefings(q: string, part?: BriefingPart): Promise<BriefingHit[]> {
-  return z.object({ items: z.array(BriefingHitSchema) }).parse(await http.get("briefings/search", { searchParams: { q, ...(part ? { part } : {}), limit: "50" } }).json()).items;
+/** Articles and messages matching `q`; without `part` both. */
+export async function searchDigests(q: string, part?: DigestPart): Promise<DigestHit[]> {
+  return z.object({ items: z.array(DigestHitSchema) }).parse(await http.get("digests/search", { searchParams: { q, ...(part ? { part } : {}), limit: "50" } }).json()).items;
 }
 /** Marks one part read or unread; without `part` both. */
-export async function markBriefing(id: string, part: BriefingPart | undefined, read: boolean, csrfToken: string): Promise<BriefingSummary> {
-  return z.object({ briefing: BriefingSummarySchema }).parse(await http.post(`briefings/${id}/read`, {
+export async function markDigest(id: string, part: DigestPart | undefined, read: boolean, csrfToken: string): Promise<DigestSummary> {
+  return z.object({ digest: DigestSummarySchema }).parse(await http.post(`digests/${id}/read`, {
     json: part ? { read, part } : { read }, headers: { "X-CSRF-Token": csrfToken },
-  }).json()).briefing;
+  }).json()).digest;
 }
 
 const pushStateSchema = z.object({ publicKey: z.string(), device: PushDeviceSchema.nullable(), devices: z.number() });

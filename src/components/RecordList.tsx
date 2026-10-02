@@ -151,7 +151,7 @@ export function RecordRow({ record }: { readonly record: DashboardRecord }) {
   </li>;
 }
 
-/** A non-record row merged into a list by its time (`at`, ISO), such as a briefing in 받은 항목. */
+/** A non-record row merged into a list by its time (`at`, ISO), such as a digest in 받은 항목. */
 export type ExtraRow = { readonly id: string; readonly at: string; readonly row: ReactNode };
 
 /** Rows with optional sticky Seoul-day headers. Rows carry `id="row-<id>"` for keyboard selection. `extra` rows merge in newest first. */

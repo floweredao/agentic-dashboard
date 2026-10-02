@@ -121,10 +121,10 @@ export async function getNarration(connection: AgentConnection, id: string): Pro
     .json<unknown>();
 }
 
-/** POST /api/v1/briefings: one upload of a briefing (any registered agent); identical uploads change nothing. */
-export async function postBriefing(connection: AgentConnection, input: unknown): Promise<unknown> {
+/** POST /api/v1/digests: one upload of a digest (any registered agent); identical uploads change nothing. */
+export async function postDigest(connection: AgentConnection, input: unknown): Promise<unknown> {
   return ky
-    .post(new URL("/api/v1/briefings", connection.url), {
+    .post(new URL("/api/v1/digests", connection.url), {
       headers: { authorization: `Bearer ${connection.token}` },
       json: input,
       timeout: 30_000,
@@ -133,12 +133,12 @@ export async function postBriefing(connection: AgentConnection, input: unknown):
     .json<unknown>();
 }
 
-/** GET /api/v1/briefings: summaries from..to (dates in the dashboard's time zone), newest first. */
-export async function listBriefings(connection: AgentConnection, query: { from?: string; to?: string }): Promise<unknown> {
+/** GET /api/v1/digests: summaries from..to (dates in the dashboard's time zone), newest first. */
+export async function listDigests(connection: AgentConnection, query: { from?: string; to?: string }): Promise<unknown> {
   const searchParams: Record<string, string> = {};
   for (const [key, value] of Object.entries(query)) if (value) searchParams[key] = value;
   return ky
-    .get(new URL("/api/v1/briefings", connection.url), {
+    .get(new URL("/api/v1/digests", connection.url), {
       headers: { authorization: `Bearer ${connection.token}` },
       searchParams,
       timeout: 15_000,

@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
-import type { BriefingPart, Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
-import type { BriefingPage } from "./api";
+import type { Comment, DigestPart, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
+import type { DigestPage } from "./api";
 import type { Back, Params, Route, View } from "./router";
 
 export type ReviewState = DashboardRecord["reviewState"];
@@ -29,14 +29,14 @@ export type Dashboard = {
   readonly setParams: (params: Readonly<Record<string, string | null>>, options?: { readonly replace?: boolean }) => void;
   /** Select a record inside the current view, or clear the selection. */
   readonly select: (record: DashboardRecord | null) => void;
-  /** Open an item (a record or a briefing) inside the current view with the same history rules as select; `params` merge into the route. */
+  /** Open an item (a record or a digest) inside the current view with the same history rules as select; `params` merge into the route. */
   readonly open: (id: string, params?: Readonly<Record<string, string | null>>) => void;
-  /** The last two weeks of briefing summaries and the unread total, or null before they load. */
-  readonly briefings: BriefingPage | null;
-  /** Read marks made since the briefings last loaded (`<id>:<part>` -> that part's readAt), laid over every briefing list. */
-  readonly briefingReads: ReadonlyMap<string, string | null>;
-  /** Mark one part (뉴스 or 메일) of a briefing read or unread; `quiet` skips the toast (opening an unread briefing). */
-  readonly markBriefing: (id: string, part: BriefingPart, read: boolean, quiet?: boolean) => Promise<void>;
+  /** The last two weeks of digest summaries and the unread total, or null before they load. */
+  readonly digests: DigestPage | null;
+  /** Read marks made since the digests last loaded (`<id>:<part>` -> that part's readAt), laid over every digest list. */
+  readonly digestReads: ReadonlyMap<string, string | null>;
+  /** Mark one part (articles or messages) of a digest read or unread; `quiet` skips the toast (opening an unread digest). */
+  readonly markDigest: (id: string, part: DigestPart, read: boolean, quiet?: boolean) => Promise<void>;
   /** Version-checked PATCH. Resolves to the saved record, or null after showing the error. */
   readonly patch: (record: DashboardRecord, changes: RecordPatch["changes"], message?: string) => Promise<DashboardRecord | null>;
   /** Material: pending -> approved (확인). Task: mark done. */

@@ -1,7 +1,7 @@
-export type View = "inbox" | "library" | "briefing" | "work" | "more" | "archive" | "trash" | "channels" | "settings";
-export const views: readonly View[] = ["inbox", "library", "briefing", "work", "more", "archive", "trash", "channels", "settings"];
+export type View = "inbox" | "library" | "digest" | "work" | "more" | "archive" | "trash" | "channels" | "settings";
+export const views: readonly View[] = ["inbox", "library", "digest", "work", "more", "archive", "trash", "channels", "settings"];
 export const viewTitles: Record<View, string> = {
-  inbox: "받은 항목", library: "기록", briefing: "브리핑", work: "할 일", more: "더보기", archive: "보관함", trash: "휴지통",
+  inbox: "받은 항목", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", archive: "보관함", trash: "휴지통",
   channels: "채널 관리", settings: "알림 설정",
 };
 /** The screens under 더보기, in the order the phone's 더보기 and the desktop sidebar list them. */
