@@ -56,6 +56,7 @@ test("공유 shows the record's link and code at once, and 공유 중지 revokes
       { headers: { "Content-Type": "text/html; charset=utf-8" } }),
     "/app.js": new Response(script, { headers: { "Content-Type": "text/javascript; charset=utf-8" } }),
     "/app.css": new Response(styles, { headers: { "Content-Type": "text/css; charset=utf-8" } }),
+    "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "Asia/Seoul", locale: "ko", features: { narration: false, push: false, digest: false, trustedLogin: false } }),
     "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
     "/api/v1/records": Response.json({ items: [record], nextCursor: null }),
     "/api/v1/records/:id/share": async request => {

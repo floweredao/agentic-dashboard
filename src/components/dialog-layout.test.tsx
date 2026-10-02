@@ -31,6 +31,7 @@ async function serveApp() {
       { headers: { "Content-Type": "text/html; charset=utf-8" } }),
     "/app.js": new Response(script, { headers: { "Content-Type": "text/javascript; charset=utf-8" } }),
     "/app.css": new Response(styles, { headers: { "Content-Type": "text/css; charset=utf-8" } }),
+    "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "Asia/Seoul", locale: "ko", features: { narration: false, push: false, digest: false, trustedLogin: false } }),
     "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
     "/api/v1/records": Response.json({ items: records, nextCursor: null }),
     "/api/v1/records/:id/share": Response.json({ share: { code: "7K2M-9QXD-4HTV", url: "https://example.test/s/7K2M-9QXD-4HTV", createdAt: "2026-09-29T03:00:00.000Z" } }),

@@ -5,6 +5,8 @@ import type { DashboardRecord, NarrationState, NarrationStatus } from "../../sha
 import { NARRATION_LIMITS } from "../../shared/contracts";
 import { cancelNarration, deleteNarration, errorCode, errorMessage, loadNarration, requestNarration } from "../api";
 import type { NarrationCollection } from "../api";
+import { config } from "../config";
+import { strings } from "../i18n";
 import { useDashboard } from "../state";
 import type { MenuItem } from "./Menu";
 import { Dialog, Tag } from "./primitives";
@@ -15,28 +17,82 @@ const RATE_KEY = "agentic:listen-rate";
 const positionKey = (recordId: string) => `agentic:listen:${recordId}`;
 const POLL_MS = 3000;
 
-const failureText: Readonly<Record<string, string>> = {
-  no_key: "Gemini API 키가 설정되지 않았어요.",
-  http_400: "Gemini가 요청을 거절했어요.",
-  http_401: "Gemini가 API 키를 거절했어요.",
-  http_403: "Gemini가 API 키를 거절했어요.",
-  http_429: "Gemini 사용량 한도에 걸렸어요. 잠시 뒤 다시 시도해 주세요.",
-  timeout: "시간이 너무 오래 걸렸어요.",
-  network: "Gemini에 연결하지 못했어요.",
-  record_missing: "기록이 삭제되어 만들지 못했어요.",
-};
+type Failures = Readonly<Record<string, string>>;
+type Text = { readonly failures: Failures; readonly requests: Failures; readonly [key: string]: unknown };
+const text = strings({
+  en: {
+    failures: {
+      no_key: "No Gemini API key is set.",
+      http_400: "Gemini rejected the request.",
+      http_401: "Gemini rejected the API key.",
+      http_403: "Gemini rejected the API key.",
+      http_429: "Gemini's usage limit was reached. Please try again in a moment.",
+      timeout: "It took too long.",
+      network: "Couldn't connect to Gemini.",
+      record_missing: "The record was deleted, so the audio couldn't be made.",
+    },
+    serverError: "Gemini had a server problem. Please try again in a moment.",
+    failed: "Couldn't make the audio.",
+    requests: {
+      narration_unavailable: "No Gemini API key is set, so audio can't be made.",
+      narration_daily_limit: "You've used today's audio limit. Try again tomorrow.",
+      narration_queue_full: "Many audio jobs are waiting. Please try again in a moment.",
+      narration_attempts_exhausted: "This content has failed several times.",
+      narration_busy: "Audio is being made, so it can't be deleted right now.",
+    },
+    spoken: (minutes: number, seconds: number) => `${minutes} min ${seconds} sec`,
+    seconds: (value: number) => `${value} sec`, minutes: (value: number) => `${value} min`,
+    pause: "Pause", play: "Play", position: "Playback position", speed: (rate: number) => `Playback speed ${rate}x`,
+    fold: "Collapse player", listen: "Listen", outdated: "Outdated",
+    polishing: "Polishing the script", speaking: (done: number, total: number) => `Making audio ${done}/${total}`, waiting: "Waiting in the queue",
+    cancelMake: "Cancel audio", retry: "Try again", make: "Make audio", keyNeeded: " · key needed",
+    makeNew: "Make new", makeAgain: "Make again", viewScript: "View script", deleteAudio: "Delete audio",
+    cancelling: "Cancelling", progress: "Audio progress", dismiss: "Dismiss",
+    confirmRemake: "Making the audio again costs another Gemini charge. Make it again?",
+    confirmDelete: "Delete the audio file and script? You'll need to make it again to listen.",
+    cancelled: "Audio cancelled.", deleted: "Audio deleted.", script: "Script",
+  },
+  ko: {
+    failures: {
+      no_key: "Gemini API 키가 설정되지 않았어요.",
+      http_400: "Gemini가 요청을 거절했어요.",
+      http_401: "Gemini가 API 키를 거절했어요.",
+      http_403: "Gemini가 API 키를 거절했어요.",
+      http_429: "Gemini 사용량 한도에 걸렸어요. 잠시 뒤 다시 시도해 주세요.",
+      timeout: "시간이 너무 오래 걸렸어요.",
+      network: "Gemini에 연결하지 못했어요.",
+      record_missing: "기록이 삭제되어 만들지 못했어요.",
+    },
+    serverError: "Gemini 서버에 문제가 있었어요. 잠시 뒤 다시 시도해 주세요.",
+    failed: "음성을 만들지 못했어요.",
+    requests: {
+      narration_unavailable: "Gemini API 키가 설정되지 않아 음성을 만들 수 없어요.",
+      narration_daily_limit: "오늘 만들 수 있는 음성 수를 다 썼어요. 내일 다시 시도해 주세요.",
+      narration_queue_full: "기다리는 음성이 많아요. 잠시 뒤 다시 시도해 주세요.",
+      narration_attempts_exhausted: "이 내용으로 여러 번 실패했어요.",
+      narration_busy: "음성을 만드는 중이라 지금은 삭제할 수 없어요.",
+    },
+    spoken: (minutes: number, seconds: number) => `${minutes}분 ${seconds}초`,
+    seconds: (value: number) => `${value}초`, minutes: (value: number) => `${value}분`,
+    pause: "일시정지", play: "재생", position: "재생 위치", speed: (rate: number) => `재생 속도 ${rate}배`,
+    fold: "플레이어 접기", listen: "듣기", outdated: "예전 내용",
+    polishing: "원고를 다듬는 중", speaking: (done: number, total: number) => `음성을 만드는 중 ${done}/${total}`, waiting: "만들 차례를 기다리는 중",
+    cancelMake: "음성 만들기 취소", retry: "다시 시도", make: "음성 만들기", keyNeeded: " · 키 필요",
+    makeNew: "새로 만들기", makeAgain: "다시 만들기", viewScript: "원고 보기", deleteAudio: "음성 삭제",
+    cancelling: "취소하는 중", progress: "음성 만드는 진행", dismiss: "알림 닫기",
+    confirmRemake: "음성을 다시 만들면 Gemini 요금이 한 번 더 들어요. 다시 만들까요?",
+    confirmDelete: "음성 파일과 원고를 삭제할까요? 다시 들으려면 새로 만들어야 해요.",
+    cancelled: "음성 만들기를 취소했어요.", deleted: "음성을 삭제했어요.", script: "원고",
+  },
+} satisfies { readonly en: Text; readonly ko: Text });
+
 export function narrationFailure(code: string | null): string {
-  if (code && failureText[code]) return failureText[code];
-  if (code?.startsWith("http_5")) return "Gemini 서버에 문제가 있었어요. 잠시 뒤 다시 시도해 주세요.";
-  return "음성을 만들지 못했어요.";
+  const failures: Failures = text().failures;
+  const known = code ? failures[code] : undefined;
+  if (known) return known;
+  if (code?.startsWith("http_5")) return text().serverError;
+  return text().failed;
 }
-const requestText: Readonly<Record<string, string>> = {
-  narration_unavailable: "Gemini API 키가 설정되지 않아 음성을 만들 수 없어요.",
-  narration_daily_limit: "오늘 만들 수 있는 음성 수를 다 썼어요. 내일 다시 시도해 주세요.",
-  narration_queue_full: "기다리는 음성이 많아요. 잠시 뒤 다시 시도해 주세요.",
-  narration_attempts_exhausted: "이 내용으로 여러 번 실패했어요.",
-  narration_busy: "음성을 만드는 중이라 지금은 삭제할 수 없어요.",
-};
 
 export function clock(seconds: number): string {
   const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
@@ -47,16 +103,16 @@ export function clock(seconds: number): string {
 }
 const spoken = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(total / 60)}분 ${total % 60}초`;
+  return text().spoken(Math.floor(total / 60), total % 60);
 };
-const minutesLabel = (ms: number) => ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}초` : `${Math.round(ms / 60_000)}분`;
+const minutesLabel = (ms: number) => ms < 60_000 ? text().seconds(Math.max(1, Math.round(ms / 1000))) : text().minutes(Math.round(ms / 60_000));
 const stored = (key: string) => typeof localStorage === "undefined" ? null : localStorage.getItem(key);
 
 const working = (state: NarrationState | null) => state?.narration ? WORKING.has(state.narration.status) : false;
 const failedFor = (state: NarrationState | null) => state?.narration?.status === "failed" && state.narration.error !== "cancelled";
 
 /**
- * Folded: a round play button with `듣기 · 13분`. Playing unfolds it in place into one row: play/pause, seek, time, rate, fold.
+ * Folded: a round play button with `Listen · 13 min`. Playing unfolds it in place into one row: play/pause, seek, time, rate, fold.
  * Resumes where the owner stopped this audio (per record and file); the audio element stays mounted across folding.
  */
 function Player({ recordId, title, src, durationMs, stale, prefix, open, playNonce, onOpen, onFold }: {
@@ -110,31 +166,31 @@ function Player({ recordId, title, src, durationMs, stale, prefix, open, playNon
   };
   const onPlay = () => {
     setPlaying(true);
-    if ("mediaSession" in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: "Agentic Dashboard" });
+    if ("mediaSession" in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: config.appName });
   };
   const nextRate = () => setRate(RATES[(RATES.findIndex(item => item === rate) + 1) % RATES.length] ?? 1);
   const max = Math.max(1, Math.round(duration));
   return <div className={open ? "listen-bar listen-player" : "listen-folded"}>
     {open ? <>
-      <button ref={playButton} type="button" className="listen-play" onClick={toggle} aria-label={playing ? "일시정지" : "재생"}>
+      <button ref={playButton} type="button" className="listen-play" onClick={toggle} aria-label={playing ? text().pause : text().play}>
         {playing ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
       </button>
       <input type="range" className="listen-seek" min={0} max={max} step={1} value={Math.min(Math.floor(time), max)}
-        aria-label={`${prefix}재생 위치`} aria-valuetext={`${spoken(time)} / ${spoken(duration)}`}
+        aria-label={`${prefix}${text().position}`} aria-valuetext={`${spoken(time)} / ${spoken(duration)}`}
         onChange={event => {
           const value = Number(event.currentTarget.value);
           if (audio.current) audio.current.currentTime = value;
           setTime(value);
         }} />
       <span className="listen-time" aria-hidden="true">{clock(time)} / {clock(duration)}</span>
-      <button type="button" className="btn btn-ghost listen-rate" onClick={nextRate} aria-label={`재생 속도 ${rate}배`}>{rate}×</button>
-      <button type="button" className="icon-btn listen-icon" aria-label="플레이어 접기" onClick={() => { moveFocus.current = true; onFold(); }}>
+      <button type="button" className="btn btn-ghost listen-rate" onClick={nextRate} aria-label={text().speed(rate)}>{rate}×</button>
+      <button type="button" className="icon-btn listen-icon" aria-label={text().fold} onClick={() => { moveFocus.current = true; onFold(); }}>
         <ChevronUp size={16} aria-hidden="true" />
       </button>
     </> : <button ref={openButton} type="button" className="listen-open" onClick={() => { moveFocus.current = true; onOpen(); toggle(); }}>
       <span className="listen-play" aria-hidden="true">{playing ? <Pause size={15} /> : <Play size={15} />}</span>
-      <span>{prefix}듣기 · {minutesLabel(durationMs)}</span>
-      {stale && <Tag>예전 내용</Tag>}
+      <span>{prefix}{text().listen} · {minutesLabel(durationMs)}</span>
+      {stale && <Tag>{text().outdated}</Tag>}
     </button>}
     <audio ref={audio} src={src} preload="metadata" onLoadedMetadata={restore} onPlay={onPlay}
       onPause={event => { setPlaying(false); save(event.currentTarget.currentTime); }}
@@ -149,12 +205,12 @@ function Player({ recordId, title, src, durationMs, stale, prefix, open, playNon
 
 const stageText = (state: NarrationState) => {
   const narration = state.narration;
-  if (narration?.status === "scripting") return "원고를 다듬는 중";
-  if (narration?.status === "speaking" && narration.progress) return `음성을 만드는 중 ${narration.progress.done}/${narration.progress.total}`;
-  return "만들 차례를 기다리는 중";
+  if (narration?.status === "scripting") return text().polishing;
+  if (narration?.status === "speaking" && narration.progress) return text().speaking(narration.progress.done, narration.progress.total);
+  return text().waiting;
 };
 
-/** The narration commands for a reader's 더보기 menu; `label` (메일, 뉴스) prefixes each when one screen holds several. */
+/** The narration commands for a reader's More menu; `label` (e.g. Mail, News) prefixes each when one screen holds several. */
 export function narrationItems(state: NarrationState | null, { pending, cancelling, label, onRequest, onCancel, onListen, onScript, onRemove }: {
   readonly pending: boolean; readonly cancelling: boolean; readonly label?: string | undefined;
   readonly onRequest: (force: boolean) => void; readonly onCancel: () => void; readonly onListen: () => void;
@@ -165,28 +221,28 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
   const narration = state.narration;
   const blocked = pending || !state.available;
   const icon = (Icon: typeof Play) => <Icon size={16} aria-hidden="true" />;
-  if (working(state)) return [{ label: `${prefix}음성 만들기 취소`, icon: icon(X), disabled: cancelling, onSelect: onCancel }];
+  if (working(state)) return [{ label: `${prefix}${text().cancelMake}`, icon: icon(X), disabled: cancelling, onSelect: onCancel }];
   const items: MenuItem[] = [];
   if (failedFor(state)) {
     const exhausted = (narration?.attempts ?? 0) >= NARRATION_LIMITS.attempts;
-    items.push({ label: `${prefix}다시 시도`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(exhausted) });
+    items.push({ label: `${prefix}${text().retry}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(exhausted) });
   }
   const audio = narration?.audio ?? null;
   if (!audio) {
-    if (items.length === 0) items.push({ label: `${prefix}음성 만들기${state.available ? "" : " · 키 필요"}`, icon: icon(Headphones), disabled: blocked, onSelect: () => onRequest(false) });
+    if (items.length === 0) items.push({ label: `${prefix}${text().make}${state.available ? "" : text().keyNeeded}`, icon: icon(Headphones), disabled: blocked, onSelect: () => onRequest(false) });
     return items;
   }
-  items.push({ label: `${prefix}듣기`, icon: icon(Play), onSelect: onListen });
+  items.push({ label: `${prefix}${text().listen}`, icon: icon(Play), onSelect: onListen });
   if (!failedFor(state)) items.push(narration?.stale
-    ? { label: `${prefix}새로 만들기`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(false) }
-    : { label: `${prefix}다시 만들기`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(true) });
-  if (narration?.script) items.push({ label: `${prefix}원고 보기`, icon: icon(FileText), onSelect: onScript });
-  items.push({ label: `${prefix}음성 삭제`, icon: icon(Trash2), danger: true, disabled: pending, onSelect: onRemove });
+    ? { label: `${prefix}${text().makeNew}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(false) }
+    : { label: `${prefix}${text().makeAgain}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(true) });
+  if (narration?.script) items.push({ label: `${prefix}${text().viewScript}`, icon: icon(FileText), onSelect: onScript });
+  items.push({ label: `${prefix}${text().deleteAudio}`, icon: icon(Trash2), danger: true, disabled: pending, onSelect: onRemove });
   return items;
 }
 
 /**
- * The narration line under a reader's action bar: a running job with its stage and a cancel x, a failure with 다시 시도,
+ * The narration line under a reader's action bar: a running job with its stage and a cancel x, a failure with a retry button,
  * or the (folded) player. Nothing when there is no audio and nothing running.
  */
 export function NarrationBar({ record, state, label, pending, cancelling, dismissed, open, playNonce, onCancel, onRetry, onDismiss, onOpen, onFold }: {
@@ -201,11 +257,11 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
     const determinate = narration.status === "speaking" && narration.progress;
     return <div className="listen-bar listen-working" role="status">
       <Headphones size={15} aria-hidden="true" />
-      <span className="listen-stage">{prefix}{cancelling ? "취소하는 중" : stageText(state)}</span>
+      <span className="listen-stage">{prefix}{cancelling ? text().cancelling : stageText(state)}</span>
       {!cancelling && (determinate
-        ? <progress aria-label="음성 만드는 진행" max={narration.progress?.total} value={narration.progress?.done} />
-        : <progress aria-label="음성 만드는 진행" />)}
-      <button type="button" className="icon-btn listen-icon" aria-label={`${prefix}음성 만들기 취소`} disabled={cancelling} onClick={onCancel}>
+        ? <progress aria-label={text().progress} max={narration.progress?.total} value={narration.progress?.done} />
+        : <progress aria-label={text().progress} />)}
+      <button type="button" className="icon-btn listen-icon" aria-label={`${prefix}${text().cancelMake}`} disabled={cancelling} onClick={onCancel}>
         <X size={16} aria-hidden="true" />
       </button>
     </div>;
@@ -214,8 +270,8 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
     const exhausted = narration.attempts >= NARRATION_LIMITS.attempts;
     return <div className="listen-bar listen-error" role="alert">
       <span className="listen-stage">{prefix}{narrationFailure(narration.error)}</span>
-      <button type="button" className="btn btn-ghost" disabled={pending || !state.available} onClick={() => onRetry(exhausted)}>다시 시도</button>
-      <button type="button" className="icon-btn listen-icon" aria-label="알림 닫기" onClick={onDismiss}><X size={16} aria-hidden="true" /></button>
+      <button type="button" className="btn btn-ghost" disabled={pending || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
+      <button type="button" className="icon-btn listen-icon" aria-label={text().dismiss} onClick={onDismiss}><X size={16} aria-hidden="true" /></button>
     </div>;
   }
   const audio = narration?.audio;
@@ -247,7 +303,9 @@ export function useNarration({ record, collection = "records", label }: {
   const put = (forId: string, next: NarrationState) => { if (alive.current) setLoaded({ id: forId, state: next }); };
   const show = async (error: unknown) => {
     const code = await errorCode(error);
-    d.notify(code && requestText[code] ? requestText[code] : await errorMessage(error), "error");
+    const requests: Failures = text().requests;
+    const known = code ? requests[code] : undefined;
+    d.notify(known ?? await errorMessage(error), "error");
   };
   const load = (forId: string) => loadNarration(forId, collection).then(next => put(forId, next), show);
   // A content edit changes the version, and with it whether the audio is stale.
@@ -260,7 +318,7 @@ export function useNarration({ record, collection = "records", label }: {
   if (!record || !state) return { items: [], bar: null };
   const forId = record.id;
   const request = async (force: boolean) => {
-    if (force && !window.confirm("음성을 다시 만들면 Gemini 요금이 한 번 더 들어요. 다시 만들까요?")) return;
+    if (force && !window.confirm(text().confirmRemake)) return;
     setPending(true);
     try { put(forId, await requestNarration(forId, force, d.csrfToken, collection)); }
     catch (error) { await show(error); }
@@ -271,19 +329,19 @@ export function useNarration({ record, collection = "records", label }: {
     try {
       const next = await cancelNarration(forId, d.csrfToken, collection);
       put(forId, next);
-      if (!working(next)) d.notify("음성 만들기를 취소했어요.");
+      if (!working(next)) d.notify(text().cancelled);
     } catch (error) { await show(error); }
     finally { if (alive.current) setCancelling(false); }
   };
   const remove = async () => {
-    if (!window.confirm("음성 파일과 원고를 삭제할까요? 다시 들으려면 새로 만들어야 해요.")) return;
+    if (!window.confirm(text().confirmDelete)) return;
     setPending(true);
     try {
       await deleteNarration(forId, d.csrfToken, collection);
       localStorage.removeItem(positionKey(forId));
       put(forId, { narration: null, available: state.available });
       setOpen(false);
-      d.notify("음성을 삭제했어요.");
+      d.notify(text().deleted);
     } catch (error) { await show(error); }
     finally { if (alive.current) setPending(false); }
   };
@@ -301,7 +359,7 @@ export function useNarration({ record, collection = "records", label }: {
       dismissed={dismissed !== null && dismissed === state.narration?.updatedAt} open={open} playNonce={playNonce}
       onCancel={() => { void cancel(); }} onRetry={force => { void request(force); }}
       onDismiss={() => setDismissed(state.narration?.updatedAt ?? null)} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} />
-    {script && paragraphs.length > 0 && <Dialog title={`${label ? `${label} ` : ""}원고`} onClose={() => setScript(false)}>
+    {script && paragraphs.length > 0 && <Dialog title={`${label ? `${label} ` : ""}${text().script}`} onClose={() => setScript(false)}>
       <div className="listen-script">{paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
     </Dialog>}
   </>;

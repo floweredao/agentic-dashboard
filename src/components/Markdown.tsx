@@ -1,4 +1,10 @@
 import type { ReactNode } from "react";
+import { strings } from "../i18n";
+
+const text = strings({
+  en: { done: "Done", notDone: "Not done" },
+  ko: { done: "완료", notDone: "미완료" },
+});
 
 type Align = "left" | "center" | "right" | null;
 type Block =
@@ -167,7 +173,7 @@ function render(blocks: readonly Block[], key = "b", resolve?: ResolveRecord): R
       </table></div>;
       case "list": {
         const items = block.items.map((item, itemIndex) => <li key={itemIndex} className={item.checked === null ? undefined : "task"}>
-          {item.checked !== null && <input type="checkbox" checked={item.checked} disabled readOnly aria-label={item.checked ? "완료" : "미완료"} />}
+          {item.checked !== null && <input type="checkbox" checked={item.checked} disabled readOnly aria-label={item.checked ? text().done : text().notDone} />}
           {lines(item.text, `${id}-${itemIndex}`, resolve)}
           {render(item.children, `${id}-${itemIndex}`, resolve)}
         </li>);
