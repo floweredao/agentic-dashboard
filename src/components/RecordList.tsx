@@ -3,11 +3,23 @@ import type { MouseEvent, PointerEvent as RowPointerEvent, ReactNode } from "rea
 import { Archive, ArchiveRestore, Star, Trash2 } from "lucide-react";
 import type { DashboardRecord } from "../../shared/contracts";
 import { aiFilled, channelOf, channelLabel, dateLabel, excerpt, groupByDay, hostOf, isRecord, kindLabels, projectStatuses, revisitDue, taskStatuses, waitingReplies } from "../model";
+import { strings } from "../i18n";
 import { formatRoute } from "../router";
 import { useDashboard } from "../state";
 import { Empty, isSample, Time } from "./primitives";
 import { SWIPE_VELOCITY_WINDOW, swipeAxis, swipeDecision, swipeVelocity } from "./swipe";
 import type { SwipeAction, SwipeAxis, SwipeSample } from "./swipe";
+
+const text = strings({
+  en: {
+    restore: "Restore", archive: "Archive", delete: "Delete", unread: "Unread ",
+    waiting: "Awaiting reply", revisit: "Revisit", due: "Due", starred: "Starred", archived: "Archived", aiFilled: "Auto-filled", sample: "Sample",
+  },
+  ko: {
+    restore: "복원", archive: "보관", delete: "삭제", unread: "미확인 ",
+    waiting: "답 대기", revisit: "다시 볼 날", due: "마감", starred: "별표", archived: "보관됨", aiFilled: "자동 작성", sample: "샘플",
+  },
+});
 
 const plain = (text: string) => text.replace(/[#*_`>|]+/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim().slice(0, 280);
 const statusLabel = (record: DashboardRecord) => record.kind === "project"
@@ -44,6 +56,7 @@ function slide(row: HTMLElement, x: number): Promise<void> {
 }
 
 export function RecordRow({ record }: { readonly record: DashboardRecord }) {
+  const t = text();
   const { route, select, connected, toggleArchive, remove, comments } = useDashboard();
   const waiting = isRecord(record) ? 0 : waitingReplies(comments, record.id);
   const selected = route.id === record.id;
@@ -122,14 +135,14 @@ export function RecordRow({ record }: { readonly record: DashboardRecord }) {
   return <li className="swipe" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={event => release(event, false)}
     onPointerCancel={event => release(event, true)} onClickCapture={onClickCapture}>
     <div className="swipe-actions" aria-hidden="true">
-      <span className="swipe-action">{record.archivedAt ? <ArchiveRestore size={18} /> : <Archive size={18} />}{record.archivedAt ? "복원" : "보관"}</span>
-      <span className="swipe-action"><Trash2 size={18} />삭제</span>
+      <span className="swipe-action">{record.archivedAt ? <ArchiveRestore size={18} /> : <Archive size={18} />}{record.archivedAt ? t.restore : t.archive}</span>
+      <span className="swipe-action"><Trash2 size={18} />{t.delete}</span>
     </div>
     <a ref={rowRef} id={`row-${record.id}`} className={`row${unread ? " unread" : ""}`} href={formatRoute({ view: route.view, id: record.id, params: route.params })}
       aria-current={selected ? "true" : undefined} onClick={open}>
       <span className="row-main">
         <span className="row-top">
-          <span className="row-title">{unread && <span className="unread-dot" aria-hidden="true" />}{unread && <span className="visually-hidden">미확인 </span>}{record.title}</span>
+          <span className="row-title">{unread && <span className="unread-dot" aria-hidden="true" />}{unread && <span className="visually-hidden">{t.unread}</span>}{record.title}</span>
           <Time value={record.createdAt} />
         </span>
         {summary && <span className="row-summary">{summary}</span>}
@@ -137,24 +150,24 @@ export function RecordRow({ record }: { readonly record: DashboardRecord }) {
           {isRecord(record) ? <span className="row-kind">{channelLabel(channelOf(record))} · {kindLabels[record.kind]}</span>
             : record.kind === "project" && <span className="row-kind">{kindLabels.project}</span>}
           {!isRecord(record) && <span>{statusLabel(record)}</span>}
-          {waiting > 0 && <span className="tag accent">답 대기 {waiting}</span>}
-          {revisitDue(record) && <span className="tag">다시 볼 날</span>}
-          {record.dueDate && <span>마감 {dateLabel(record.dueDate)}</span>}
+          {waiting > 0 && <span className="tag accent">{t.waiting} {waiting}</span>}
+          {revisitDue(record) && <span className="tag">{t.revisit}</span>}
+          {record.dueDate && <span>{t.due} {dateLabel(record.dueDate)}</span>}
           {host && <span className="row-host">{host}</span>}
-          {record.fields.starred === true && <Star className="row-star" size={13} aria-label="별표" />}
-          {record.archivedAt && <Archive size={13} aria-label="보관됨" />}
-          {aiFilled(record) && <span>자동 작성</span>}
-          {isSample(record) && <span className="tag">샘플</span>}
+          {record.fields.starred === true && <Star className="row-star" size={13} aria-label={t.starred} />}
+          {record.archivedAt && <Archive size={13} aria-label={t.archived} />}
+          {aiFilled(record) && <span>{t.aiFilled}</span>}
+          {isSample(record) && <span className="tag">{t.sample}</span>}
         </span>
       </span>
     </a>
   </li>;
 }
 
-/** A non-record row merged into a list by its time (`at`, ISO), such as a digest in 받은 항목. */
+/** A non-record row merged into a list by its time (`at`, ISO), such as a digest in the inbox. */
 export type ExtraRow = { readonly id: string; readonly at: string; readonly row: ReactNode };
 
-/** Rows with optional sticky Seoul-day headers. Rows carry `id="row-<id>"` for keyboard selection. `extra` rows merge in newest first. */
+/** Rows with optional sticky day headers. Rows carry `id="row-<id>"` for keyboard selection. `extra` rows merge in newest first. */
 export function RecordList({ records, empty, emptyAction, grouped = false, extra = [] }: {
   readonly records: readonly DashboardRecord[]; readonly empty: string; readonly emptyAction?: ReactNode; readonly grouped?: boolean;
   readonly extra?: readonly ExtraRow[];

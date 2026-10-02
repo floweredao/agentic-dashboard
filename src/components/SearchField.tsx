@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, CompositionEvent } from "react";
 import { Search, X } from "lucide-react";
+import { strings } from "../i18n";
 import { useDashboard } from "../state";
+
+const text = strings({
+  en: { clear: "Clear search text" },
+  ko: { clear: "검색어 지우기" },
+});
 
 /**
  * The list search box. The URL's `q` owns the committed query; typing commits it after 250ms (never mid-composition,
@@ -50,7 +56,7 @@ export function SearchField({ search, label, placeholder }: {
     <Search size={16} aria-hidden="true" />
     <input data-search aria-label={label} placeholder={placeholder} value={search.query}
       onChange={search.onChange} onCompositionStart={search.onCompositionStart} onCompositionEnd={search.onCompositionEnd} />
-    {search.query !== "" && <button type="button" className="search-clear" aria-label="검색어 지우기"
+    {search.query !== "" && <button type="button" className="search-clear" aria-label={text().clear}
       onClick={event => { search.clear({ q: null }); event.currentTarget.closest("label")?.querySelector("input")?.focus(); }}>
       <X size={14} aria-hidden="true" />
     </button>}

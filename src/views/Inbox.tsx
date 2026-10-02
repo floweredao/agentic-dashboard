@@ -7,13 +7,30 @@ import { SearchField, useSearch } from "../components/SearchField";
 import { useListShortcuts } from "../hooks";
 import { digestCounts, digestMatches, digestUnread, inboxDigestView, inboxStateOf, inboxStates, inboxView, listedDigestsFor, listedFor, matchesQuery, revisitDue, withDigestReads } from "../model";
 import { formatRoute } from "../router";
+import { strings } from "../i18n";
 import { useDashboard } from "../state";
 import { slotTitle } from "./Digest";
 
-const empty = { pending: "확인할 항목 없음", approved: "확인한 항목 없음", all: "항목 없음" } as const;
+const text = strings({
+  en: {
+    empty: { pending: "Nothing to review", approved: "Nothing reviewed yet", all: "No items" },
+    unread: "Unread ", digest: "Digest", inbox: "Inbox",
+    revisits: (count: number) => `${count} to revisit`,
+    search: "Search inbox", placeholder: "Title, content, summary, tags", state: "Review status",
+    noResults: "No results", clearSearch: "Clear search",
+  },
+  ko: {
+    empty: { pending: "확인할 항목 없음", approved: "확인한 항목 없음", all: "항목 없음" },
+    unread: "미확인 ", digest: "다이제스트", inbox: "받은 항목",
+    revisits: (count: number) => `다시 볼 항목 ${count}`,
+    search: "받은 항목 검색", placeholder: "제목, 내용, 요약, 태그", state: "확인 상태",
+    noResults: "검색 결과 없음", clearSearch: "검색 지우기",
+  },
+});
 
-/** A digest in 받은 항목, set like a record row: slot title, first headline (else the message headline), 다이제스트 · counts. No swipe: digests are not archived or deleted. */
+/** A digest in the inbox, set like a record row: slot title, first headline (else the message headline), "Digest" and counts. No swipe: digests are not archived or deleted. */
 export function InboxDigestRow({ summary }: { readonly summary: DigestSummary }) {
+  const t = text();
   const { route, open } = useDashboard();
   const unread = digestUnread(summary);
   const headline = summary.headlines[0] ?? summary.messageHeadline;
@@ -28,12 +45,12 @@ export function InboxDigestRow({ summary }: { readonly summary: DigestSummary })
       aria-current={route.id === summary.id ? "true" : undefined} onClick={onClick}>
       <span className="row-main">
         <span className="row-top">
-          <span className="row-title">{unread && <span className="unread-dot" aria-hidden="true" />}{unread && <span className="visually-hidden">미확인 </span>}{slotTitle(summary.slot)}</span>
+          <span className="row-title">{unread && <span className="unread-dot" aria-hidden="true" />}{unread && <span className="visually-hidden">{t.unread}</span>}{slotTitle(summary.slot)}</span>
           <Time value={summary.scheduledAt} />
         </span>
         {headline && <span className="row-summary">{headline}</span>}
         <span className="row-meta">
-          <span><span className="row-kind">다이제스트</span>{counts && ` · ${counts}`}</span>
+          <span><span className="row-kind">{t.digest}</span>{counts && ` · ${counts}`}</span>
         </span>
       </span>
     </a>
@@ -41,6 +58,7 @@ export function InboxDigestRow({ summary }: { readonly summary: DigestSummary })
 }
 
 export function InboxPane() {
+  const t = text();
   const { records, route, setParams, digests, digestReads } = useDashboard();
   const search = useSearch();
   const { q } = search;
@@ -63,12 +81,12 @@ export function InboxPane() {
   return <>
     <header className="pane-head">
       <div className="pane-title-row">
-        <h1 className="pane-title">받은 항목 <span className="count">{total(state)}</span></h1>
+        <h1 className="pane-title">{t.inbox} <span className="count">{total(state)}</span></h1>
       </div>
-      {revisits > 0 && <p className="pane-note">{`다시 볼 항목 ${revisits}`}</p>}
+      {revisits > 0 && <p className="pane-note">{t.revisits(revisits)}</p>}
       <div className="pane-toolbar">
-        <SearchField search={search} label="받은 항목 검색" placeholder="제목, 내용, 요약, 태그" />
-        <div className="chip-row" role="group" aria-label="확인 상태">
+        <SearchField search={search} label={t.search} placeholder={t.placeholder} />
+        <div className="chip-row" role="group" aria-label={t.state}>
           {inboxStates.map(option => <Chip key={option.id} selected={state === option.id} count={total(option.id)}
             onClick={() => setParams({ state: option.id === "all" ? null : option.id }, { replace: true })}>
             {option.label}
@@ -76,8 +94,8 @@ export function InboxPane() {
         </div>
       </div>
     </header>
-    <RecordList grouped records={items} empty={q ? "검색 결과 없음" : empty[state]}
+    <RecordList grouped records={items} empty={q ? t.noResults : t.empty[state]}
       extra={listedDigests.map(summary => ({ id: summary.id, at: summary.scheduledAt, row: <InboxDigestRow key={summary.id} summary={summary} /> }))}
-      emptyAction={q ? <button type="button" className="btn btn-outline" onClick={() => search.clear({ q: null })}>검색 지우기</button> : undefined} />
+      emptyAction={q ? <button type="button" className="btn btn-outline" onClick={() => search.clear({ q: null })}>{t.clearSearch}</button> : undefined} />
   </>;
 }
