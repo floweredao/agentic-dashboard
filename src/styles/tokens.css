@@ -1,0 +1,166 @@
+:root {
+  color-scheme: light dark;
+  --canvas: #f5f5f3; --surface: #ffffff; --raised: #fafaf9;
+  --wash: #1a1a1908; --selected: #1a1a1910; --line: #1a1a1914; --line-strong: #1a1a1924;
+  --ink: #191918; --text: #3b3b38; --muted: #6d6c67; --faint: #716f69; --on-ink: #ffffff;
+  --accent: #4a57d6; --danger: #b42335; --ok: #16875c;
+  --ch-chatgpt: #10a37f; --ch-codex: #2f6fe4; --ch-omo: #8a4fe0; --ch-share: #d6800b; --ch-manual: #77746d;
+  --scrim: #0f0f0e59;
+  --shadow-float: 0 24px 64px #0000002e, 0 2px 8px #0000001a;
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --r-sm: 6px; --r: 8px; --r-lg: 12px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --sidebar: 248px; --rail: 64px; --list: 400px; --appbar: 52px; --tabbar: 60px;
+  --safe-top: env(safe-area-inset-top, 0px); --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #111111; --surface: #181818; --raised: #1f1f1f;
+    --wash: #ffffff0a; --selected: #ffffff12; --line: #ffffff14; --line-strong: #ffffff24;
+    --ink: #f2f1ee; --text: #d4d2cd; --muted: #9c9a94; --faint: #8c8a84; --on-ink: #111111;
+    --accent: #8b95ff; --danger: #ff7a88; --ok: #4fd19a;
+    --ch-chatgpt: #34c79f; --ch-codex: #6f9dff; --ch-omo: #b48cff; --ch-share: #f3a53a; --ch-manual: #a19e97;
+    --scrim: #000000a6;
+    --shadow-float: 0 24px 64px #00000080, 0 2px 8px #00000066;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
+/* Phones scroll the document. A dialog locks it and hides the scrollbar, so its gutter stays reserved
+   instead of the page behind the dialog widening and reflowing until the dialog closes. */
+@media (max-width: 767px) {
+  /* Scrolling a focused element into view keeps it clear of the app bar plus the reader's sticky action bar,
+     and of the fixed tab bar. */
+  html {
+    scrollbar-gutter: stable;
+    scroll-padding-top: calc(var(--appbar) + var(--safe-top) + 72px);
+    scroll-padding-bottom: calc(var(--tabbar) + var(--safe-bottom) + 16px);
+  }
+}
+body {
+  margin: 0; background: var(--canvas); color: var(--text);
+  font: 400 14px/1.5 var(--font); word-break: keep-all; overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none;
+}
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+img, svg { display: block; flex-shrink: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+[tabindex="-1"]:focus { outline: none; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip-link { position: absolute; left: 12px; top: -48px; z-index: 50; padding: 8px 12px; border-radius: var(--r); background: var(--ink); color: var(--on-ink); }
+.skip-link:focus { top: 12px; }
+/* The skip link's landing point shows where focus went; a mouse click on the page does not draw it. */
+#main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.btn, .icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; border: 1px solid transparent; border-radius: var(--r);
+  background: transparent; color: var(--ink); font-size: 13.5px; font-weight: 500; white-space: nowrap;
+  transition: background-color 120ms var(--ease), opacity 120ms var(--ease);
+}
+.btn { padding: 0 12px; }
+.icon-btn { width: 34px; padding: 0; color: var(--muted); }
+.btn:hover, .icon-btn:hover { background: var(--wash); color: var(--ink); }
+.btn:active, .icon-btn:active { opacity: .7; }
+.btn:disabled, .icon-btn:disabled { opacity: .45; cursor: default; background: transparent; }
+.btn-outline { border-color: var(--line-strong); background: var(--surface); }
+.btn-primary { background: var(--ink); color: var(--on-ink); }
+.btn-primary:hover { background: var(--ink); color: var(--on-ink); opacity: .88; }
+.btn-primary:disabled { background: var(--ink); }
+.btn-quiet { color: var(--muted); }
+.btn[aria-pressed="true"] { background: var(--selected); }
+.btn-danger { color: var(--danger); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  min-height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 500;
+  transition: background-color 120ms var(--ease);
+}
+.chip:hover { background: var(--wash); }
+/* Touch: a taller chip plus an invisible hit strip reaches the 44pt target without looking heavier. */
+@media (pointer: coarse) {
+  .chip { position: relative; min-height: 34px; }
+  .chip::after { content: ""; position: absolute; inset: -5px 0; }
+}
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.chip-count { color: var(--faint); font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] .chip-count { color: inherit; opacity: .7; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Wrapped rows stay far enough apart that the touch hit strips of neighbouring rows do not overlap. */
+@media (max-width: 767px) { .chip-row { row-gap: 10px; } }
+/* Touch: disclosure summaries reach the 44pt target (single-line labels stay vertically centred). */
+@media (max-width: 767px), (pointer: coarse) {
+  :root details > summary { min-height: 44px; padding-block: 10px; line-height: 24px; }
+}
+
+.tag {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 7px;
+  border-radius: var(--r-sm); background: var(--wash); color: var(--muted); font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.tag.accent { color: var(--accent); }
+.tag.ok { color: var(--ok); }
+.tag.danger { color: var(--danger); }
+
+.channel-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--ch); flex-shrink: 0; }
+.channel-tile {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-sm); flex-shrink: 0;
+  background: color-mix(in srgb, var(--ch) 16%, transparent); color: var(--ch); font-size: 11px; font-weight: 800; line-height: 1;
+}
+.ch-chatgpt { --ch: var(--ch-chatgpt); } .ch-codex { --ch: var(--ch-codex); } .ch-omo { --ch: var(--ch-omo); }
+.ch-share { --ch: var(--ch-share); } .ch-manual { --ch: var(--ch-manual); }
+
+.empty { display: grid; justify-items: center; gap: 8px; padding: 48px 16px; color: var(--faint); text-align: center; font-size: 13px; }
+
+.field { display: grid; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.field input, .field select, .field textarea, .input {
+  width: 100%; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--r);
+  background: var(--raised); color: var(--ink); font-size: 14px; font-weight: 400;
+}
+.field textarea { resize: none; line-height: 1.6; }
+.field select {
+  -webkit-appearance: none; appearance: none; padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible, .input:focus-visible { outline-offset: 0; }
+.field small { font-weight: 400; color: var(--faint); }
+.form-error { color: var(--danger); font-size: 13px; }
+.field .field-error { color: var(--danger); font-size: 12.5px; }
+.field textarea[aria-invalid="true"], .field input[aria-invalid="true"] { border-color: var(--danger); }
+/* iOS zooms into focused fields below 16px and stays zoomed after blur. */
+@media (pointer: coarse) {
+  .field input, .field select, .field textarea, .input { font-size: 16px; }
+}
+
+.dialog {
+  width: min(560px, calc(100vw - 32px)); max-height: min(88dvh, 900px); padding: 0; border: 1px solid var(--line);
+  border-radius: var(--r-lg); background: var(--surface); color: var(--text); box-shadow: var(--shadow-float);
+  overflow: hidden; overscroll-behavior: contain; flex-direction: column;
+}
+.dialog[open] { display: flex; animation: dialog-in 160ms var(--ease); }
+.dialog.wide { width: min(760px, calc(100vw - 32px)); }
+.dialog::backdrop { background: var(--scrim); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px 20px; }
+.dialog-head h2 { color: var(--ink); font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+/* scroll-padding keeps a focused field (for example after a validation error) above the sticky save bar. */
+.dialog-body { --dialog-pad-bottom: 20px; min-height: 0; padding: 4px 20px var(--dialog-pad-bottom); overflow-y: auto; overscroll-behavior: contain; scroll-padding-bottom: calc(96px + var(--dialog-pad-bottom)); }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 16px; }
+@keyframes dialog-in { from { opacity: 0; transform: scale(.98); } }
+@media (max-width: 767px) {
+  .dialog, .dialog.wide { width: 100%; max-width: 100%; max-height: calc(92dvh - var(--safe-top)); margin: auto 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; }
+  .dialog-head { padding-left: calc(20px + var(--safe-left)); padding-right: calc(16px + var(--safe-right)); }
+  .dialog-body { --dialog-pad-bottom: calc(20px + var(--safe-bottom)); padding: 4px calc(20px + var(--safe-right)) var(--dialog-pad-bottom) calc(20px + var(--safe-left)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

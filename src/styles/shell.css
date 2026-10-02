@@ -1,0 +1,188 @@
+.app { min-height: 100dvh; }
+
+.sidebar { display: none; }
+.brand { display: flex; align-items: center; gap: 10px; min-height: 40px; color: var(--ink); font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
+.brand img { width: 26px; height: 26px; border-radius: 7px; }
+.nav-list { display: grid; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: var(--r);
+  color: var(--muted); font-size: 14px; font-weight: 500; transition: background-color 120ms var(--ease);
+}
+.nav-item:hover { background: var(--wash); color: var(--ink); }
+.nav-item[aria-current="page"] { background: var(--selected); color: var(--ink); font-weight: 600; }
+.nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-count { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.nav-count.strong { color: var(--accent); font-weight: 700; }
+.nav-section { padding: 18px 10px 6px; color: var(--faint); font-size: 11.5px; font-weight: 600; letter-spacing: 0.2px; }
+/* Sticky so a short window still shows the sync time and refresh button without scrolling the sidebar.
+   It also covers the sidebar's bottom padding (same layout at rest), so nothing scrolls by underneath it. */
+.sidebar-foot {
+  --foot-pad: calc(14px + var(--safe-bottom));
+  position: sticky; bottom: calc(-1 * var(--foot-pad)); z-index: 1; margin: auto 0 calc(-1 * var(--foot-pad)); display: flex; align-items: center; gap: 4px;
+  padding: 12px 0 var(--foot-pad); border-top: 1px solid var(--line); background: var(--canvas);
+}
+.sidebar-foot .status { flex: 1; min-width: 0; color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-foot .status.offline { color: var(--danger); font-weight: 600; }
+/* Before the owner connects there is nothing to navigate to; the gate carries the only action. */
+.locked .nav-list, .locked .compose-btn, .locked .tabbar { display: none; }
+
+.workspace { min-width: 0; }
+/* Positioned so absolutely placed descendants (visually hidden row labels) stay inside the scrolling pane
+   instead of stretching the document; that phantom page scrollbar vanished under a dialog and shifted the panes. */
+.pane { position: relative; min-width: 0; background: var(--surface); }
+.pane-head {
+  position: sticky; top: 0; z-index: 3; display: grid; gap: 12px; padding: 16px 16px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.pane-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; }
+.pane-title { display: flex; align-items: baseline; gap: 8px; color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+.pane-title .count { color: var(--faint); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pane-toolbar { display: grid; gap: 10px; }
+.search {
+  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--raised); color: var(--faint);
+}
+.search input { flex: 1; min-width: 0; align-self: stretch; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 14px; }
+.search-clear { display: grid; place-items: center; width: 28px; height: 28px; margin-right: -6px; border: 0; border-radius: 999px; background: transparent; color: var(--faint); }
+.search-clear:hover { background: var(--wash); color: var(--ink); }
+.search:focus-within { outline: 2px solid var(--accent); outline-offset: 0; }
+@media (pointer: coarse) {
+  .search input { font-size: 16px; }
+  /* An invisible 44px hit area around the small clear button, like .chip::after. */
+  .search-clear { position: relative; }
+  .search-clear::after { content: ""; position: absolute; inset: calc(50% - 22px); }
+}
+/* Touch: the field itself (not only its frame) is 44px tall; the input overlaps the 1px frame border. */
+@media (max-width: 767px), (pointer: coarse) {
+  .search { min-height: 44px; }
+  .search input { margin-block: -1px; }
+}
+/* The list head scrolls away with the list (as on a phone), so the day labels pin to the top of the pane. */
+.list-pane .pane-head { position: static; }
+.reader-empty { display: grid; place-items: center; min-height: 100%; }
+
+.appbar {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 8px;
+  height: calc(var(--appbar) + var(--safe-top)); padding: var(--safe-top) calc(8px + var(--safe-right)) 0 calc(16px + var(--safe-left));
+  background: var(--canvas); border-bottom: 1px solid var(--line);
+}
+.appbar .brand { flex: 1; }
+.appbar-back { display: none; margin-left: -12px; }
+/* The desktop copy of the back button, at the top of its pane; a phone shows it in the app bar instead. */
+.pane-back { justify-self: start; align-self: start; gap: 6px; margin-left: -10px; padding: 0 10px; color: var(--muted); }
+.pane-back:hover { color: var(--ink); }
+.reader .pane-back, .channels-heading .pane-back { margin-bottom: 12px; }
+.tabbar {
+  position: fixed; inset: auto 0 0 0; z-index: 10; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  height: calc(var(--tabbar) + var(--safe-bottom)); padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  background: var(--canvas); border-top: 1px solid var(--line);
+}
+/* Every tab shares one 24px glyph row and one 16px label row, so all five labels sit on one baseline. */
+.tab {
+  position: relative; display: grid; grid-template-rows: 24px 16px; place-items: center; align-content: center; gap: 4px; min-height: 44px;
+  padding: 0; border: 0; background: transparent; color: var(--faint); font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+/* page: the tab's own screen; true: a screen under it (보관함, 휴지통, 채널 관리 under 더보기). */
+.tab[aria-current] { color: var(--ink); }
+.tab-badge {
+  position: absolute; top: 6px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  background: var(--accent); color: var(--on-ink); font-size: 10px; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
+}
+
+/* Inset on both sides and shrink-wrapped, so a short message stays on one line on a narrow phone. */
+.toast {
+  position: fixed; left: calc(16px + var(--safe-left)); right: calc(16px + var(--safe-right)); bottom: calc(var(--tabbar) + 16px + var(--safe-bottom)); z-index: 60;
+  display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 480px; margin-inline: auto; padding: 8px 8px 8px 16px;
+  border-radius: var(--r-lg); background: var(--ink); color: var(--on-ink); box-shadow: var(--shadow-float);
+  font-size: 13.5px; font-weight: 500; animation: toast-in 160ms var(--ease);
+}
+.toast > span { flex: 1; min-width: 0; }
+.toast.error { background: var(--danger); color: var(--on-ink); }
+.toast button { flex-shrink: 0; border: 0; border-radius: var(--r); background: transparent; color: inherit; opacity: .75; min-height: 32px; padding: 0 8px; white-space: nowrap; }
+.toast .toast-action { opacity: 1; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+
+.gate { display: grid; place-content: center; justify-items: center; gap: 16px; min-height: 70dvh; padding: 32px; text-align: center; }
+.gate img { width: 56px; height: 56px; border-radius: 14px; }
+.gate h1 { color: var(--ink); font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+.gate p { color: var(--muted); max-width: 36ch; }
+.gate-more { display: grid; justify-items: center; gap: 8px; color: var(--faint); font-size: 12.5px; }
+.gate-more summary { padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.gate-more summary:hover { color: var(--muted); }
+.gate-more summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.loading-line { position: fixed; inset: var(--safe-top) 0 auto 0; z-index: 70; height: 2px; background: var(--accent); animation: loading 1.2s var(--ease) infinite; transform-origin: left; }
+@keyframes loading { 0% { transform: scaleX(0); } 60% { transform: scaleX(.8); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+
+@media (max-width: 767px) {
+  .workspace { padding-bottom: calc(var(--tabbar) + var(--safe-bottom)); }
+  /* Logged out there is no tab bar, so nothing reserves its band. */
+  .locked .workspace { padding-bottom: 0; }
+  .locked .pane { min-height: calc(100dvh - var(--appbar) - var(--safe-top)); }
+  .appbar .brand { min-height: 44px; }
+  .gate-more summary { padding-inline: 12px; }
+  .has-detail .list-pane { display: none; }
+  .app:not(.has-detail) .reader-pane { display: none; }
+  .pane-back { display: none; }
+  .has-back .appbar .brand { display: none; }
+  .has-back .appbar-back { display: inline-flex; }
+  .has-back .appbar { justify-content: space-between; }
+  /* Fill exactly the space between the bars; the 16px bottom padding keeps the last row clear of the tab bar. */
+  .pane {
+    min-height: calc(100dvh - var(--appbar) - var(--safe-top) - var(--tabbar) - var(--safe-bottom));
+    padding: 0 var(--safe-right) 16px var(--safe-left);
+  }
+  /* The list head scrolls away with the list: on a phone only the app bar and the day label stay pinned,
+     and wrapped chip rows keep every filter visible instead of hiding some off the right edge. */
+  .pane-head { position: static; padding: 12px 16px; }
+  .nav-item, .btn, .icon-btn { min-height: 44px; }
+  .search { min-height: 44px; }
+  .search-clear { width: 36px; height: 36px; }
+  .toast button { min-height: 44px; min-width: 44px; }
+  /* Inside an open dialog the toast sits above the bottom sheet instead of on top of its commands. */
+  .dialog .toast { top: calc(16px + var(--safe-top)); bottom: auto; }
+  .icon-btn { width: 44px; }
+}
+
+@media (min-width: 768px) {
+  .appbar, .tabbar { display: none; }
+  .app { display: grid; grid-template-columns: calc(var(--rail) + var(--safe-left)) minmax(0, 1fr); height: 100dvh; overflow: hidden; }
+  .sidebar {
+    display: flex; flex-direction: column; gap: 4px; min-height: 0; padding: 14px 10px calc(14px + var(--safe-bottom)) calc(10px + var(--safe-left)); overflow-y: auto;
+    border-right: 1px solid var(--line); background: var(--canvas);
+  }
+  .sidebar .brand { justify-content: center; margin-bottom: 8px; }
+  .sidebar .brand-name, .sidebar .nav-label, .sidebar .nav-section, .sidebar .channel-nav, .sidebar .status { display: none; }
+  .sidebar .nav-item { position: relative; justify-content: center; padding: 0; min-height: 40px; }
+  .sidebar .nav-count { position: absolute; top: 2px; right: 4px; font-size: 10px; }
+  .sidebar .nav-count:not(.strong) { display: none; }
+  .compose-btn { width: 40px; min-height: 40px; margin: 0 auto 10px; padding: 0; }
+  .compose-btn span { display: none; }
+  .sidebar-foot { flex-direction: column; }
+  /* Touch on the icon rail: 44pt targets (the rail keeps its 64px width; side padding gives the extra pixel). */
+  @media (max-width: 1099px) and (pointer: coarse) {
+    .sidebar { padding-right: 9px; }
+    .sidebar .nav-item { min-height: 44px; }
+    .compose-btn { width: 44px; min-height: 44px; }
+  }
+  .toast { bottom: calc(24px + var(--safe-bottom)); }
+  .workspace { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100dvh; min-height: 0; }
+  .workspace.single { grid-template-columns: minmax(0, 1fr); }
+  .pane { height: 100dvh; min-height: 0; padding-bottom: var(--safe-bottom); overflow-y: auto; overscroll-behavior: contain; }
+  .pane:last-child { padding-right: var(--safe-right); }
+  .list-pane { border-right: 1px solid var(--line); }
+}
+
+@media (min-width: 1100px) {
+  .app { grid-template-columns: calc(var(--sidebar) + var(--safe-left)) minmax(0, 1fr); }
+  .sidebar { padding: 14px 12px calc(14px + var(--safe-bottom)) calc(12px + var(--safe-left)); }
+  .sidebar .brand { justify-content: flex-start; padding: 0 8px; }
+  .sidebar .brand-name, .sidebar .nav-label, .sidebar .status { display: revert; }
+  .sidebar .nav-section, .sidebar .channel-nav { display: revert; }
+  .sidebar .nav-item { justify-content: flex-start; padding: 0 10px; min-height: 36px; }
+  .sidebar .nav-count, .sidebar .nav-count:not(.strong) { position: static; display: revert; font-size: 12px; }
+  .compose-btn { width: 100%; min-height: 36px; margin: 0 0 12px; padding: 0 12px; justify-content: flex-start; }
+  .compose-btn span { display: revert; }
+  .sidebar-foot { flex-direction: row; }
+  .workspace { grid-template-columns: minmax(340px, var(--list)) minmax(0, 1fr); }
+}

@@ -1,0 +1,271 @@
+import ky, { HTTPError } from "ky";
+import { z } from "zod";
+import {
+  BriefingHitSchema,
+  BriefingSchema,
+  BriefingSummarySchema,
+  PushDeviceSchema,
+  type Briefing,
+  type BriefingHit,
+  type BriefingPart,
+  type BriefingSummary,
+  type PushDevice,
+  type PushKinds,
+  CommentSchema as commentSchema,
+  DashboardRecordSchema as dashboardRecordSchema,
+  NarrationStateSchema as narrationStateSchema,
+  RecordInputSchema as recordInputSchema,
+  TrashItemSchema as trashItemSchema,
+  type Comment,
+  type DashboardRecord,
+  type NarrationState,
+  type RecordInput,
+  type RecordPatch,
+  type TrashItem,
+} from "../shared/contracts";
+
+const http = ky.create({ prefixUrl: "/api/v1", credentials: "same-origin", retry: 0 });
+const sessionSchema = z.object({ csrfToken: z.string(), expiresAt: z.string() });
+const pageSchema = z.object({
+  items: z.array(dashboardRecordSchema),
+  nextCursor: z.string().nullable(),
+});
+const recordResponseSchema = z.object({ record: dashboardRecordSchema });
+const trashSchema = z.object({ items: z.array(trashItemSchema) });
+const shareSchema = z.object({ code: z.string(), url: z.string(), createdAt: z.string() });
+const shareCreatedSchema = z.object({ share: shareSchema });
+/** A record's one active tailnet-only share: `url` is `${privateOrigin}/s/${code}`. */
+export type Share = z.infer<typeof shareSchema>;
+const errorSchema = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
+
+export async function session(token?: string) {
+  const response = token === undefined
+    ? http.get("auth/session")
+    : http.post("auth/session", { json: { token } });
+  return sessionSchema.parse(await response.json());
+}
+
+export async function logout(csrfToken: string) {
+  await http.delete("auth/session", { headers: { "X-CSRF-Token": csrfToken } });
+}
+
+export async function loadRecords(): Promise<DashboardRecord[]> {
+  const records: DashboardRecord[] = [];
+  let cursor: string | null = null;
+  do {
+    const searchParams: Record<string, string> = { archived: "all", limit: "50" };
+    if (cursor !== null) searchParams.cursor = cursor;
+    const page = pageSchema.parse(await http.get("records", { searchParams }).json());
+    records.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+  return records;
+}
+
+export async function createRecord(input: RecordInput, csrfToken: string, requestId: string) {
+  const record = recordInputSchema.parse(input);
+  return recordResponseSchema.parse(await http.post("records", {
+    json: { requestId, record },
+    headers: { "X-CSRF-Token": csrfToken },
+  }).json()).record;
+}
+
+export async function patchRecord(record: DashboardRecord, changes: RecordPatch["changes"], csrfToken: string) {
+  return recordResponseSchema.parse(await http.patch(`records/${record.id}`, {
+    json: { expectedVersion: record.version, changes },
+    headers: { "X-CSRF-Token": csrfToken },
+  }).json()).record;
+}
+
+/** Version-checked DELETE (204) into the 30-day trash. A stale version fails with 409, reported by errorMessage. */
+export async function deleteRecord(record: DashboardRecord, csrfToken: string): Promise<void> {
+  await http.delete(`records/${record.id}`, {
+    json: { expectedVersion: record.version },
+    headers: { "X-CSRF-Token": csrfToken },
+  });
+}
+
+/** The owner's trash, most recently deleted first. */
+export async function loadTrash(): Promise<TrashItem[]> {
+  return trashSchema.parse(await http.get("trash").json()).items;
+}
+
+/** POST without a body: the record leaves the trash and comes back as it was deleted (404 when it is not there). */
+export async function restoreRecord(id: string, csrfToken: string): Promise<DashboardRecord> {
+  return recordResponseSchema.parse(await http.post(`trash/${id}/restore`, { headers: { "X-CSRF-Token": csrfToken } }).json()).record;
+}
+
+/** Permanent DELETE (204) of one trashed record. */
+export async function purgeRecord(id: string, csrfToken: string): Promise<void> {
+  await http.delete(`trash/${id}`, { headers: { "X-CSRF-Token": csrfToken } });
+}
+
+/** Permanent DELETE (204) of everything in the trash. */
+export async function emptyTrash(csrfToken: string): Promise<void> {
+  await http.delete("trash", { headers: { "X-CSRF-Token": csrfToken } });
+}
+
+/** Every timeline entry on items that are not in the trash, oldest first. */
+export async function loadComments(): Promise<Comment[]> {
+  return z.object({ items: z.array(commentSchema) }).parse(await http.get("comments").json()).items;
+}
+
+/** The owner's comment on a task or project; `requestId` makes a resend return the same entry. */
+export async function createComment(recordId: string, body: string, requestId: string, csrfToken: string): Promise<Comment> {
+  return z.object({ comment: commentSchema }).parse(await http.post("comments", {
+    json: { requestId, recordId, body },
+    headers: { "X-CSRF-Token": csrfToken },
+  }).json()).comment;
+}
+
+/** POST without a body: 201 creates the share, 200 returns the existing one with the same code. */
+export async function createShare(recordId: string, csrfToken: string): Promise<Share> {
+  return shareCreatedSchema.parse(await http.post(`records/${recordId}/share`, { headers: { "X-CSRF-Token": csrfToken } }).json()).share;
+}
+
+/** 204 whether or not a share existed. */
+export async function deleteShare(recordId: string, csrfToken: string): Promise<void> {
+  await http.delete(`records/${recordId}/share`, { headers: { "X-CSRF-Token": csrfToken } });
+}
+
+/** What can be narrated: a record, or a briefing (owner only). */
+export type NarrationCollection = "records" | "briefings";
+
+/** A record's narration state and whether the server has a TTS key. */
+export async function loadNarration(recordId: string, collection: NarrationCollection = "records"): Promise<NarrationState> {
+  return narrationStateSchema.parse(await http.get(`${collection}/${recordId}/narration`).json());
+}
+
+/** Starts a narration (202) or returns the current one (200); `force` makes a new one even for unchanged content. */
+export async function requestNarration(recordId: string, force: boolean, csrfToken: string, collection: NarrationCollection = "records"): Promise<NarrationState> {
+  return narrationStateSchema.parse(await http.post(`${collection}/${recordId}/narration`, {
+    json: force ? { force: true } : {},
+    headers: { "X-CSRF-Token": csrfToken },
+  }).json());
+}
+
+/** Stops a narration that is waiting or being made, so no further paid call starts; the state after it (the earlier audio, if any). */
+export async function cancelNarration(recordId: string, csrfToken: string, collection: NarrationCollection = "records"): Promise<NarrationState> {
+  return narrationStateSchema.parse(await http.post(`${collection}/${recordId}/narration/cancel`, {
+    json: {}, headers: { "X-CSRF-Token": csrfToken },
+  }).json());
+}
+
+/** Deletes the audio file and script (204); 409 while one is being made. */
+export async function deleteNarration(recordId: string, csrfToken: string, collection: NarrationCollection = "records"): Promise<void> {
+  await http.delete(`${collection}/${recordId}/narration`, { headers: { "X-CSRF-Token": csrfToken } });
+}
+
+const partTotalsSchema = z.object({ unread: z.number(), earliestDate: z.string().nullable() });
+const briefingPageSchema = z.object({
+  items: z.array(BriefingSummarySchema), from: z.string(), to: z.string(), unread: z.number(),
+  earliestDate: z.string().nullable(), latestDate: z.string().nullable(),
+  parts: z.object({ news: partTotalsSchema, mail: partTotalsSchema }),
+});
+/**
+ * Briefing summaries from `from` to `to` (Seoul dates; the server defaults to the last 14 days), newest first, with the
+ * unread parts in total and per part (뉴스, 메일).
+ */
+export type BriefingPage = z.infer<typeof briefingPageSchema>;
+export async function loadBriefings(range: { readonly from?: string; readonly to?: string } = {}): Promise<BriefingPage> {
+  const searchParams: Record<string, string> = {};
+  if (range.from) searchParams.from = range.from;
+  if (range.to) searchParams.to = range.to;
+  return briefingPageSchema.parse(await http.get("briefings", { searchParams }).json());
+}
+export async function loadBriefing(id: string): Promise<Briefing> {
+  return z.object({ briefing: BriefingSchema }).parse(await http.get(`briefings/${id}`).json()).briefing;
+}
+/** Articles and mail matching `q`; without `part` both. */
+export async function searchBriefings(q: string, part?: BriefingPart): Promise<BriefingHit[]> {
+  return z.object({ items: z.array(BriefingHitSchema) }).parse(await http.get("briefings/search", { searchParams: { q, ...(part ? { part } : {}), limit: "50" } }).json()).items;
+}
+/** Marks one part read or unread; without `part` both. */
+export async function markBriefing(id: string, part: BriefingPart | undefined, read: boolean, csrfToken: string): Promise<BriefingSummary> {
+  return z.object({ briefing: BriefingSummarySchema }).parse(await http.post(`briefings/${id}/read`, {
+    json: part ? { read, part } : { read }, headers: { "X-CSRF-Token": csrfToken },
+  }).json()).briefing;
+}
+
+const pushStateSchema = z.object({ publicKey: z.string(), device: PushDeviceSchema.nullable(), devices: z.number() });
+/** The server's VAPID public key and, for `endpoint`, what that device is subscribed to. */
+export async function loadPush(endpoint?: string) {
+  return pushStateSchema.parse(await http.get("push", { searchParams: endpoint ? { endpoint } : {} }).json());
+}
+/** Without `kinds` an existing device keeps its choice and a new one gets every kind. */
+export async function savePushSubscription(subscription: PushSubscriptionJSON, kinds: PushKinds | undefined, csrfToken: string): Promise<PushDevice> {
+  return z.object({ device: PushDeviceSchema }).parse(await http.put("push/subscription", {
+    json: { subscription, ...(kinds ? { kinds } : {}) }, headers: { "X-CSRF-Token": csrfToken },
+  }).json()).device;
+}
+export async function deletePushSubscription(endpoint: string, csrfToken: string): Promise<void> {
+  await http.delete("push/subscription", { json: { endpoint }, headers: { "X-CSRF-Token": csrfToken } });
+}
+export async function sendTestPush(endpoint: string, csrfToken: string) {
+  return z.object({ delivered: z.boolean(), status: z.number().nullable() }).parse(await http.post("push/test", {
+    json: { endpoint }, headers: { "X-CSRF-Token": csrfToken },
+  }).json());
+}
+
+/** The server's error code, when the response carries one. */
+export async function errorCode(error: unknown): Promise<string | null> {
+  if (!(error instanceof HTTPError)) return null;
+  const parsed = errorSchema.safeParse(await error.response.clone().json().catch(() => null));
+  return parsed.success ? parsed.data.error.code : null;
+}
+
+const CONFLICT_MESSAGE = "다른 곳에서 먼저 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.";
+const FORBIDDEN_MESSAGE = "권한이 없어요. 다시 로그인해 주세요.";
+const VALIDATION_MESSAGE = "입력값을 확인해 주세요.";
+/** Korean text for every server error code the owner UI can meet. */
+const CODE_MESSAGES: Readonly<Record<string, string>> = {
+  rate_limited: "요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
+  not_found: "항목을 찾을 수 없어요.",
+  version_conflict: CONFLICT_MESSAGE,
+  conflict: CONFLICT_MESSAGE,
+  idempotency_conflict: CONFLICT_MESSAGE,
+  forbidden: FORBIDDEN_MESSAGE,
+  csrf: FORBIDDEN_MESSAGE,
+  origin: FORBIDDEN_MESSAGE,
+  invalid_input: "형식에 맞지 않는 값이 있어요. 입력한 내용을 확인해 주세요.",
+  validation: VALIDATION_MESSAGE,
+  invalid_json: VALIDATION_MESSAGE,
+  invalid_query: VALIDATION_MESSAGE,
+  invalid_cursor: VALIDATION_MESSAGE,
+  invalid_relationship: VALIDATION_MESSAGE,
+  invalid_target: VALIDATION_MESSAGE,
+  invalid_status: VALIDATION_MESSAGE,
+  invalid_subscription: VALIDATION_MESSAGE,
+  record_incomplete: VALIDATION_MESSAGE,
+  title_too_long: "제목이 너무 길어요. 줄여서 다시 저장해 주세요.",
+  too_large: "내용이 너무 커요. 줄여서 다시 시도해 주세요.",
+  unsupported_media_type: VALIDATION_MESSAGE,
+  invalid_host: FORBIDDEN_MESSAGE,
+  narration_unsupported: "이 항목은 음성으로 만들 수 없어요.",
+  narration_unavailable: "음성 생성이 설정되어 있지 않아요.",
+  narration_attempts_exhausted: "음성 생성이 여러 번 실패했어요. 내용을 바꾸거나 다시 만들기로 시도해 주세요.",
+  narration_daily_limit: "오늘 만들 수 있는 음성 한도에 도달했어요. 내일 다시 시도해 주세요.",
+  narration_queue_full: "대기 중인 음성이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
+  narration_busy: "음성을 만드는 중이에요. 끝난 뒤 다시 시도해 주세요.",
+};
+
+export async function errorMessage(error: unknown): Promise<string> {
+  if (error instanceof HTTPError) {
+    const status = error.response.status;
+    if (status === 401) return "로그인이 필요하거나 세션이 만료됐어요. 소유자 토큰으로 다시 연결해 주세요.";
+    const parsed = errorSchema.safeParse(await error.response.clone().json().catch(() => null));
+    if (parsed.success) {
+      const mapped = CODE_MESSAGES[parsed.data.error.code];
+      if (mapped !== undefined) return mapped;
+      if (/[가-힣]/.test(parsed.data.error.message)) return parsed.data.error.message;
+    }
+    if (status === 409) return CONFLICT_MESSAGE;
+    if (status === 429) return CODE_MESSAGES.rate_limited ?? "";
+    return `요청을 처리하지 못했어요 (${status}).`;
+  }
+  if (error instanceof z.ZodError) return `입력값이나 서버 데이터의 형식이 맞지 않아요: ${error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join(", ")}`;
+  if (error instanceof Error) return "서버에 연결하지 못했어요. 네트워크 연결을 확인하고 다시 시도해 주세요.";
+  return "요청을 처리하지 못했어요. 다시 시도해 주세요.";
+}
+
+export { recordInputSchema };

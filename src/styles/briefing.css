@@ -1,0 +1,144 @@
+/* 전체·뉴스·메일 switch: a three-segment control at the top of the 브리핑 list; each segment carries its unread count. */
+.segmented {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px;
+  border-radius: 10px; background: var(--selected);
+}
+.segmented button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 13.5px; font-weight: 600;
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+}
+.segmented button:hover { color: var(--ink); }
+.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px #0000001a, 0 0 0 0.5px var(--line-strong); }
+.segment-count {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--accent); color: var(--on-ink); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.briefing-part-empty { margin-top: 24px; }
+
+/* 브리핑 list: one row per briefing under its day label (slot mark, slot and time, first headline, counts). */
+.briefing-list, .briefing-hits { display: grid; gap: 1px; padding: 4px 6px; }
+.briefing-row, .briefing-hit {
+  display: flex; gap: 12px; padding: 12px; border-radius: var(--r);
+  background: var(--surface); box-shadow: inset 0 0 0 100vmax transparent; transition: box-shadow 120ms var(--ease);
+}
+.briefing-hit { display: grid; gap: 3px; }
+.briefing-row:hover, .briefing-hit:hover { box-shadow: inset 0 0 0 100vmax var(--wash); }
+.briefing-row[aria-current="true"], .briefing-hit[aria-current="true"] { box-shadow: inset 0 0 0 100vmax var(--selected); }
+.briefing-mark {
+  display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--muted);
+}
+.briefing-mark.slot-morning { color: var(--ch-share); }
+.briefing-mark.slot-evening { color: var(--accent); }
+.briefing-row-main { flex: 1; display: grid; gap: 3px; min-width: 0; }
+.briefing-row-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.briefing-row-title { flex: 1; min-width: 0; color: var(--ink); font-size: 14.5px; font-weight: 600; letter-spacing: -0.1px; }
+.briefing-row.unread .briefing-row-title { font-weight: 700; }
+.briefing-row-time { flex-shrink: 0; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.briefing-row-headline, .briefing-hit-title, .briefing-hit-summary {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.briefing-row-headline { color: var(--text); font-size: 13.5px; line-height: 1.45; }
+.briefing-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.briefing-hit-meta { color: var(--faint); font-size: 12px; font-weight: 500; }
+.briefing-hit-title { color: var(--ink); font-size: 14.5px; font-weight: 600; line-height: 1.4; }
+.briefing-hit-summary { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.briefing-more { display: flex; justify-content: center; padding: 12px 16px 24px; }
+.pane-error { margin: 12px 16px 0; color: var(--danger); font-size: 13px; }
+
+/* The calendar chip: a native date input laid over the chip, so iOS opens its own picker. */
+.date-chip { position: relative; gap: 5px; cursor: pointer; }
+.date-chip input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; opacity: 0; cursor: pointer; }
+.date-chip:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Mail importance: a small tinted pill; 즉시 조치 is the only red. */
+.importance {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px;
+  background: var(--wash); color: var(--muted); font-size: 11.5px; font-weight: 650; white-space: nowrap;
+}
+.importance.urgent { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.importance.todo { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.importance.check { background: var(--selected); color: var(--ink); }
+
+/* One briefing: kicker, date title, section jump chips, then each section's cards. */
+.briefing-kicker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.briefing-kicker .briefing-mark { width: 26px; height: 26px; border-radius: 8px; }
+.briefing .reader-title { margin-top: 10px; }
+.briefing-jump { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
+.briefing-section { margin-top: 32px; scroll-margin-top: 16px; }
+/* Section head: one row, every child centered; the disclosure button covers chevron, icon (fixed 18px slot), label and count. */
+.briefing-section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 12px; }
+.briefing-section-head h3 { display: flex; min-width: 0; margin: 0; font: inherit; }
+.briefing-section-toggle {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; margin-left: -6px; padding: 0 10px 0 4px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: start;
+  transition: background-color 120ms var(--ease);
+}
+@media (hover: hover) { .briefing-section-toggle:hover { background: var(--wash); } }
+.briefing-chevron { flex: none; color: var(--faint); transition: transform 120ms var(--ease); }
+.briefing-section-toggle[aria-expanded="true"] .briefing-chevron { transform: rotate(90deg); }
+.briefing-section-icon { display: grid; place-items: center; flex: none; width: 18px; height: 18px; color: var(--muted); }
+.briefing-section-label { font-size: 17px; font-weight: 700; line-height: 1.3; letter-spacing: -0.2px; }
+.briefing-section-head .count { color: var(--faint); font-size: 14px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.briefing-section-note { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+.briefing-shortfall, .briefing-empty-section { margin-bottom: 10px; color: var(--faint); font-size: 13px; }
+.briefing-cards { display: grid; gap: 10px; }
+.briefing-card {
+  display: grid; gap: 6px; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface); transition: border-color 120ms var(--ease), background-color 120ms var(--ease);
+}
+@media (hover: hover) { a.briefing-card:hover { border-color: var(--line-strong); background: var(--raised); } }
+.focused > .briefing-card { background: var(--selected); border-color: var(--line-strong); }
+.briefing-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.briefing-num { color: var(--faint); font-family: var(--mono); font-size: 11.5px; }
+.briefing-card-title { color: var(--ink); font-size: 16px; line-height: 1.45; font-weight: 650; letter-spacing: -0.2px; }
+.briefing-card-summary { color: var(--text); font-size: 14.5px; line-height: 1.65; }
+.briefing-card-foot { display: inline-flex; align-items: center; gap: 4px; color: var(--faint); font-size: 12px; overflow-wrap: anywhere; }
+.mail-from { color: var(--ink); font-weight: 600; }
+.mail-address { color: var(--faint); font-weight: 500; overflow-wrap: anywhere; }
+.mail-action { padding: 8px 10px; border-radius: var(--r); background: var(--raised); color: var(--ink); font-size: 13.5px; line-height: 1.5; }
+
+/* 알림 설정: rows like 더보기 with a switch at the end. */
+.setting-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 12px 10px 14px; color: var(--ink); font-size: 15px; font-weight: 500; }
+.setting-note { color: var(--faint); font-size: 12px; font-weight: 500; line-height: 1.4; }
+.setting-row .btn { flex-shrink: 0; }
+.switch {
+  position: relative; flex-shrink: 0; width: 46px; height: 28px; padding: 0; border: 0; border-radius: 999px;
+  background: var(--line-strong); box-shadow: inset 0 0 0 1px var(--muted); transition: background-color 160ms var(--ease);
+}
+.switch[aria-checked="true"] { background: var(--ink); box-shadow: none; }
+@media (pointer: coarse) { .switch::after { content: ""; position: absolute; inset: -8px -4px; } }
+.switch-thumb {
+  position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 999px;
+  background: var(--surface); box-shadow: 0 1px 3px #00000033; transition: transform 160ms var(--ease);
+}
+.switch[aria-checked="true"] .switch-thumb { transform: translateX(18px); }
+.switch:disabled { opacity: .45; cursor: default; }
+.settings-notice {
+  margin: 0 16px 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--raised); color: var(--text); font-size: 13.5px; line-height: 1.55;
+}
+.settings-steps {
+  display: grid; gap: 8px; padding: 14px 16px 14px 34px; border: 1px solid var(--line); border-radius: var(--r-lg);
+  list-style: decimal; color: var(--text); font-size: 14px; line-height: 1.55;
+}
+.appbar-compose { margin-left: auto; color: var(--ink); }
+/* A briefing has one command (읽음 표시); it scrolls away instead of pinning a bar over the cards. */
+.briefing .reader-actions { position: static; padding-bottom: 0; border-bottom: 0; }
+
+@media (max-width: 767px) {
+  .segmented button { min-height: 44px; font-size: 14px; }
+  /* The native date input covers the chip's 44px touch strip too, so a tap anywhere on it opens the picker. */
+  .date-chip input { inset: -6px 0; height: auto; }
+  .briefing-list, .briefing-hits { padding: 0; gap: 0; }
+  .briefing-row, .briefing-hit { padding: 14px 16px; border-radius: 0; border-bottom: 1px solid var(--line); }
+  .briefing-card { padding: 14px 14px 12px; }
+  .briefing-card-title { font-size: 15.5px; }
+  .briefing-section-toggle { min-height: 44px; }
+  .briefing-section-note { flex-basis: 100%; margin-left: 0; }
+  .briefing-section { scroll-margin-top: calc(var(--appbar) + var(--safe-top) + 12px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .briefing-row, .briefing-hit, .briefing-card, .switch, .switch-thumb, .segmented button, .briefing-section-toggle, .briefing-chevron { transition: none; }
+}

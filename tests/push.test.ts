@@ -1,0 +1,220 @@
+import { afterEach, expect, test } from "bun:test";
+import { createDecipheriv, createECDH, createHmac, randomBytes } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { z } from "zod";
+import type { PushPayload } from "../shared/contracts";
+import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
+
+type Sent = { endpoint: string; payload: PushPayload };
+let sent: Sent[] = [];
+let status = 201;
+const stub = { push: { deliver: async (target: { endpoint: string }, message: PushPayload) => { sent.push({ endpoint: target.endpoint, payload: message }); return status; } } };
+let f = fixture(10000, Date.now, stub);
+afterEach(() => { f.close(); sent = []; status = 201; f = fixture(10000, Date.now, stub); });
+
+function device(endpoint = `https://fcm.googleapis.com/fcm/send/${crypto.randomUUID()}`) {
+  const ecdh = createECDH("prime256v1");
+  ecdh.generateKeys();
+  const auth = randomBytes(16);
+  return { ecdh, auth, subscription: { endpoint, expirationTime: null,
+    keys: { p256dh: ecdh.getPublicKey().toString("base64url"), auth: auth.toString("base64url") } } };
+}
+const deviceView = z.object({ device: z.object({ kinds: z.object({ briefing: z.boolean(), review: z.boolean(), reply: z.boolean() }) }).nullable() });
+async function subscribe(body: Record<string, unknown>, headers?: Record<string, string>) {
+  return f.call("/api/v1/push/subscription", "PUT", body, headers ?? await f.login());
+}
+const settle = () => f.app.push.idle();
+const morning = (sections: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({ date: "2026-10-01", slot: "morning", sections, ...extra });
+const article = (key: string, title: string) => ({ key, title, source: "연합뉴스", summary: "요약", url: `https://news.example.com/${key}` });
+const upload = (body: unknown) => f.call("/api/v1/briefings", "POST", body, bearer("omo"));
+
+test("The owner gets the public VAPID key; the key pair is stored owner-only and the private key never leaves", async () => {
+  const response = await f.call("/api/v1/push", "GET", undefined, await f.login());
+  expect(response.status).toBe(200);
+  const text = await response.text();
+  const body = z.object({ publicKey: z.string(), device: z.null(), devices: z.number() }).parse(JSON.parse(text));
+  expect(Buffer.from(body.publicKey, "base64url")).toHaveLength(65);
+  const path = join(f.dir, "vapid.json");
+  expect(statSync(path).mode & 0o777).toBe(0o600);
+  const stored = z.object({ publicKey: z.string(), privateKey: z.string() }).parse(JSON.parse(readFileSync(path, "utf8")));
+  expect(stored.publicKey).toBe(body.publicKey);
+  expect(text).not.toContain(stored.privateKey);
+  // And: the key survives a restart, so subscribed devices keep working.
+  f.restart();
+  const again = z.object({ publicKey: z.string() }).parse(await (await f.call("/api/v1/push", "GET", undefined, await f.login())).json());
+  expect(again.publicKey).toBe(body.publicKey);
+  // And: agents and anonymous callers cannot use the push routes.
+  expect((await f.call("/api/v1/push", "GET", undefined, bearer("omo"))).status).toBe(403);
+  expect((await f.call("/api/v1/push", "GET")).status).toBe(401);
+});
+
+test("A device subscribes with every kind on, changes its kinds, and unsubscribes", async () => {
+  const { subscription } = device();
+  const owner = await f.login();
+  expect((await subscribe({ subscription }, owner)).status).toBe(200);
+  const query = `/api/v1/push?endpoint=${encodeURIComponent(subscription.endpoint)}`;
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device?.kinds).toEqual({ briefing: true, review: true, reply: true });
+  // When: the device turns briefings off, then subscribes again without kinds (a reload).
+  await subscribe({ subscription, kinds: { briefing: false, review: true, reply: true } }, owner);
+  await subscribe({ subscription }, owner);
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device?.kinds).toEqual({ briefing: false, review: true, reply: true });
+  f.restart();
+  const fresh = await f.login();
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, fresh)).json()).device?.kinds.briefing).toBe(false);
+  // Then: deleting it leaves nothing to send to.
+  expect((await f.call("/api/v1/push/subscription", "DELETE", { endpoint: subscription.endpoint }, fresh)).status).toBe(204);
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, fresh)).json()).device).toBeNull();
+});
+
+test("Subscriptions need the owner, CSRF, a push-service endpoint and valid keys", async () => {
+  const owner = await f.login();
+  const { "X-CSRF-Token": _csrf, ...noCsrf } = owner;
+  expect((await subscribe({ subscription: device().subscription }, noCsrf)).status).toBe(403);
+  expect((await subscribe({ subscription: device().subscription }, bearer("omo"))).status).toBe(403);
+  for (const endpoint of ["http://fcm.googleapis.com/fcm/send/x", "https://127.0.0.1/push", "https://evil.example.com/push"]) {
+    const response = await subscribe({ subscription: device(endpoint).subscription }, owner);
+    expect(response.status).toBe(400);
+    expect(z.object({ error: z.object({ code: z.string() }) }).parse(await response.json()).error.code).toBe("invalid_subscription");
+  }
+  const bad = device().subscription;
+  expect((await subscribe({ subscription: { ...bad, keys: { p256dh: "short", auth: bad.keys.auth } } }, owner)).status).toBe(400);
+});
+
+test("The test button sends one confirmation to that device only", async () => {
+  const owner = await f.login();
+  const one = device().subscription;
+  const two = device().subscription;
+  await subscribe({ subscription: one }, owner);
+  await subscribe({ subscription: two }, owner);
+  const response = await f.call("/api/v1/push/test", "POST", { endpoint: one.endpoint }, owner);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ delivered: true, status: 201 });
+  expect(sent).toEqual([{ endpoint: one.endpoint, payload: { kind: "test", title: "Dashboard notifications", body: "This device can receive notifications.", url: "/#/settings", tag: "test" } }]);
+  expect((await f.call("/api/v1/push/test", "POST", { endpoint: "https://fcm.googleapis.com/fcm/send/unknown" }, owner)).status).toBe(404);
+});
+
+test("A new briefing notifies devices that want briefings, with its first headlines and a link to it", async () => {
+  const owner = await f.login();
+  const wants = device().subscription;
+  const quiet = device().subscription;
+  await subscribe({ subscription: wants }, owner);
+  await subscribe({ subscription: quiet, kinds: { briefing: false, review: true, reply: true } }, owner);
+  // When: the morning briefing arrives with news and mail.
+  const response = await upload(morning({
+    domestic: { items: [article("a", "국내 첫 소식"), article("b", "국내 둘째")] }, international: { items: [article("c", "해외 첫 소식")] },
+    aiDevelopment: { items: [article("d", "AI 첫 소식")] },
+    mail: { items: [{ key: "m", importance: "urgent", from: "X", subject: "계정 확인", url: "https://mail.example.com/1" }, { key: "n", importance: "check", from: "KT", subject: "접속 알림" }] },
+  }));
+  const id = z.object({ briefing: z.object({ id: z.string() }), notified: z.boolean() }).parse(await response.json());
+  await settle();
+  // Then: one push to the device that wants briefings.
+  expect(id.notified).toBe(true);
+  expect(sent).toEqual([{ endpoint: wants.endpoint, payload: { kind: "briefing", title: "아침 브리핑 왔어요",
+    body: "메일 2건 · 즉시 조치 1건\n· 국내 첫 소식\n· 해외 첫 소식\n· AI 첫 소식", url: `/#/briefing/${id.briefing.id}`, tag: `briefing-${id.briefing.id}` } }]);
+  // When: the same briefing is sent again, a filled section is corrected, and a quiet backfill arrives.
+  sent = [];
+  await upload(morning({ domestic: { items: [article("a", "국내 첫 소식"), article("b", "국내 둘째")] } }));
+  await upload(morning({ domestic: { items: [article("a", "국내 첫 소식 (수정)")] } }));
+  await upload({ date: "2026-09-29", slot: "evening", notify: false, sections: { domestic: { items: [article("z", "지난 소식")] } } });
+  await settle();
+  expect(sent).toEqual([]);
+  // When: a section that was missing arrives later, the device hears about the addition.
+  const evening = z.object({ briefing: z.object({ id: z.string() }) }).parse(await (await upload({ date: "2026-10-01", slot: "evening",
+    sections: { domestic: { items: [article("e", "저녁 소식")] } } })).json()).briefing.id;
+  await settle();
+  // Both parts open 전체 (above); news alone opens 뉴스; mail alone opens 메일.
+  expect(sent.map(item => item.payload.url)).toEqual([`/#/briefing/${evening}?part=news`]);
+  sent = [];
+  await upload({ date: "2026-10-01", slot: "evening", sections: { mail: { items: [{ key: "q", importance: "todo", from: "은행", subject: "서류 제출" }] } } });
+  await settle();
+  expect(sent.map(item => [item.payload.title, item.payload.body, item.payload.url])).toEqual([["저녁 브리핑에 메일이 추가됐어요", "메일 1건", `/#/briefing/${evening}?part=mail`]]);
+});
+
+test("An agent asking for review or replying to the owner notifies devices by kind", async () => {
+  const owner = await f.login();
+  const all = device().subscription;
+  const replies = device().subscription;
+  await subscribe({ subscription: all }, owner);
+  await subscribe({ subscription: replies, kinds: { briefing: true, review: false, reply: true } }, owner);
+  const created = await f.call("/api/v1/records", "POST", payload(agentRecord({ kind: "task", title: "푸시 작업", status: "active" })), bearer("omo"));
+  const task = recordResult.parse(await created.json()).record;
+  // When: OmO reports and moves its task to 확인 필요.
+  await f.call("/api/v1/comments", "POST", { requestId: crypto.randomUUID(), recordId: task.id, body: "1차 끝, 확인 부탁\n세부 내용", status: "review" }, bearer("omo"));
+  await settle();
+  // Then: only the device that wants review hears, with the report's first line.
+  expect(sent).toEqual([{ endpoint: all.endpoint, payload: { kind: "review", title: "Needs review · 푸시 작업", body: "omo: 1차 끝, 확인 부탁",
+    url: `/#/work/${task.id}`, tag: `task-${task.id}` } }]);
+  // When: the owner comments and OmO answers it; and OmO posts a plain report.
+  sent = [];
+  const comment = z.object({ comment: z.object({ id: z.string() }) }).parse(await (await f.call("/api/v1/comments", "POST",
+    { requestId: crypto.randomUUID(), recordId: task.id, body: "색 바꿔줘" }, owner)).json()).comment;
+  await settle();
+  expect(sent).toEqual([]);
+  await f.call("/api/v1/comments", "POST", { requestId: crypto.randomUUID(), replyTo: comment.id, body: "바꿨어요", done: true }, bearer("omo"));
+  await f.call("/api/v1/comments", "POST", { requestId: crypto.randomUUID(), recordId: task.id, body: "참고로 남김" }, bearer("omo"));
+  await settle();
+  // Then: both devices hear the reply once; the plain report notifies nobody.
+  expect(sent.map(item => [item.endpoint, item.payload.kind, item.payload.title, item.payload.body]).sort()).toEqual([
+    [all.endpoint, "reply", "omo replied · 푸시 작업", "바꿨어요"], [replies.endpoint, "reply", "omo replied · 푸시 작업", "바꿨어요"],
+  ].sort());
+});
+
+test("A push service answering 404 or 410 removes that device", async () => {
+  const owner = await f.login();
+  const gone = device().subscription;
+  await subscribe({ subscription: gone }, owner);
+  status = 410;
+  const response = await f.call("/api/v1/push/test", "POST", { endpoint: gone.endpoint }, owner);
+  expect(await response.json()).toEqual({ delivered: false, status: 410 });
+  const query = `/api/v1/push?endpoint=${encodeURIComponent(gone.endpoint)}`;
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device).toBeNull();
+});
+
+/** RFC 8291 aes128gcm decryption with the device's private key, so the test reads exactly what the push service delivers. */
+function decrypt(body: Uint8Array, ecdh: ReturnType<typeof createECDH>, auth: Buffer) {
+  const buffer = Buffer.from(body);
+  const salt = buffer.subarray(0, 16);
+  const idLength = buffer.readUInt8(20);
+  const serverKey = buffer.subarray(21, 21 + idLength);
+  const ciphertext = buffer.subarray(21 + idLength);
+  const hmac = (key: Buffer, data: Buffer) => createHmac("sha256", key).update(data).digest();
+  const shared = ecdh.computeSecret(serverKey);
+  const ikm = hmac(hmac(auth, shared), Buffer.concat([Buffer.from("WebPush: info\0"), ecdh.getPublicKey(), serverKey, Buffer.from([1])]));
+  const prk = hmac(salt, ikm);
+  const cek = hmac(prk, Buffer.from("Content-Encoding: aes128gcm\0\x01")).subarray(0, 16);
+  const nonce = hmac(prk, Buffer.from("Content-Encoding: nonce\0\x01")).subarray(0, 12);
+  const decipher = createDecipheriv("aes-128-gcm", cek, nonce);
+  decipher.setAuthTag(ciphertext.subarray(ciphertext.length - 16));
+  const plain = Buffer.concat([decipher.update(ciphertext.subarray(0, ciphertext.length - 16)), decipher.final()]);
+  return plain.subarray(0, plain.lastIndexOf(2)).toString("utf8");
+}
+
+test("The real sender encrypts the payload for the device and signs it with the VAPID key", async () => {
+  // Given: the default sender with only the network replaced, and a device whose private key the test holds.
+  const requests: Request[] = [];
+  const real = fixture(10000, Date.now, { push: { fetch: async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push(new Request(input, init));
+    return new Response(null, { status: 201 });
+  } } });
+  try {
+    const owner = await real.login();
+    const { ecdh, auth, subscription } = device();
+    await real.call("/api/v1/push/subscription", "PUT", { subscription }, owner);
+    const key = z.object({ publicKey: z.string() }).parse(await (await real.call("/api/v1/push", "GET", undefined, owner)).json()).publicKey;
+    // When: the owner sends a test notification.
+    expect(await (await real.call("/api/v1/push/test", "POST", { endpoint: subscription.endpoint }, owner)).json()).toEqual({ delivered: true, status: 201 });
+    // Then: one aes128gcm POST to the endpoint, signed for our key, that decrypts to the payload.
+    expect(requests).toHaveLength(1);
+    const request = requests[0];
+    if (!request) throw new Error("no request");
+    expect(request.url).toBe(subscription.endpoint);
+    expect(request.method).toBe("POST");
+    expect(request.headers.get("content-encoding")).toBe("aes128gcm");
+    expect(request.headers.get("ttl")).toBe("43200");
+    expect(request.headers.get("authorization")).toStartWith("vapid t=");
+    expect(request.headers.get("authorization")).toContain(`k=${key}`);
+    const message = JSON.parse(decrypt(new Uint8Array(await request.arrayBuffer()), ecdh, auth));
+    expect(message).toMatchObject({ kind: "test", url: "/#/settings" });
+  } finally { real.close(); }
+});

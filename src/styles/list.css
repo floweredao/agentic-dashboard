@@ -1,0 +1,62 @@
+.record-groups { padding-bottom: 24px; }
+.pane-note { color: var(--muted); font-size: 12px; font-weight: 500; }
+.record-list { display: grid; gap: 1px; padding: 4px 6px; }
+.day-label {
+  position: sticky; top: 0; z-index: 2; padding: 12px 18px 6px;
+  background: var(--surface);
+  color: var(--faint); font-size: 11.5px; font-weight: 600; letter-spacing: 0.2px;
+}
+.row {
+  display: block; padding: 11px 12px; border-radius: var(--r);
+  /* Opaque, so the swipe layer shows only where the row moved; hover and selection lay their wash over it as an inset shadow. */
+  background: var(--surface); box-shadow: inset 0 0 0 100vmax transparent;
+  transition: box-shadow 120ms var(--ease);
+  touch-action: pan-y;
+}
+.row:hover { box-shadow: inset 0 0 0 100vmax var(--wash); }
+.row[aria-current="true"] { box-shadow: inset 0 0 0 100vmax var(--selected); }
+/* Inset ring: neighbouring opaque rows and the viewport edge would hide an outer one. */
+.row:focus-visible { outline-offset: -2px; }
+/* The wrapper clips only while a gesture moves the row, so the focus ring is never cut at rest. */
+.swipe { position: relative; isolation: isolate; border-radius: var(--r); }
+.swipe[data-phase] { overflow: hidden; }
+.swipe[data-phase="drag"] .row { will-change: transform; }
+.swipe[data-phase="settle"] .row { transition: transform 180ms var(--ease), box-shadow 120ms var(--ease); }
+.swipe-actions {
+  position: absolute; inset: 0; z-index: -1; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 0 16px; color: var(--on-ink); font-size: 13.5px; font-weight: 600; visibility: hidden; pointer-events: none;
+}
+.swipe[data-phase] .swipe-actions { visibility: visible; }
+.swipe[data-swipe="archive"] .swipe-actions { background: color-mix(in srgb, var(--accent) 75%, var(--surface)); }
+.swipe[data-swipe="delete"] .swipe-actions { background: color-mix(in srgb, var(--danger) 75%, var(--surface)); }
+.swipe[data-armed][data-swipe="archive"] .swipe-actions { background: var(--accent); }
+.swipe[data-armed][data-swipe="delete"] .swipe-actions { background: var(--danger); }
+.swipe-action { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.swipe-action svg { transition: transform 120ms var(--ease); }
+.swipe[data-armed] .swipe-action svg { transform: scale(1.1); }
+.row-main { display: grid; gap: 2px; min-width: 0; }
+.row-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.row-title {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--ink); font-size: 14.5px; font-weight: 500; letter-spacing: -0.1px;
+}
+.row.unread .row-title { font-weight: 650; }
+.unread-dot { display: inline-block; width: 6px; height: 6px; margin: 0 7px 2px 0; border-radius: 999px; background: var(--accent); vertical-align: middle; }
+.row time { flex-shrink: 0; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.row-summary {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--muted); font-size: 13px; line-height: 1.5;
+}
+.row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 4px; color: var(--faint); font-size: 12px; }
+.row-kind { color: var(--muted); }
+.row-host { overflow-wrap: anywhere; }
+.row-star { color: var(--ch-share); fill: currentColor; }
+@media (max-width: 767px) {
+  .record-list { padding: 0; gap: 0; }
+  .swipe { border-radius: 0; }
+  .row { padding: 14px 16px; border-radius: 0; border-bottom: 1px solid var(--line); }
+  .day-label { top: calc(var(--appbar) + var(--safe-top)); padding: 10px 16px 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .swipe[data-phase="settle"] .row, .swipe-action svg { transition: none; }
+}

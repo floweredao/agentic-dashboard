@@ -1,0 +1,317 @@
+.compose-form,
+.editor-form {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.compose-form fieldset,
+.editor-section {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.compose-form fieldset {
+  display: grid;
+  gap: 16px;
+}
+
+.compose-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.compose-kinds .chip[aria-checked="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.compose-content textarea {
+  min-height: 156px;
+}
+
+/* Textareas grow with their content up to a cap, then scroll; no drag handle is needed. */
+.compose-form textarea,
+.editor-form textarea {
+  min-height: calc(var(--rows, 2) * 1.6em + 18px);
+  max-height: 40vh;
+  overflow-y: auto;
+  field-sizing: content;
+}
+
+.editor-form textarea[rows="2"] { --rows: 2; }
+.editor-form textarea[rows="3"] { --rows: 3; }
+.editor-form textarea[rows="5"] { --rows: 5; }
+.editor-form textarea[rows="10"] { --rows: 10; max-height: 60vh; }
+.compose-content textarea { --rows: 6; }
+.form-grid > .check-field { align-self: end; }
+
+@media (max-width: 639px) {
+  .editor-form textarea[rows="10"] { --rows: 7; }
+}
+
+.compose-preview {
+  margin-top: -8px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optional {
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.editor-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.editor-section:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.check-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.check-field input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--ink);
+  flex: 0 0 auto;
+}
+
+.check-field span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (pointer: coarse) {
+  .check-field { min-height: 44px; align-items: center; }
+  .check-field input { width: 20px; height: 20px; margin: 0; }
+}
+
+.form-note {
+  color: var(--faint);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+/* Save stays in reach while a long form scrolls: the bar covers the body's bottom padding too. */
+.editor-form .dialog-actions,
+.compose-form .dialog-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--dialog-pad-bottom));
+  z-index: 1;
+  margin-bottom: calc(-1 * var(--dialog-pad-bottom));
+  padding: 12px 0 var(--dialog-pad-bottom);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.dialog-actions .form-error {
+  flex-basis: 100%;
+}
+
+@media (min-width: 640px) {
+  .compose-kinds {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .editor-form .dialog-actions > .btn,
+  .compose-form .dialog-actions > .btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* Link blocks and tag chips: legends read like field labels, rows wrap and never overflow at 320px. */
+.link-fields,
+.tag-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.field-legend { padding: 0; }
+
+.link-blocks {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.link-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.link-block-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.link-block-field { display: block; min-width: 0; }
+.link-block-error { grid-column: 1 / -1; }
+.link-block-remove { align-self: start; }
+
+.field-add {
+  justify-self: start;
+  padding: 0 8px;
+  margin-left: -8px;
+  color: var(--muted);
+}
+
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--raised);
+}
+
+.tag-editor:focus-within { outline: 2px solid var(--accent); outline-offset: 0; }
+
+.tag-chips { display: contents; }
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 2px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.tag-chip span { min-width: 0; overflow-wrap: anywhere; }
+
+.tag-chip button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tag-chip button:hover { background: var(--wash); color: var(--ink); }
+
+.tag-editor .tag-input {
+  flex: 1 1 120px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+}
+
+.tag-editor .tag-input:focus-visible { outline: none; }
+
+@media (max-width: 767px) {
+  .tag-chip { min-height: 44px; }
+  .tag-chip button { width: 44px; height: 44px; }
+  .editor-form .field input, .editor-form .field select, .editor-form .input { min-height: 44px; }
+  .tag-editor .tag-input { min-height: 44px; }
+  .link-block-remove { width: 44px; min-height: 44px; }
+}
+
+/* 에이전트와 공유: each copy field keeps its 복사 button on the same row; the long link scrolls inside its field. */
+.share-dialog {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.share-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.share-loading {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.share-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.share-field .btn { min-height: 36px; }
+.field .share-code { font-family: var(--mono); }
+.share-dialog .dialog-actions { padding-top: 4px; }
+.share-stop { margin-right: auto; }
+
+@media (max-width: 767px) {
+  .share-field input,
+  .share-field .btn { min-height: 44px; }
+}
+
+@media (max-width: 639px) {
+  .share-dialog .dialog-actions > .btn { flex: 1 1 auto; }
+}
