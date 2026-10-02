@@ -182,7 +182,7 @@ export async function pageText(html: string): Promise<string> {
     ["title", page.title, 300],
     ...["og:title", "twitter:title", "og:description", "twitter:description", "description"]
       .map(key => [key, page.metadata.get(key) ?? "", 600] as const),
-    ["본문", page.article || page.main || page.body, 4000],
+    ["body", page.article || page.main || page.body, 4000],
   ];
   const seen = new Set<string>();
   const lines: string[] = [];

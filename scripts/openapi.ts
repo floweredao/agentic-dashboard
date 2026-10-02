@@ -5,7 +5,7 @@ import { AGENT_RECORD_GUIDE } from "../shared/contracts";
 class PublicEndpointError extends Error {
   override readonly name = "PublicEndpointError";
   constructor() {
-    super("GPT Actions에는 공개 DNS 이름과 HTTPS 443 주소가 필요합니다.");
+    super("GPT Actions need a public DNS name served over HTTPS on port 443.");
   }
 }
 
@@ -134,7 +134,7 @@ if (import.meta.main) {
     });
     console.log(JSON.stringify(buildOpenApi(values.url ?? process.env["PUBLIC_API_BASE_URL"] ?? ""), null, 2));
   } catch (error) {
-    console.error(error instanceof Error ? error.message : "스키마 생성 실패");
+    console.error(error instanceof Error ? error.message : "Schema generation failed");
     process.exitCode = 1;
   }
 }

@@ -113,7 +113,7 @@ export function createApp(options: AppOptions = {}) {
     return trusted !== undefined && trusted.login !== "" && !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
       host === privateUrl.host && c.req.header(trusted.header) === trusted.login;
   };
-  /** An agent's timeline entry: a reply to an owner comment notifies `reply`, moving its item to 확인 필요 notifies `review`. */
+  /** An agent's timeline entry: a reply to an owner comment notifies `reply`, moving its item to review notifies `review`. */
   const notifyEntry = (comment: Comment, updated: DashboardRecord | null) => {
     const record = updated ?? store.get(comment.recordId);
     const parent = comment.replyTo ? z.object({ source: z.string() }).safeParse(store.db.query("SELECT source FROM comments WHERE id=?").get(comment.replyTo)) : null;

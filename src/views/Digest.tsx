@@ -10,7 +10,7 @@ import { Menu } from "../components/Menu";
 import { BackButton, Chip, Empty } from "../components/primitives";
 import { SearchField, useSearch } from "../components/SearchField";
 import { formatDateTime, strings } from "../i18n";
-import { addDays, digestHasPart, digestPartItems, partReadAt, seoulDate } from "../model";
+import { addDays, digestHasPart, digestPartItems, partReadAt, localDate } from "../model";
 import { formatRoute } from "../router";
 import type { Params } from "../router";
 import { useDashboard } from "../state";
@@ -63,14 +63,14 @@ const slotName = (slot: string) => slot === "morning" ? text().morning : slot ==
 export const slotTitle = (slot: string) => text().digestOf(slotName(slot));
 export const clockOf = (iso: string) => formatDateTime(iso, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 export const dayTitle = (date: string) => calendarDay(date, { month: "long", day: "numeric", weekday: "long" });
-export function dayHeading(date: string, today = seoulDate()) {
+export function dayHeading(date: string, today = localDate()) {
   const relative = date === today ? text().today : date === addDays(today, -1) ? text().yesterday : "";
   return relative ? `${relative} · ${dayTitle(date)}` : dayTitle(date);
 }
 export function publishedLabel(item: DigestArticle, digestDate: string) {
   if (item.publishedAt) {
     const at = new Date(item.publishedAt);
-    return seoulDate(at) === digestDate ? formatDateTime(at, { hour: "numeric", minute: "2-digit" }) : formatDateTime(at, { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+    return localDate(at) === digestDate ? formatDateTime(at, { hour: "numeric", minute: "2-digit" }) : formatDateTime(at, { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
   }
   return item.publishedDate ? calendarDay(item.publishedDate, { month: "long", day: "numeric" }) : "";
 }
@@ -335,7 +335,7 @@ export function DigestPane() {
   const part = digestPart(route.params);
   const date = route.params.date ?? "";
   const q = route.params.q ?? "";
-  const today = seoulDate();
+  const today = localDate();
   const [day, setDay] = useState<{ date: string; items: DigestSummary[] } | null>(null);
   const [older, setOlder] = useState<{ to: string; items: DigestSummary[] }>({ to: "", items: [] });
   const [hits, setHits] = useState<{ q: string; part: DigestFilter; items: DigestHit[] } | null>(null);

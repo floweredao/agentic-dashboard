@@ -74,7 +74,7 @@ export const RecordInputSchema = z.object(inputShape).strict().superRefine((reco
 export type RecordInput = z.infer<typeof RecordInputSchema>;
 
 /**
- * The one record format every agent (codex, omo, chatgpt) must follow, whatever its own style. The server checks it on
+ * The one record format every registered agent must follow, whatever its own style. The server checks it on
  * create and answers 400 record_incomplete listing every item, so each agent converges on the same shape.
  */
 export const AGENT_TAGS = { min: 1, max: 5, maxWidth: 20 } as const;
@@ -89,7 +89,7 @@ export const AGENT_RECORD_RULES = {
 } as const satisfies Record<RecordKind, { body: boolean; links: boolean; fields: readonly string[]; required: readonly string[] }>;
 
 export const AGENT_RECORD_GUIDE = "Every agent writes one shared format whatever its own style; other shapes are refused with 400 record_incomplete listing each item to fix. " +
-  "research and work-report: body = the full content, fields.summary = 1-3 lines, fields.conclusion = one line, fields.nextActions = one action per line starting with \"- \" (\"- 없음\" when there is none). " +
+  "research and work-report: body = the full content, fields.summary = 1-3 lines, fields.conclusion = one line, fields.nextActions = one action per line starting with \"- \" (\"- none\" when there is none). " +
   "note: body required, fields.summary optional. social: at least one link and fields.summary. task: fields.today and fields.evidenceIds (related record ids) only. project: only fields.nextAction. " +
   "A research, work-report, note or social record that continues an earlier one sets fields.previousId to that earlier record's id. " +
   "tags: 1-5 topic words from the content, without #, spaces or commas. links: every source URL with a label naming the site or document. " +
@@ -128,7 +128,7 @@ export function agentRecordIssues(record: RecordInput): string[] {
   }
   const nextActions = text("nextActions");
   if (nextActions && !nextActions.split("\n").filter(line => line.trim()).every(line => line.startsWith(AGENT_TEXT.listPrefix))) {
-    issues.push(`fields.nextActions: one action per line, each starting with "${AGENT_TEXT.listPrefix}" ("- 없음" when there is none)`);
+    issues.push(`fields.nextActions: one action per line, each starting with "${AGENT_TEXT.listPrefix}" ("- none" when there is none)`);
   }
   return issues;
 }
@@ -184,7 +184,7 @@ export const CommentInputSchema = z.object({
   .refine(input => input.body !== "" || input.status !== undefined, { message: "Write a body or set a status", path: ["body"] });
 export type CommentInput = z.infer<typeof CommentInputSchema>;
 
-/** Record kinds that can be read aloud (듣기): the material kinds. */
+/** Record kinds that can be read aloud (Listen): the material kinds. */
 export const NARRATABLE_KINDS = ["research", "work-report", "note", "social"] as const;
 /**
  * Cost guards for narration: script length, TTS chunk length, model input, queued jobs, generations started per Seoul day,

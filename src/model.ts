@@ -292,7 +292,6 @@ export function localDate(date = new Date()): string {
   return zonedDate(date, config.timeZone);
 }
 /** @deprecated Use localDate; kept until every view has moved to it. */
-export const seoulDate = localDate;
 /** Calendar arithmetic on a YYYY-MM-DD date; the zone does not matter. */
 export function addDays(date: string, days: number) {
   const day = new Date(`${date}T12:00:00Z`);

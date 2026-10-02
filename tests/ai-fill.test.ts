@@ -200,6 +200,6 @@ test("page text lists title, metadata and visible body text for the model", asyn
   // Then: every candidate is present, scripts are not.
   expect(text).toContain("title: ChatGPT - CLI Local Business Search");
   expect(text).toContain("og:title: Check out this chat");
-  expect(text).toContain("본문: Find shops from a terminal.");
+  expect(text).toContain("body: Find shops from a terminal.");
   expect(text).not.toContain("secret");
 });
