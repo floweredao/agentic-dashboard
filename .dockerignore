@@ -1,0 +1,14 @@
+.git
+node_modules
+dist
+data
+release
+docs
+.env
+.env.*
+.omo
+.pi
+.senpi
+*.sqlite
+*.sqlite-*
+*.log

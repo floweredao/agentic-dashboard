@@ -1,0 +1,6 @@
+# What gcloud uploads for a source deploy (scripts/deploy-demo.sh): the same as .gitignore, minus git and the screenshots.
+.gcloudignore
+.git
+.gitignore
+docs/images
+#!include:.gitignore
