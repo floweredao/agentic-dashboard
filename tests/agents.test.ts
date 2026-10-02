@@ -40,7 +40,7 @@ test("config needs no sign-in and turned-off features answer 404", async () => {
   const off = fixture(10000, Date.now, { pushEnabled: false, digestEnabled: false, appName: "Team Desk" });
   try {
     expect(await (await off.call("/api/v1/config")).json()).toEqual({ appName: "Team Desk", timeZone: "Asia/Seoul", locale: "en",
-      features: { narration: false, push: false, digest: false, capture: false } });
+      features: { narration: false, push: false, digest: false, trustedLogin: false } });
     expect((await off.call("/api/v1/push", "GET", undefined, await off.login())).status).toBe(404);
     expect((await off.call("/api/v1/briefings", "GET", undefined, bearer("omo"))).status).toBe(404);
   } finally { off.close(); }

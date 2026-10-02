@@ -232,7 +232,7 @@ export function createApp(options: AppOptions = {}) {
       /** What the UI needs before sign-in: name, calendar zone, default language and which optional features are on. */
       app.get("/api/v1/config", async c => c.json({
         appName: options.appName ?? "Agentic Dashboard", timeZone, locale: options.locale ?? "en",
-        features: { narration: await narration.available(), push: pushOn, digest: digestOn, capture: options.trustedIdentity !== undefined },
+        features: { narration: await narration.available(), push: pushOn, digest: digestOn, trustedLogin: options.trustedIdentity !== undefined },
       }));
       app.get("/api/v1/agents", c => {
         if (auth.authenticate(c.req.raw, false).source !== "manual") throw new ApiError(403, "forbidden", "Owner session required");
