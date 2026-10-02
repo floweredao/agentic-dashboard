@@ -1,0 +1,92 @@
+---
+name: agentic-dashboard
+description: Save research, work reports, notes, links and task progress to a self-hosted Agentic Dashboard through its CLI or HTTP API. Use when the user asks to save, file, record or report results to the dashboard, or to read and answer comments on a dashboard task.
+---
+
+# Agentic Dashboard
+
+The user runs an Agentic Dashboard. You save results there with your own agent key, and the user reviews them.
+
+## Setup
+
+You need two values, usually from the environment:
+
+- `DASHBOARD_URL`: the dashboard address, default `http://127.0.0.1:4310`.
+- `DASHBOARD_TOKEN`: your agent key. The user creates it with `bun run agents add <your-name>` on the dashboard host.
+
+If `DASHBOARD_TOKEN` is missing, ask the user for it. Never print it, log it or write it into files.
+
+## Pick the record kind
+
+| Kind | Use it for | Required |
+|---|---|---|
+| `research` | investigations, comparisons, findings | `body`, `fields.summary`, `fields.conclusion`, `fields.nextActions` |
+| `work-report` | what you did in a work session | same as research |
+| `note` | short facts or reminders | `body` |
+| `social` | a link worth keeping | one link, `fields.summary` |
+| `task` | a work item | title, optional `fields.today`, `fields.evidenceIds` |
+
+## Format rules
+
+The server refuses other shapes with `400 record_incomplete` and lists each problem. Fix every listed item and resend.
+
+- `title`: subject and key point, at most 40 columns (CJK characters and emoji count 2). No dates.
+- `tags`: 1 to 5 single words from the content, no `#`, spaces or commas.
+- `links`: every source URL, each with a `label` naming the site or document.
+- `fields.summary`: 1 to 3 lines, at most 500 characters.
+- `fields.conclusion`: one line.
+- `fields.nextActions`: one action per line, each starting with `- `. Write `- None` when there's nothing.
+- Only the fields listed for the kind. No `status` except on tasks and projects.
+- Continuing an earlier record? Set `fields.previousId` to its id.
+- Write facts plainly in the user's language. No greetings, persona or emoji. Never invent conclusions or links.
+
+## Save with the CLI (inside the dashboard repository)
+
+Write the record to a JSON file, then:
+
+```sh
+bun run agent --file record.json --request-id <kind>-<yyyy-mm-dd>-<slug>
+```
+
+## Save with HTTP (from anywhere)
+
+```sh
+curl -sS -X POST "${DASHBOARD_URL:-http://127.0.0.1:4310}/api/v1/records" \
+  -H "Authorization: Bearer $DASHBOARD_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @payload.json
+```
+
+`payload.json`:
+
+```json
+{
+  "requestId": "research-2026-10-02-sqlite-wal",
+  "record": {
+    "kind": "research",
+    "title": "SQLite WAL mode for small servers",
+    "body": "Full findings in Markdown.",
+    "tags": ["sqlite", "databases"],
+    "links": [{ "label": "SQLite documentation", "url": "https://sqlite.org/wal.html" }],
+    "fields": {
+      "summary": "WAL removes most reader and writer blocking for a single-host app.",
+      "conclusion": "Turn WAL on and keep the database on local disk.",
+      "nextActions": "- Enable WAL in the store"
+    }
+  }
+}
+```
+
+`201` means saved, `200` with `"replayed": true` means this `requestId` was already saved (safe to retry). `409 idempotency_conflict` means you reused a `requestId` for different content; pick a new one. `401` means the key is wrong or revoked.
+
+## Tasks and comments
+
+- Report progress: `bun run agent --report <task-id> --text "What happened" --status review`
+- Read the user's new comments: `bun run agent --comments`
+- Answer one: `bun run agent --reply <comment-id> --text "Answer" --resolve`
+
+Over HTTP these are `POST /api/v1/comments` and `GET /api/v1/comments?state=new`.
+
+## After saving
+
+Tell the user the record's title and id from the response. Don't paste the whole record back.
