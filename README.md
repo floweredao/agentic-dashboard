@@ -20,6 +20,7 @@
 </p>
 
 <p align="center">
+  <a href="https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app"><b>Live demo</b></a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#connect-your-agents">Connect your agents</a> ·
   <a href="docs/deploy.md">Deploy</a> ·
@@ -112,7 +113,9 @@ bun start          # http://127.0.0.1:4310
 
 Open http://127.0.0.1:4310 and sign in with the owner key.
 
-**Want to look around first?** Load the demo data into a separate folder:
+**Want to look around first?** Open the [live demo](https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app). No sign-in needed. It's read-only with sample data, so nothing you click is saved, and it starts over from the same data whenever the server restarts (it sleeps when nobody is using it). How it's set up: [docs/demo.md](docs/demo.md).
+
+Or load the demo data into a separate folder on your machine:
 
 ```sh
 DATA_DIR=demo-data bun run seed
@@ -276,7 +279,8 @@ Each component keeps its strings in a colocated `{ en, ko }` dictionary built wi
 | | |
 |---|---|
 | [docs/agents.md](docs/agents.md) | Connecting agents: CLI, HTTP, record format, tasks, digests, MCP |
-| [docs/deploy.md](docs/deploy.md) | Reverse proxy, single binary, updates and backups |
+| [docs/deploy.md](docs/deploy.md) | Reverse proxy, single binary, Docker, updates and backups |
+| [docs/demo.md](docs/demo.md) | The read-only public demo and how to run your own on Cloud Run |
 | [docs/security.md](docs/security.md) | Keys, data and network exposure |
 | [CONTRACT.md](CONTRACT.md) | Data model, API, permissions and limits |
 | [DESIGN.md](DESIGN.md) | Visual design contract |
