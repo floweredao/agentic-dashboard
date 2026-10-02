@@ -1,6 +1,7 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DashboardRecordSchema } from "../../shared/contracts";
+import { channelsFor, setChannelKeys } from "../model";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { ChannelsView } from "./Channels";
@@ -28,22 +29,37 @@ const makeRecord = (id: string, patch: Record<string, unknown>) => DashboardReco
   ...patch,
 });
 
-test("channels show every source and the live OmO pending count", () => {
-  // Given: two live OmO records with one pending item.
+afterEach(() => setChannelKeys(channelsFor([], [])));
+const renderChannels = (records: Parameters<typeof fakeDashboard>[0]) => renderToStaticMarkup(
+  <DashboardContext.Provider value={fakeDashboard(records, { view: "channels" })}>
+    <ChannelsView />
+  </DashboardContext.Provider>,
+);
+
+test("channels list every registered agent and record source by name, with the live pending count", () => {
+  // Given: a registered agent with no records yet, and two live records from another source with one pending item.
   const records = [
     makeRecord("00000000-0000-4000-8000-000000000001", { source: "omo", createdBy: "omo", reviewState: "pending" }),
     makeRecord("00000000-0000-4000-8000-000000000002", { source: "omo", createdBy: "omo" }),
   ];
+  setChannelKeys(channelsFor(["codex"], records));
   // When: the channels page is rendered.
-  const html = renderToStaticMarkup(
-    <DashboardContext.Provider value={fakeDashboard(records, { view: "channels" })}>
-      <ChannelsView />
-    </DashboardContext.Provider>,
-  );
-  const omoCard = html.split("<h2>OmO</h2>").at(1)?.split("</article>").at(0) ?? "";
-  // Then: all five channel cards render and OmO reports one pending item.
-  expect(html.match(/class="channel-card"/g)).toHaveLength(5);
+  const html = renderChannels(records);
+  const omoCard = html.split("<h2>omo</h2>").at(1)?.split("</article>").at(0) ?? "";
+  // Then: codex, omo and manual cards render (share stays off without trusted login), and omo reports one pending item.
+  expect(html.match(/class="channel-card"/g)).toHaveLength(3);
+  expect(html).toContain("codex 에이전트가 저장한 기록");
   expect(omoCard).toContain("<dt>미확인</dt><dd>1</dd>");
+  expect(html).not.toContain("bun run agents add");
+});
+
+test("with no agents the channels page explains how to register one", () => {
+  // Given: no agents and only records written in the app.
+  setChannelKeys(channelsFor([], []));
+  // Then: only the manual card renders, with the registration command.
+  const html = renderChannels([]);
+  expect(html.match(/class="channel-card"/g)).toHaveLength(1);
+  expect(html).toContain("bun run agents add &lt;name&gt;");
 });
 
 test("work done filter lists only completed tasks", () => {

@@ -1,32 +1,99 @@
 import { DIGEST_PARTS } from "../shared/contracts";
 import type { Comment, DigestPart, DigestSummary, DashboardRecord, RecordInput, RecordKind, RecordPatch } from "../shared/contracts";
+import { zonedDate, zonedInstant } from "../shared/time";
+import { config } from "./config";
+import { formatMonthDay, strings } from "./i18n";
 import type { Route } from "./router";
+
+type Option = { readonly id: string; readonly label: string };
+type ModelText = {
+  readonly spaces: Record<Space, { readonly title: string; readonly short: string }>;
+  readonly kinds: Record<RecordKind, string>;
+  readonly share: string; readonly manual: string; readonly other: string;
+  readonly inboxStates: Record<InboxState, string>;
+  readonly today: string; readonly yesterday: string;
+  readonly projectStatuses: { readonly idea: string; readonly planning: string; readonly active: string; readonly paused: string; readonly done: string };
+  readonly taskStatuses: { readonly todo: string; readonly active: string; readonly review: string; readonly paused: string; readonly done: string };
+  readonly filters: Record<Space, readonly Option[]>;
+  readonly justNow: string; readonly hoursAgo: (hours: number) => string; readonly daysAgo: (days: number) => string;
+};
+const text = strings<ModelText>({
+  en: {
+    spaces: {
+      projects: { title: "Side projects", short: "Projects" }, tasks: { title: "General work", short: "Work" },
+      research: { title: "Research reports", short: "Research" }, social: { title: "Saved social posts", short: "Social" },
+    },
+    kinds: { project: "Project", task: "Task", research: "Research", "work-report": "Work report", note: "Note", social: "Link" },
+    share: "Shared links", manual: "Written here", other: "Other",
+    inboxStates: { all: "All", pending: "To review", approved: "Reviewed" },
+    today: "Today", yesterday: "Yesterday",
+    projectStatuses: { idea: "Idea", planning: "Planning", active: "In progress", paused: "On hold", done: "Done" },
+    taskStatuses: { todo: "Not started", active: "In progress", review: "Needs review", paused: "On hold", done: "Done" },
+    filters: {
+      projects: [{ id: "all", label: "All" }, { id: "active", label: "In progress" }, { id: "idea", label: "Idea" }, { id: "paused", label: "On hold" }, { id: "done", label: "Done" }],
+      tasks: [{ id: "today", label: "Today" }, { id: "week", label: "This week" }, { id: "all", label: "All tasks" }, { id: "review", label: "Needs review" }, { id: "done", label: "Done" }, { id: "notes", label: "Task notes" }],
+      research: [{ id: "pending", label: "To review" }, { id: "all", label: "All" }, { id: "starred", label: "Starred" }],
+      social: [{ id: "x", label: "X" }, { id: "threads", label: "Threads" }, { id: "starred", label: "Starred" }],
+    },
+    justNow: "Just now", hoursAgo: hours => `${hours}h ago`, daysAgo: days => `${days}d ago`,
+  },
+  ko: {
+    spaces: {
+      projects: { title: "사이드 프로젝트", short: "프로젝트" }, tasks: { title: "일반 업무", short: "업무" },
+      research: { title: "조사 보고", short: "조사 보고" }, social: { title: "소셜 저장", short: "소셜 저장" },
+    },
+    kinds: { project: "프로젝트", task: "할 일", research: "조사 보고", "work-report": "작업 보고", note: "메모", social: "링크" },
+    share: "iPhone 공유", manual: "직접 작성", other: "기타",
+    inboxStates: { all: "전체", pending: "미확인", approved: "확인함" },
+    today: "오늘", yesterday: "어제",
+    projectStatuses: { idea: "아이디어", planning: "기획", active: "진행 중", paused: "보류", done: "완료" },
+    taskStatuses: { todo: "시작 전", active: "진행 중", review: "확인 필요", paused: "보류", done: "끝남" },
+    filters: {
+      projects: [{ id: "all", label: "전체" }, { id: "active", label: "진행 중" }, { id: "idea", label: "아이디어" }, { id: "paused", label: "보류" }, { id: "done", label: "완료" }],
+      tasks: [{ id: "today", label: "오늘" }, { id: "week", label: "이번 주" }, { id: "all", label: "전체 할 일" }, { id: "review", label: "확인 필요" }, { id: "done", label: "끝남" }, { id: "notes", label: "할 일 메모" }],
+      research: [{ id: "pending", label: "미확인" }, { id: "all", label: "전체" }, { id: "starred", label: "별표" }],
+      social: [{ id: "x", label: "X" }, { id: "threads", label: "Threads" }, { id: "starred", label: "별표" }],
+    },
+    justNow: "방금 전", hoursAgo: hours => `${hours}시간 전`, daysAgo: days => `${days}일 전`,
+  },
+});
 
 export type Screen = "home" | "projects" | "tasks" | "research" | "social" | "archive" | "mobile";
 export type Space = "projects" | "tasks" | "research" | "social";
 export const spaces = {
-  projects: { title: "사이드 프로젝트", short: "프로젝트", color: "pink", kind: "project" },
-  tasks: { title: "일반 업무", short: "업무", color: "blue", kind: "task" },
-  research: { title: "조사 보고", short: "조사 보고", color: "green", kind: "research" },
-  social: { title: "소셜 저장", short: "소셜 저장", color: "yellow", kind: "social" },
+  projects: { ...text().spaces.projects, color: "pink", kind: "project" },
+  tasks: { ...text().spaces.tasks, color: "blue", kind: "task" },
+  research: { ...text().spaces.research, color: "green", kind: "research" },
+  social: { ...text().spaces.social, color: "yellow", kind: "social" },
 } as const;
 export const spaceKeys: readonly Space[] = ["projects", "tasks", "research", "social"];
-export const kindLabels: Record<RecordKind, string> = {
-  project: "프로젝트", task: "할 일", research: "조사 보고",
-  "work-report": "작업 보고", note: "메모", social: "링크",
-};
+export const kindLabels: Record<RecordKind, string> = text().kinds;
 /** Where a record came in: a registered agent's name, `share` (a link captured through the trusted proxy) or `manual`. */
 export type Channel = string;
-export const channelKeys: readonly Channel[] = ["chatgpt", "codex", "omo", "share", "manual"];
-const knownChannels: Record<string, { readonly label: string; readonly glyph: string }> = {
-  chatgpt: { label: "ChatGPT", glyph: "G" },
-  codex: { label: "Codex", glyph: "C" },
-  omo: { label: "OmO", glyph: "O" },
-  share: { label: "iPhone 공유", glyph: "S" },
-  manual: { label: "직접 작성", glyph: "M" },
-};
-export const channelLabel = (channel: Channel) => knownChannels[channel]?.label ?? channel;
-export const channelGlyph = (channel: Channel) => knownChannels[channel]?.glyph ?? channel.slice(0, 1).toUpperCase();
+/**
+ * Every channel in display order: registered agents and any other source seen in records (by name), then `share` when
+ * the trusted proxy can capture links, then `manual`.
+ */
+export function channelsFor(agents: readonly string[], records: readonly Pick<DashboardRecord, "source">[]): Channel[] {
+  const named = new Set(agents);
+  for (const record of records) if (record.source !== "manual") named.add(record.source);
+  named.delete("share");
+  named.delete("manual");
+  return [...[...named].sort(), ...(config.features.trustedLogin ? ["share"] : []), "manual"];
+}
+/** The current channels (channelsFor over the loaded agents and records). The App updates it as they load. */
+export let channelKeys: readonly Channel[] = channelsFor([], []);
+export function setChannelKeys(keys: readonly Channel[]) { channelKeys = keys; }
+/** Agent channels are named after the agent; `share` and `manual` have their own names. */
+export const channelLabel = (channel: Channel) => channel === "share" ? text().share : channel === "manual" ? text().manual : channel;
+export const channelGlyph = (channel: Channel) => channel.slice(0, 1).toUpperCase();
+/** The colour class: `ch-share` and `ch-manual` have their own, an agent's name hashes onto ch-0..ch-7. */
+export function channelClass(channel: Channel): string {
+  if (channel === "share" || channel === "manual") return `ch-${channel}`;
+  let hash = 0;
+  for (const char of channel) hash = (hash * 31 + (char.codePointAt(0) ?? 0)) >>> 0;
+  return `ch-${hash % 8}`;
+}
 export function channelOf(record: Pick<DashboardRecord, "source" | "kind" | "fields">): Channel {
   if (record.source !== "manual") return record.source;
   return record.kind === "social" && record.fields.captureEnrichment !== undefined ? "share" : "manual";
@@ -37,19 +104,18 @@ export const recordKinds = ["research", "work-report", "social", "note"] as cons
 export type MaterialKind = typeof recordKinds[number];
 export const isMaterialKind = (value: string): value is MaterialKind => (recordKinds as readonly string[]).includes(value);
 /** Items waiting for the owner: unconfirmed or revisit-due material, newest first. */
-export function inboxItems(records: readonly DashboardRecord[], today = seoulDate()) {
+export function inboxItems(records: readonly DashboardRecord[], today = localDate()) {
   return records.filter(record => isRecord(record) && inQueue(record, today))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-/** The inbox's 확인 filter (`?state=`): 전체 (every unarchived material) is the default; 미확인 is the queue above; 확인함 is confirmed material. */
+/** The inbox's review filter (`?state=`): all (every unarchived material) is the default; pending is the queue above; approved is confirmed material. */
 export type InboxState = "pending" | "approved" | "all";
-export const inboxStates: readonly { readonly id: InboxState; readonly label: string }[] = [
-  { id: "all", label: "전체" }, { id: "pending", label: "미확인" }, { id: "approved", label: "확인함" },
-];
+export const inboxStates: readonly { readonly id: InboxState; readonly label: string }[] = (["all", "pending", "approved"] as const)
+  .map(id => ({ id, label: text().inboxStates[id] }));
 export const inboxStateOf = (params: Readonly<Record<string, string>>): InboxState =>
   params.state === "approved" || params.state === "pending" ? params.state : "all";
-/** Unarchived material for one 확인 filter, newest first. */
-export function inboxView(records: readonly DashboardRecord[], state: InboxState, today = seoulDate()) {
+/** Unarchived material for one review filter, newest first. */
+export function inboxView(records: readonly DashboardRecord[], state: InboxState, today = localDate()) {
   if (state === "pending") return inboxItems(records, today);
   return records.filter(record => isRecord(record) && record.archivedAt === null && (state === "all" || record.reviewState === "approved"))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -86,7 +152,7 @@ export function digestMatches(item: DigestSummary, query: string, title: string)
   if (!needle) return true;
   return [title, ...item.headlines, item.messageHeadline ?? ""].join("\n").toLocaleLowerCase().includes(needle);
 }
-/** Digests for one 확인 filter, newest first: 전체 every one, 미확인 those with an unread part, 확인함 the fully read ones. */
+/** Digests for one review filter, newest first: all of them, pending those with an unread part, approved the fully read ones. */
 export function inboxDigestView(items: readonly DigestSummary[], state: InboxState) {
   return items.filter(item => state === "all" || (state === "pending") === digestUnread(item))
     .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
@@ -98,8 +164,8 @@ export function listedDigestsFor(route: Route, items: readonly DigestSummary[], 
   return (opened ? [...view, opened].sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt)) : view)
     .filter(item => digestMatches(item, route.params.q ?? "", titleOf(item.slot)));
 }
-/** The 받은 항목 badge (tab, sidebar, document title): queued records plus digests with an unread part. */
-export const inboxBadge = (records: readonly DashboardRecord[], digests: readonly DigestSummary[], today = seoulDate()) =>
+/** The inbox badge (tab, sidebar, document title): queued records plus digests with an unread part. */
+export const inboxBadge = (records: readonly DashboardRecord[], digests: readonly DigestSummary[], today = localDate()) =>
   inboxItems(records, today).length + digests.filter(digestUnread).length;
 export type LibraryFilter = {
   readonly type?: string; readonly channel?: string; readonly starred?: boolean; readonly q?: string;
@@ -114,15 +180,15 @@ export function libraryItems(records: readonly DashboardRecord[], filter: Librar
     && matchesQuery(record, filter.q ?? ""))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-/** Group label for a timestamp relative to today in Seoul: 오늘, 어제, or a date. */
-export function dayLabel(iso: string, today = seoulDate()) {
-  const day = seoulDate(new Date(iso));
-  if (day === today) return "오늘";
-  if (day === addDays(today, -1)) return "어제";
+/** Group label for a timestamp relative to today in the dashboard's zone: today, yesterday, or a date. */
+export function dayLabel(iso: string, today = localDate()) {
+  const day = localDate(new Date(iso));
+  if (day === today) return text().today;
+  if (day === addDays(today, -1)) return text().yesterday;
   return dateLabel(day);
 }
-/** Consecutive runs of records sharing a Seoul day label, preserving order. */
-export function groupByDay<T extends Pick<DashboardRecord, "createdAt">>(items: readonly T[], today = seoulDate()) {
+/** Consecutive runs of records sharing a day label, preserving order. */
+export function groupByDay<T extends Pick<DashboardRecord, "createdAt">>(items: readonly T[], today = localDate()) {
   const groups: { label: string; items: T[] }[] = [];
   for (const item of items) {
     const label = dayLabel(item.createdAt, today);
@@ -137,13 +203,13 @@ export function archivedItems(records: readonly DashboardRecord[]) {
     .sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
 }
 /** Which top-level view shows a record by default. */
-export function homeViewOf(record: DashboardRecord, today = seoulDate()): "inbox" | "library" | "archive" | "work" {
+export function homeViewOf(record: DashboardRecord, today = localDate()): "inbox" | "library" | "archive" | "work" {
   if (record.archivedAt) return "archive";
   if (!isRecord(record)) return "work";
   return inQueue(record, today) ? "inbox" : "library";
 }
 /** The records a list pane shows for a route (membership only; panes apply their own order). The trash is not a record list. */
-export function listedFor(route: Route, records: readonly DashboardRecord[], today = seoulDate()): DashboardRecord[] {
+export function listedFor(route: Route, records: readonly DashboardRecord[], today = localDate()): DashboardRecord[] {
   const params = route.params;
   if (route.view === "inbox") {
     // The open record keeps its row after it is confirmed, so the reader does not lose its place until another one is opened.
@@ -163,7 +229,7 @@ export function listedFor(route: Route, records: readonly DashboardRecord[], tod
   return [];
 }
 /** A list route without extra conditions that contains the record (the archive for anything archived, unarchived work items, all material). */
-export function homeRouteOf(record: DashboardRecord, today = seoulDate()): Pick<Route, "view" | "params"> {
+export function homeRouteOf(record: DashboardRecord, today = localDate()): Pick<Route, "view" | "params"> {
   if (record.archivedAt) return { view: "archive", params: {} };
   if (record.kind === "task") return { view: "work", params: { filter: "all" } };
   if (record.kind === "project") return { view: "work", params: { show: "projects" } };
@@ -174,24 +240,19 @@ export function nextInQueue(queue: readonly DashboardRecord[], id: string): Dash
   const index = queue.findIndex(item => item.id === id);
   return index < 0 ? null : queue[index + 1] ?? queue[index - 1] ?? null;
 }
-export const projectStatuses = { idea: "아이디어", planning: "기획", active: "진행 중", paused: "보류", done: "완료" };
-export const taskStatuses = { todo: "시작 전", active: "진행 중", review: "확인 필요", paused: "보류", done: "끝남" };
+export const projectStatuses = text().projectStatuses;
+export const taskStatuses = text().taskStatuses;
 /** One task's or project's timeline, oldest first. */
 export const timelineOf = (comments: readonly Comment[], id: string) => comments.filter(comment => comment.recordId === id);
-/** The owner's comments on an item that no agent has marked done yet (답 대기). */
+/** The owner's comments on an item that no agent has marked done yet (awaiting a reply). */
 export const waitingReplies = (comments: readonly Comment[], id: string) =>
   comments.filter(comment => comment.recordId === id && comment.source === "manual" && comment.doneAt === null).length;
 /** An item's latest change: its own update or its newest timeline entry. */
 export function lastActivity(record: DashboardRecord, comments: readonly Comment[]) {
   return timelineOf(comments, record.id).reduce((latest, comment) => comment.createdAt > latest ? comment.createdAt : latest, record.updatedAt);
 }
-export const sourceLabels: Record<string, string> = { manual: "직접 작성" };
-export const filters: Record<Space, readonly { id: string; label: string }[]> = {
-  projects: [{ id: "all", label: "전체" }, { id: "active", label: "진행 중" }, { id: "idea", label: "아이디어" }, { id: "paused", label: "보류" }, { id: "done", label: "완료" }],
-  tasks: [{ id: "today", label: "오늘" }, { id: "week", label: "이번 주" }, { id: "all", label: "전체 할 일" }, { id: "review", label: "확인 필요" }, { id: "done", label: "끝남" }, { id: "notes", label: "할 일 메모" }],
-  research: [{ id: "pending", label: "미확인" }, { id: "all", label: "전체" }, { id: "chatgpt", label: "ChatGPT 웹" }, { id: "codex", label: "Codex" }, { id: "omo", label: "OmO Native" }, { id: "starred", label: "별표" }],
-  social: [{ id: "x", label: "X" }, { id: "threads", label: "Threads" }, { id: "starred", label: "별표" }],
-};
+export const sourceLabels: Record<string, string> = { manual: text().manual };
+export const filters: Record<Space, readonly Option[]> = text().filters;
 
 export function isRecord(record: Pick<DashboardRecord, "kind">) {
   return record.kind !== "project" && record.kind !== "task";
@@ -226,39 +287,43 @@ export function idsField(record: Pick<DashboardRecord, "fields">, key: string): 
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
-export function seoulDate(date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+/** The calendar date (YYYY-MM-DD) of an instant in the dashboard's time zone. */
+export function localDate(date = new Date()): string {
+  return zonedDate(date, config.timeZone);
 }
+/** @deprecated Use localDate; kept until every view has moved to it. */
+export const seoulDate = localDate;
+/** Calendar arithmetic on a YYYY-MM-DD date; the zone does not matter. */
 export function addDays(date: string, days: number) {
-  const day = new Date(`${date}T12:00:00+09:00`);
+  const day = new Date(`${date}T12:00:00Z`);
   day.setUTCDate(day.getUTCDate() + days);
-  return seoulDate(day);
+  return day.toISOString().slice(0, 10);
 }
-export function weekBounds(today = seoulDate()) {
-  const weekday = new Date(`${today}T12:00:00+09:00`).getUTCDay();
+export function weekBounds(today = localDate()) {
+  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
   const start = addDays(today, -weekday);
   return { start, end: addDays(start, 6) };
 }
-export function isToday(record: DashboardRecord, today = seoulDate()) {
+export function isToday(record: DashboardRecord, today = localDate()) {
   return record.kind === "task" && record.status !== "done"
     && (record.fields.today === true || record.dueDate === today);
 }
-export function inQueue(record: DashboardRecord, today = seoulDate()) {
+export function inQueue(record: DashboardRecord, today = localDate()) {
   if (record.archivedAt) return false;
   if (record.kind === "task") return record.status !== "done" && (isToday(record, today) || record.status === "review");
   if (!isRecord(record)) return false;
   return record.reviewState === "pending" || revisitDue(record, today);
 }
-/** A material record whose revisit date has arrived. A separate marker: it never changes the 확인/미확인 status. */
-export function revisitDue(record: DashboardRecord, today = seoulDate()) {
+/** A material record whose revisit date has arrived. A separate marker: it never changes the review status. */
+export function revisitDue(record: DashboardRecord, today = localDate()) {
   const revisit = textField(record, "revisitDate");
   return isRecord(record) && revisit !== "" && revisit <= today;
 }
-/** 확인 only moves a pending record to approved (the status is reviewState alone); null when there is nothing to confirm. */
+/** Confirming only moves a pending record to approved (the status is reviewState alone); null when there is nothing to confirm. */
 export function confirmationChanges(record: DashboardRecord): RecordPatch["changes"] | null {
   return record.reviewState === "pending" ? { reviewState: "approved" } : null;
 }
-export function viewRecords(records: readonly DashboardRecord[], space: Space, filter: string, today = seoulDate()) {
+export function viewRecords(records: readonly DashboardRecord[], space: Space, filter: string, today = localDate()) {
   const week = weekBounds(today);
   return records.filter(record => {
     if (record.archivedAt) return false;
@@ -269,29 +334,29 @@ export function viewRecords(records: readonly DashboardRecord[], space: Space, f
     if (filter === "week") return record.dueDate !== null && record.dueDate >= week.start && record.dueDate <= week.end;
     if (filter === "starred") return record.fields.starred === true;
     if (filter === "pending" || filter === "approved") return record.reviewState === filter;
-    if (filter === "chatgpt" || filter === "codex" || filter === "omo") return record.source === filter;
     if (filter === "x" || filter === "threads") return record.fields.origin === filter;
     return record.status === filter;
   });
 }
+/** Month and day of a YYYY-MM-DD date (noon in the dashboard's zone) or of an instant. */
 export function dateLabel(date: string) {
-  return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", month: "long", day: "numeric" }).format(new Date(date.length === 10 ? `${date}T12:00:00+09:00` : date));
+  return formatMonthDay(date.length === 10 ? zonedInstant(date, "12:00", config.timeZone) : date);
 }
 export function relativeTime(date: string) {
   const hours = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 3_600_000));
-  return hours === 0 ? "방금 전" : hours < 24 ? `${hours}시간 전` : `${Math.floor(hours / 24)}일 전`;
+  return hours === 0 ? text().justNow : hours < 24 ? text().hoursAgo(hours) : text().daysAgo(Math.floor(hours / 24));
 }
 export function displaySource(record: DashboardRecord) {
   if (record.source !== "manual") return channelLabel(record.source);
   if (record.fields.origin === "x") return "X";
   if (record.fields.origin === "threads") return "Threads";
-  return record.fields.origin === "other" ? "기타" : sourceLabels["manual"] ?? "";
+  return record.fields.origin === "other" ? text().other : sourceLabels["manual"] ?? "";
 }
-/** Home overview numbers; archived records never count. `daily` ends on `today` (Seoul dates). */
-export function digest(records: readonly DashboardRecord[], today = seoulDate(), days = 14) {
+/** Home overview numbers; archived records never count. `daily` ends on `today` (dates in the dashboard's zone). */
+export function digest(records: readonly DashboardRecord[], today = localDate(), days = 14) {
   const live = records.filter(record => !record.archivedAt);
   const week = weekBounds(today);
-  const createdOn = (record: DashboardRecord) => seoulDate(new Date(record.createdAt));
+  const createdOn = (record: DashboardRecord) => localDate(new Date(record.createdAt));
   const counts = new Map<string, number>();
   for (const record of live) counts.set(createdOn(record), (counts.get(createdOn(record)) ?? 0) + 1);
   return {

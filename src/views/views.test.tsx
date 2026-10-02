@@ -60,7 +60,7 @@ test("TrashPane lists the latest deletion first with the days left before the pu
   const html = render(<TrashPane now={now} />, [], { trash: items });
   // Then: the link comes first, its meta names channel, kind and a rounded-up 29 days, and each row offers 복원 and 영구 삭제.
   expect(await scan(html, ".trash-title")).toEqual({ count: 2, text: "지운 링크지운 메모" });
-  expect((await scan(html, ".trash-meta")).text).toBe("ChatGPT · 링크 · 29일 뒤 영구 삭제직접 작성 · 메모 · 28일 뒤 영구 삭제");
+  expect((await scan(html, ".trash-meta")).text).toBe("chatgpt · 링크 · 29일 뒤 영구 삭제직접 작성 · 메모 · 28일 뒤 영구 삭제");
   expect(html.match(/aria-label="영구 삭제"/g)).toHaveLength(2);
   expect(html.match(/<button[^>]*btn-outline[^>]*>.*?복원<\/button>/g)).toHaveLength(2);
   expect((await scan(html, ".pane-title .count")).text).toBe("2");

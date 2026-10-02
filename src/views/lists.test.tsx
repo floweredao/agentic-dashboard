@@ -1,10 +1,13 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DashboardRecordSchema, DigestSummarySchema } from "../../shared/contracts";
+import { channelsFor, setChannelKeys } from "../model";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { InboxPane } from "./Inbox";
 import { LibraryPane } from "./Library";
+
+afterEach(() => setChannelKeys(channelsFor([], [])));
 
 const make = (id: string, patch: Record<string, unknown> = {}) => DashboardRecordSchema.parse({
   id,
@@ -165,10 +168,11 @@ test("InboxPane mixes digests into the records by time, with unread marks, filte
 test("an empty filter combination keeps every active chip and offers to clear all conditions", async () => {
   // Given: a starred ChatGPT link exists, but the owner also asks for reports only.
   const records = [make("00000000-0000-4000-8000-000000000011", { source: "chatgpt", createdBy: "chatgpt", fields: { starred: true } })];
+  setChannelKeys(channelsFor([], records));
   const html = render(records, "library", { starred: "1", type: "research", channel: "chatgpt" });
   // Then: the ChatGPT chip is still visible and pressed, and the empty state clears everything at once.
   const pressed = await scan(html, 'button.chip[aria-pressed="true"]');
-  expect(pressed.text).toContain("ChatGPT");
+  expect(pressed.text).toContain("chatgpt");
   expect(html).toMatch(/<button[^>]*>조건 모두 지우기<\/button>/);
 });
 

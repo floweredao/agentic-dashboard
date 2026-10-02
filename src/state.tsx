@@ -39,23 +39,23 @@ export type Dashboard = {
   readonly markDigest: (id: string, part: DigestPart, read: boolean, quiet?: boolean) => Promise<void>;
   /** Version-checked PATCH. Resolves to the saved record, or null after showing the error. */
   readonly patch: (record: DashboardRecord, changes: RecordPatch["changes"], message?: string) => Promise<DashboardRecord | null>;
-  /** Material: pending -> approved (확인). Task: mark done. */
+  /** Material: pending -> approved (reviewed). Task: mark done. */
   readonly confirm: (record: DashboardRecord) => Promise<void>;
   /**
    * Opening a pending material record confirms it quietly: no busy state, no toast, only an error when the save fails.
    * A no-op for confirmed or rejected material, tasks, projects, and while the same record is already being marked.
    */
   readonly markRead: (record: DashboardRecord) => Promise<void>;
-  /** Material: approved -> pending (미확인으로 표시), with 되돌리기. */
+  /** Material: approved -> pending (mark as to review), with Undo. */
   readonly markPending: (record: DashboardRecord) => Promise<void>;
-  /** Material: clear a due revisit date (다시 봤어요) without touching reviewState. */
+  /** Material: clear a due revisit date (seen again) without touching reviewState. */
   readonly clearRevisit: (record: DashboardRecord) => Promise<void>;
   readonly toggleStar: (record: DashboardRecord) => Promise<void>;
   /** Set the revisit date seven days from today. */
   readonly snooze: (record: DashboardRecord) => Promise<void>;
   readonly toggleArchive: (record: DashboardRecord) => Promise<void>;
   readonly revertAiFill: (record: DashboardRecord) => Promise<void>;
-  /** Version-checked DELETE into the 30-day trash, no dialog; the reader moves to the next item in its list and the toast offers 되돌리기. */
+  /** Version-checked DELETE into the 30-day trash, no dialog; the reader moves to the next item in its list and the toast offers Undo. */
   readonly remove: (record: DashboardRecord) => Promise<void>;
   /** Bring a trashed record back as it was deleted. */
   readonly restore: (item: TrashItem) => Promise<void>;

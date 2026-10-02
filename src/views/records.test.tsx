@@ -84,7 +84,7 @@ test("list rows name the channel in the meta line without a separate channel col
     .transform(new Response(html)).text();
   // Then: no dot column, and the meta line reads "채널 · 종류".
   expect(marks).toBe(0);
-  expect(meta).toBe("ChatGPT · 조사 보고");
+  expect(meta).toBe("chatgpt · 조사 보고");
 });
 
 test("the reader lists links by address and names a finished confirmation", () => {
@@ -133,10 +133,10 @@ test("a task shows its timeline with each owner comment's state, and its row cou
   // Then: the report shows its status change, the answered comment is 처리함 with the reply nested under it,
   // the others read 봤어요 and 아직 안 봤어요, the comment box is there, and the row waits on two comments.
   expect(reader).toContain("상태 → 확인 필요");
-  expect(reader).toMatch(/색 바꿔줘[\s\S]*처리함 · OmO[\s\S]*class="timeline-replies"[\s\S]*바꿨어요/);
-  expect(reader).toMatch(/글자 키워줘[\s\S]*OmO가 봤어요/);
+  expect(reader).toMatch(/색 바꿔줘[\s\S]*처리함 · omo[\s\S]*class="timeline-replies"[\s\S]*바꿨어요/);
+  expect(reader).toMatch(/글자 키워줘[\s\S]*omo가 봤어요/);
   expect(reader).toMatch(/아이콘도[\s\S]*아직 안 봤어요/);
-  expect(reader).toMatch(/<textarea[^>]*placeholder="OmO에게 남길 말"/);
+  expect(reader).toMatch(/<textarea[^>]*placeholder="omo에게 남길 말"/);
   expect(row).toContain("답 대기 2");
 });
 

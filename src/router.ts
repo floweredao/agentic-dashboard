@@ -1,12 +1,21 @@
+import { strings } from "./i18n";
+
 export type View = "inbox" | "library" | "digest" | "work" | "more" | "archive" | "trash" | "channels" | "settings";
 export const views: readonly View[] = ["inbox", "library", "digest", "work", "more", "archive", "trash", "channels", "settings"];
-export const viewTitles: Record<View, string> = {
-  inbox: "받은 항목", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", archive: "보관함", trash: "휴지통",
-  channels: "채널 관리", settings: "알림 설정",
-};
-/** The screens under 더보기, in the order the phone's 더보기 and the desktop sidebar list them. */
+const text = strings<{ readonly views: Record<View, string>; readonly previous: string }>({
+  en: {
+    views: { inbox: "Inbox", library: "Library", digest: "Digest", work: "Tasks", more: "More", archive: "Archive", trash: "Trash", channels: "Channels", settings: "Settings" },
+    previous: "Previous record",
+  },
+  ko: {
+    views: { inbox: "받은 항목", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", archive: "보관함", trash: "휴지통", channels: "채널 관리", settings: "알림 설정" },
+    previous: "이전 기록",
+  },
+});
+export const viewTitles: Record<View, string> = text().views;
+/** The screens under More, in the order the phone's More tab and the desktop sidebar list them. */
 export const moreViews = ["archive", "trash", "channels", "settings"] as const satisfies readonly View[];
-/** The tab (bottom tab bar) that owns a view: the screens under 더보기 belong to it, every other view is its own tab. */
+/** The tab (bottom tab bar) that owns a view: the screens under More belong to it, every other view is its own tab. */
 export const sectionOf = (view: View): View => (moreViews as readonly View[]).includes(view) ? "more" : view;
 export type Params = Readonly<Record<string, string>>;
 /** Committed screen state. The URL hash owns it: `#/<view>[/<recordId>][?key=value]`. */
@@ -56,8 +65,8 @@ function listBack(view: View, from: string | null | undefined, phone: boolean): 
 
 /**
  * The back button of a screen. Tab screens have none. A reader goes back to wherever it was opened from; opened by
- * address it goes up to its list on a phone (a desktop shows that list beside it). The screens under 더보기 go back to
- * wherever they were opened from, else up to 더보기 on a phone (a desktop sidebar lists them).
+ * address it goes up to its list on a phone (a desktop shows that list beside it). The screens under More go back to
+ * wherever they were opened from, else up to More on a phone (a desktop sidebar lists them).
  */
 export function backOf(route: Route, trail: Trail | null, phone: boolean): Back | null {
   const here = formatRoute(route);
@@ -71,8 +80,8 @@ export function backOf(route: Route, trail: Trail | null, phone: boolean): Back 
   return outer ? { ...outer, steps: 2 } : null;
 }
 
-/** The name on a back button: the screen it returns to, or 이전 기록 for another record. */
+/** The name on a back button: the screen it returns to, or "Previous record" for another record. */
 export function backLabel(hash: string): string {
   const route = parseRoute(hash);
-  return route.id ? "이전 기록" : viewTitles[route.view];
+  return route.id ? text().previous : viewTitles[route.view];
 }

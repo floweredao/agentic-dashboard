@@ -23,6 +23,7 @@ import {
   type RecordPatch,
   type TrashItem,
 } from "../shared/contracts";
+import { getLocale, strings } from "./i18n";
 
 const http = ky.create({ prefixUrl: "/api/v1", credentials: "same-origin", retry: 0 });
 const sessionSchema = z.object({ csrfToken: z.string(), expiresAt: z.string() });
@@ -34,7 +35,7 @@ const recordResponseSchema = z.object({ record: dashboardRecordSchema });
 const trashSchema = z.object({ items: z.array(trashItemSchema) });
 const shareSchema = z.object({ code: z.string(), url: z.string(), createdAt: z.string() });
 const shareCreatedSchema = z.object({ share: shareSchema });
-/** A record's one active tailnet-only share: `url` is `${privateOrigin}/s/${code}`. */
+/** A record's one active share: `url` is `${origin}/s/${code}`. */
 export type Share = z.infer<typeof shareSchema>;
 const errorSchema = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 
@@ -47,6 +48,12 @@ export async function session(token?: string) {
 
 export async function logout(csrfToken: string) {
   await http.delete("auth/session", { headers: { "X-CSRF-Token": csrfToken } });
+}
+
+const agentsSchema = z.object({ items: z.array(z.object({ name: z.string() })) });
+/** Names of every registered agent, revoked ones included (their records still name them). Owner session only. */
+export async function loadAgents(): Promise<string[]> {
+  return agentsSchema.parse(await http.get("agents").json()).items.map(agent => agent.name);
 }
 
 export async function loadRecords(): Promise<DashboardRecord[]> {
@@ -214,58 +221,96 @@ export async function errorCode(error: unknown): Promise<string | null> {
   return parsed.success ? parsed.data.error.code : null;
 }
 
-const CONFLICT_MESSAGE = "다른 곳에서 먼저 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.";
-const FORBIDDEN_MESSAGE = "권한이 없어요. 다시 로그인해 주세요.";
-const VALIDATION_MESSAGE = "입력값을 확인해 주세요.";
-/** Korean text for every server error code the owner UI can meet. */
-const CODE_MESSAGES: Readonly<Record<string, string>> = {
-  rate_limited: "요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
-  not_found: "항목을 찾을 수 없어요.",
-  version_conflict: CONFLICT_MESSAGE,
-  conflict: CONFLICT_MESSAGE,
-  idempotency_conflict: CONFLICT_MESSAGE,
-  forbidden: FORBIDDEN_MESSAGE,
-  csrf: FORBIDDEN_MESSAGE,
-  origin: FORBIDDEN_MESSAGE,
-  invalid_input: "형식에 맞지 않는 값이 있어요. 입력한 내용을 확인해 주세요.",
-  validation: VALIDATION_MESSAGE,
-  invalid_json: VALIDATION_MESSAGE,
-  invalid_query: VALIDATION_MESSAGE,
-  invalid_cursor: VALIDATION_MESSAGE,
-  invalid_relationship: VALIDATION_MESSAGE,
-  invalid_target: VALIDATION_MESSAGE,
-  invalid_status: VALIDATION_MESSAGE,
-  invalid_subscription: VALIDATION_MESSAGE,
-  record_incomplete: VALIDATION_MESSAGE,
-  title_too_long: "제목이 너무 길어요. 줄여서 다시 저장해 주세요.",
-  too_large: "내용이 너무 커요. 줄여서 다시 시도해 주세요.",
-  unsupported_media_type: VALIDATION_MESSAGE,
-  invalid_host: FORBIDDEN_MESSAGE,
-  narration_unsupported: "이 항목은 음성으로 만들 수 없어요.",
-  narration_unavailable: "음성 생성이 설정되어 있지 않아요.",
-  narration_attempts_exhausted: "음성 생성이 여러 번 실패했어요. 내용을 바꾸거나 다시 만들기로 시도해 주세요.",
-  narration_daily_limit: "오늘 만들 수 있는 음성 한도에 도달했어요. 내일 다시 시도해 주세요.",
-  narration_queue_full: "대기 중인 음성이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
-  narration_busy: "음성을 만드는 중이에요. 끝난 뒤 다시 시도해 주세요.",
+type ErrorText = {
+  readonly conflict: string; readonly forbidden: string; readonly validation: string;
+  readonly codes: Readonly<Record<string, string>>;
+  readonly signIn: string; readonly failedStatus: (status: number) => string; readonly badShape: (issues: string) => string;
+  readonly offline: string; readonly failed: string;
 };
+const errorCodes = (conflict: string, forbidden: string, validation: string, own: Readonly<Record<string, string>>) => ({
+  version_conflict: conflict, conflict, idempotency_conflict: conflict,
+  forbidden, csrf: forbidden, origin: forbidden, invalid_host: forbidden,
+  validation, invalid_json: validation, invalid_query: validation, invalid_cursor: validation, invalid_relationship: validation,
+  invalid_target: validation, invalid_status: validation, invalid_subscription: validation, record_incomplete: validation,
+  unsupported_media_type: validation,
+  ...own,
+});
+const errorText = strings<ErrorText>({
+  en: (() => {
+    const conflict = "This changed somewhere else first. Refresh and try again.";
+    const forbidden = "You don't have permission. Sign in again.";
+    const validation = "Check what you entered.";
+    return {
+      conflict, forbidden, validation,
+      codes: errorCodes(conflict, forbidden, validation, {
+        rate_limited: "Too many requests. Try again in a moment.",
+        not_found: "That item couldn't be found.",
+        invalid_input: "Some values aren't in the right format. Check what you entered.",
+        title_too_long: "The title is too long. Shorten it and save again.",
+        too_large: "The content is too large. Shorten it and try again.",
+        narration_unsupported: "This item can't be turned into audio.",
+        narration_unavailable: "Audio narration isn't set up.",
+        narration_attempts_exhausted: "Making the audio failed several times. Change the content or try Make again.",
+        narration_daily_limit: "Today's audio limit has been reached. Try again tomorrow.",
+        narration_queue_full: "Too much audio is waiting. Try again in a moment.",
+        narration_busy: "Audio is being made. Try again when it's done.",
+      }),
+      signIn: "Sign-in is required or the session expired. Sign in again with the owner key.",
+      failedStatus: status => `The request couldn't be completed (${status}).`,
+      badShape: issues => `The input or the server's data isn't in the expected format: ${issues}`,
+      offline: "Couldn't reach the server. Check your network connection and try again.",
+      failed: "The request couldn't be completed. Try again.",
+    };
+  })(),
+  ko: (() => {
+    const conflict = "다른 곳에서 먼저 바뀌었어요. 새로고침한 뒤 다시 시도해 주세요.";
+    const forbidden = "권한이 없어요. 다시 로그인해 주세요.";
+    const validation = "입력값을 확인해 주세요.";
+    return {
+      conflict, forbidden, validation,
+      codes: errorCodes(conflict, forbidden, validation, {
+        rate_limited: "요청이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
+        not_found: "항목을 찾을 수 없어요.",
+        invalid_input: "형식에 맞지 않는 값이 있어요. 입력한 내용을 확인해 주세요.",
+        title_too_long: "제목이 너무 길어요. 줄여서 다시 저장해 주세요.",
+        too_large: "내용이 너무 커요. 줄여서 다시 시도해 주세요.",
+        narration_unsupported: "이 항목은 음성으로 만들 수 없어요.",
+        narration_unavailable: "음성 생성이 설정되어 있지 않아요.",
+        narration_attempts_exhausted: "음성 생성이 여러 번 실패했어요. 내용을 바꾸거나 다시 만들기로 시도해 주세요.",
+        narration_daily_limit: "오늘 만들 수 있는 음성 한도에 도달했어요. 내일 다시 시도해 주세요.",
+        narration_queue_full: "대기 중인 음성이 너무 많아요. 잠시 뒤 다시 시도해 주세요.",
+        narration_busy: "음성을 만드는 중이에요. 끝난 뒤 다시 시도해 주세요.",
+      }),
+      signIn: "로그인이 필요하거나 세션이 만료됐어요. 소유자 토큰으로 다시 연결해 주세요.",
+      failedStatus: status => `요청을 처리하지 못했어요 (${status}).`,
+      badShape: issues => `입력값이나 서버 데이터의 형식이 맞지 않아요: ${issues}`,
+      offline: "서버에 연결하지 못했어요. 네트워크 연결을 확인하고 다시 시도해 주세요.",
+      failed: "요청을 처리하지 못했어요. 다시 시도해 주세요.",
+    };
+  })(),
+});
+/** Hangul syllables: a server message already written in Korean is shown as it is to a Korean reader. */
+const hangul = /[\uAC00-\uD7A3]/;
 
+/** Text in the current language for every server error code the owner UI can meet. */
 export async function errorMessage(error: unknown): Promise<string> {
+  const text = errorText();
   if (error instanceof HTTPError) {
     const status = error.response.status;
-    if (status === 401) return "로그인이 필요하거나 세션이 만료됐어요. 소유자 토큰으로 다시 연결해 주세요.";
+    if (status === 401) return text.signIn;
     const parsed = errorSchema.safeParse(await error.response.clone().json().catch(() => null));
     if (parsed.success) {
-      const mapped = CODE_MESSAGES[parsed.data.error.code];
+      const mapped = text.codes[parsed.data.error.code];
       if (mapped !== undefined) return mapped;
-      if (/[가-힣]/.test(parsed.data.error.message)) return parsed.data.error.message;
+      if (getLocale() === "ko" && hangul.test(parsed.data.error.message)) return parsed.data.error.message;
     }
-    if (status === 409) return CONFLICT_MESSAGE;
-    if (status === 429) return CODE_MESSAGES.rate_limited ?? "";
-    return `요청을 처리하지 못했어요 (${status}).`;
+    if (status === 409) return text.conflict;
+    if (status === 429) return text.codes.rate_limited ?? "";
+    return text.failedStatus(status);
   }
-  if (error instanceof z.ZodError) return `입력값이나 서버 데이터의 형식이 맞지 않아요: ${error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join(", ")}`;
-  if (error instanceof Error) return "서버에 연결하지 못했어요. 네트워크 연결을 확인하고 다시 시도해 주세요.";
-  return "요청을 처리하지 못했어요. 다시 시도해 주세요.";
+  if (error instanceof z.ZodError) return text.badShape(error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join(", "));
+  if (error instanceof Error) return text.offline;
+  return text.failed;
 }
 
 export { recordInputSchema };

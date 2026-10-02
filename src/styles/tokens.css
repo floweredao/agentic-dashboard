@@ -4,7 +4,8 @@
   --wash: #1a1a1908; --selected: #1a1a1910; --line: #1a1a1914; --line-strong: #1a1a1924;
   --ink: #191918; --text: #3b3b38; --muted: #6d6c67; --faint: #716f69; --on-ink: #ffffff;
   --accent: #4a57d6; --danger: #b42335; --ok: #16875c;
-  --ch-chatgpt: #10a37f; --ch-codex: #2f6fe4; --ch-omo: #8a4fe0; --ch-share: #d6800b; --ch-manual: #77746d;
+  --ch-0: #10a37f; --ch-1: #2f6fe4; --ch-2: #8a4fe0; --ch-3: #d0453f; --ch-4: #0e8fa3; --ch-5: #b8691b; --ch-6: #c2418f; --ch-7: #5a7d1a;
+  --ch-share: #d6800b; --ch-manual: #77746d;
   --scrim: #0f0f0e59;
   --shadow-float: 0 24px 64px #0000002e, 0 2px 8px #0000001a;
   --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
@@ -21,7 +22,8 @@
     --wash: #ffffff0a; --selected: #ffffff12; --line: #ffffff14; --line-strong: #ffffff24;
     --ink: #f2f1ee; --text: #d4d2cd; --muted: #9c9a94; --faint: #8c8a84; --on-ink: #111111;
     --accent: #8b95ff; --danger: #ff7a88; --ok: #4fd19a;
-    --ch-chatgpt: #34c79f; --ch-codex: #6f9dff; --ch-omo: #b48cff; --ch-share: #f3a53a; --ch-manual: #a19e97;
+    --ch-0: #34c79f; --ch-1: #6f9dff; --ch-2: #b48cff; --ch-3: #ff7f78; --ch-4: #4cc6d8; --ch-5: #e89a4f; --ch-6: #f07dbf; --ch-7: #9cc45a;
+    --ch-share: #f3a53a; --ch-manual: #a19e97;
     --scrim: #000000a6;
     --shadow-float: 0 24px 64px #00000080, 0 2px 8px #00000066;
   }
@@ -115,7 +117,8 @@ img, svg { display: block; flex-shrink: 0; }
   display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-sm); flex-shrink: 0;
   background: color-mix(in srgb, var(--ch) 16%, transparent); color: var(--ch); font-size: 11px; font-weight: 800; line-height: 1;
 }
-.ch-chatgpt { --ch: var(--ch-chatgpt); } .ch-codex { --ch: var(--ch-codex); } .ch-omo { --ch: var(--ch-omo); }
+.ch-0 { --ch: var(--ch-0); } .ch-1 { --ch: var(--ch-1); } .ch-2 { --ch: var(--ch-2); } .ch-3 { --ch: var(--ch-3); }
+.ch-4 { --ch: var(--ch-4); } .ch-5 { --ch: var(--ch-5); } .ch-6 { --ch: var(--ch-6); } .ch-7 { --ch: var(--ch-7); }
 .ch-share { --ch: var(--ch-share); } .ch-manual { --ch: var(--ch-manual); }
 
 .empty { display: grid; justify-items: center; gap: 8px; padding: 48px 16px; color: var(--faint); text-align: center; font-size: 13px; }

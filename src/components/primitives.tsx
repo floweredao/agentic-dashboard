@@ -2,11 +2,14 @@ import { createContext, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { ArrowLeft, Inbox, X } from "lucide-react";
 import type { DashboardRecord } from "../../shared/contracts";
-import { channelOf, channelGlyph, dateLabel, relativeTime } from "../model";
+import { strings } from "../i18n";
+import { channelClass, channelOf, channelGlyph, dateLabel, relativeTime } from "../model";
 import type { Channel } from "../model";
 import { backLabel } from "../router";
 import type { Back } from "../router";
 import { useDashboard } from "../state";
+
+const text = strings({ en: { close: "Close" }, ko: { close: "닫기" } });
 
 /**
  * The desktop copy of the screen's back button, at the top of the pane it belongs to (`place`).
@@ -22,8 +25,8 @@ export function BackButton({ place }: { readonly place: Back["place"] }) {
 
 export function ChannelMark({ channel, size = "dot" }: { readonly channel: Channel; readonly size?: "dot" | "tile" }) {
   return size === "dot"
-    ? <span className={`channel-dot ch-${channel}`} aria-hidden="true" />
-    : <span className={`channel-tile ch-${channel}`} aria-hidden="true">{channelGlyph(channel)}</span>;
+    ? <span className={`channel-dot ${channelClass(channel)}`} aria-hidden="true" />
+    : <span className={`channel-tile ${channelClass(channel)}`} aria-hidden="true">{channelGlyph(channel)}</span>;
 }
 
 export function RecordChannel({ record, size = "dot" }: { readonly record: DashboardRecord; readonly size?: "dot" | "tile" }) {
@@ -100,7 +103,7 @@ export function Dialog({ title, onClose, children, size = "normal" }: {
     onCancel={event => { event.preventDefault(); closeRef.current(); }}>
     <header className="dialog-head">
       <h2 id="dialog-title">{title}</h2>
-      <button type="button" className="icon-btn" aria-label="닫기" onClick={onClose}><X size={18} aria-hidden="true" /></button>
+      <button type="button" className="icon-btn" aria-label={text().close} onClick={onClose}><X size={18} aria-hidden="true" /></button>
     </header>
     <div className="dialog-body">{children}</div>
     {toast}

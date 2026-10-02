@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, Inbox, Library, Newspaper, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
 import type { Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
-import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
+import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadAgents, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
 import type { DigestPage } from "./api";
 import { syncPush } from "./push";
 import { Empty, ChannelMark, DialogToast } from "./components/primitives";
 import { ShareDialog } from "./components/ShareDialog";
+import { config } from "./config";
 import { isTypingTarget } from "./hooks";
-import { addDays, aiFillRevert, blankRecord, channelKeys, channelOf, channelLabel, confirmationChanges, homeViewOf, inboxBadge, inboxStateOf, isRecord, listedFor, nextInQueue, partReadAt, revisitDue, seoulDate, withDigestReads } from "./model";
+import { formatClock, strings } from "./i18n";
+import { addDays, aiFillRevert, blankRecord, channelOf, channelLabel, channelsFor, confirmationChanges, homeViewOf, inboxBadge, inboxStateOf, isRecord, listedFor, localDate, nextInQueue, partReadAt, revisitDue, setChannelKeys, withDigestReads } from "./model";
 import { backLabel, backOf, formatRoute, legacyRedirect, parseRoute, sectionOf, viewTitles } from "./router";
 import type { Back, Route, Trail, View } from "./router";
 import { DashboardContext } from "./state";
@@ -25,12 +27,47 @@ import { SettingsPane } from "./views/Settings";
 import { TrashPane } from "./views/Trash";
 import { WorkPane } from "./views/Work";
 
+const text = strings({
+  en: {
+    synced: (time: string) => `Synced ${time}`,
+    saved: "Saved.", undone: "Undone.", openedNext: " Opened the next item.", markedDone: "Marked as done.", confirmed: "Marked as reviewed.",
+    restored: "Restored.", markedRead: "Marked as read.", markedUnread: "Marked as unread.", unstarred: "Removed the star.", starred: "Starred.",
+    markedPending: "Moved back to review.", revisitCleared: "Cleared the revisit date.", snoozed: "You'll see this again in 7 days.",
+    archived: "Archived.", trashed: "Moved to the trash.",
+    purgeConfirm: (title: string) => `Delete "${title}" permanently? This can't be undone.`, purged: "Deleted permanently.",
+    emptyConfirm: "Empty the trash? Every item will be deleted permanently and this can't be undone.", emptied: "Emptied the trash.",
+    aiReverted: "Restored the original title and summary.", followUp: (title: string) => `Follow-up: ${title}`, loggedOut: "Signed out.",
+    undo: "Undo", close: "Close", skip: "Skip to content", loading: "Loading", mainMenu: "Main menu",
+    compose: "New item", composeShortcut: "New item (C)", stored: "Storage", channels: "Channels", settings: "Settings",
+    offline: "Offline · changes won't save", disconnected: "Not connected", refresh: "Refresh",
+    digestList: "Digest list", detail: "Details", pickDigest: "Pick a digest from the list to read it here",
+    list: (title: string) => `${title} list`, notFound: "Item not found", pickItem: "Pick an item from the list to read it here",
+    count: (count: number) => `${count} items`,
+  },
+  ko: {
+    synced: (time: string) => `동기화 ${time}`,
+    saved: "저장했어요.", undone: "되돌렸어요.", openedNext: " 다음 항목을 열었어요.", markedDone: "완료로 표시했어요.", confirmed: "확인했어요.",
+    restored: "복원했어요.", markedRead: "읽음으로 표시했어요.", markedUnread: "안 읽음으로 표시했어요.", unstarred: "별표를 뺐어요.", starred: "별표를 달았어요.",
+    markedPending: "미확인으로 바꿨어요.", revisitCleared: "다시 볼 날을 지웠어요.", snoozed: "7일 뒤에 다시 보여 드릴게요.",
+    archived: "보관했어요.", trashed: "휴지통으로 옮겼어요.",
+    purgeConfirm: (title: string) => `"${title}" 항목을 영구 삭제할까요? 되돌릴 수 없어요.`, purged: "영구 삭제했어요.",
+    emptyConfirm: "휴지통을 비울까요? 모든 항목이 영구 삭제되고 되돌릴 수 없어요.", emptied: "휴지통을 비웠어요.",
+    aiReverted: "원래 제목과 요약으로 되돌렸어요.", followUp: (title: string) => `${title} 후속 할 일`, loggedOut: "로그아웃했어요.",
+    undo: "되돌리기", close: "닫기", skip: "본문으로 바로가기", loading: "불러오는 중", mainMenu: "주 메뉴",
+    compose: "새로 저장", composeShortcut: "새로 저장 (C)", stored: "보관", channels: "채널", settings: "설정",
+    offline: "오프라인 · 저장되지 않아요", disconnected: "연결 안 됨", refresh: "새로고침",
+    digestList: "다이제스트 목록", detail: "상세", pickDigest: "목록에서 다이제스트를 고르면 여기에 보여요",
+    list: (title: string) => `${title} 목록`, notFound: "항목을 찾을 수 없음", pickItem: "목록에서 항목을 고르면 여기에 보여요",
+    count: (count: number) => `${count}건`,
+  },
+});
+
 const icons: Record<View, typeof Inbox> = {
   inbox: Inbox, library: Library, digest: Newspaper, work: BriefcaseBusiness, more: Ellipsis, archive: Archive, trash: Trash2, channels: RadioTower,
   settings: Bell,
 };
-/** The tab screens in the order of the phone's tab bar and the top of the desktop sidebar (더보기 is the sidebar's lower groups). */
-const tabViews = ["inbox", "library", "digest", "work"] as const;
+/** The tab screens in the order of the phone's tab bar and the top of the desktop sidebar (More is the sidebar's lower groups). Digest only when it is on. */
+const tabViews = (): readonly View[] => config.features.digest ? ["inbox", "library", "digest", "work"] : ["inbox", "library", "work"];
 /** Views that fill the workspace alone, with no reader pane beside them. */
 const singlePane = (view: View) => view === "channels" || view === "trash" || view === "more" || view === "settings";
 /** The app's own part of `history.state` (anything else, such as a state from an older build, reads as opened by address). */
@@ -51,13 +88,16 @@ function inputOf(record: DashboardRecord): RecordInput {
   const { kind, title, body, status, projectId, taskId, dueDate, tags, links, fields } = record;
   return { kind, title, body, status, projectId, taskId, dueDate, tags, links, fields };
 }
-const syncLabel = (date: Date | null) => date
-  ? `동기화 ${new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit" }).format(date)}` : "";
-/** Records, the trash and timelines together. The trash and timelines are secondary: a failure there goes to `report` and never hides the records. */
+const syncLabel = (date: Date | null) => date ? text().synced(formatClock(date)) : "";
+/**
+ * Records, the trash, timelines, digests (when on) and agents together. All but the records are secondary: a failure
+ * there goes to `report` and never hides the records.
+ */
 async function loadAll(report: (cause: unknown) => void) {
   const secondary = <T,>(load: Promise<T>) => load.catch((cause: unknown) => { report(cause); return null; });
-  const [items, trashed, comments, digests] = await Promise.all([loadRecords(), secondary(loadTrash()), secondary(loadComments()), secondary(loadDigests())]);
-  return { items, trashed, comments, digests };
+  const [items, trashed, comments, digests, agents] = await Promise.all([loadRecords(), secondary(loadTrash()), secondary(loadComments()),
+    config.features.digest ? secondary(loadDigests()) : Promise.resolve(null), secondary(loadAgents())]);
+  return { items, trashed, comments, digests, agents };
 }
 
 export function App() {
@@ -67,6 +107,7 @@ export function App() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [digests, setDigests] = useState<DigestPage | null>(null);
   const [digestReads, setDigestReads] = useState<ReadonlyMap<string, string | null>>(new Map());
+  const [agents, setAgents] = useState<readonly string[]>([]);
   const [csrf, setCsrf] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -97,9 +138,9 @@ export function App() {
   }, []);
 
   const report = useCallback(async (cause: unknown) => notify(await errorMessage(cause), "error"), [notify]);
-  /** A failed trash or timeline load (null) keeps the last one. */
-  const store = useCallback(({ items, trashed, comments: entries, digests: page }: Awaited<ReturnType<typeof loadAll>>) => {
-    setRecords(items); if (trashed) setTrash(trashed); if (entries) setComments(entries);
+  /** A failed secondary load (null) keeps the last one. */
+  const store = useCallback(({ items, trashed, comments: entries, digests: page, agents: names }: Awaited<ReturnType<typeof loadAll>>) => {
+    setRecords(items); if (trashed) setTrash(trashed); if (entries) setComments(entries); if (names) setAgents(names);
     if (page) { setDigests(page); setDigestReads(new Map()); }
     setSyncedAt(new Date());
   }, []);
@@ -174,25 +215,28 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // Pending records plus digests with an unread part, with the read overlay applied as the 다이제스트 list does.
+  // The digest list hidden while digests are off sends its address to the inbox.
+  useEffect(() => { if (route.view === "digest" && !config.features.digest) navigate({ view: "inbox" }, { replace: true }); }, [route.view, navigate]);
+
+  // Pending records plus digests with an unread part, with the read overlay applied as the digest list does.
   const inbox = useMemo(() => inboxBadge(records, (digests?.items ?? []).map(item => withDigestReads(item, digestReads))),
     [records, digests, digestReads]);
   useEffect(() => {
-    document.title = `Agentic Dashboard · ${viewTitles[route.view]}${inbox ? ` (${inbox})` : ""}`;
+    document.title = `${config.appName} · ${viewTitles[route.view]}${inbox ? ` (${inbox})` : ""}`;
   }, [route.view, inbox]);
 
   // history.state changes only together with the route (every navigation sets a new route object), so the route keys this.
   const back: Back | null = useMemo(() => connected ? backOf(route, trailOf(history.state), narrow) : null, [connected, route, narrow]);
   const dashboard: Dashboard = useMemo(() => {
     const byId = new Map(records.map(record => [record.id, record]));
-    /** undo: the changes that put the saved record back, offered as 되돌리기 in the toast. */
-    const patch = async (record: DashboardRecord, changes: RecordPatch["changes"], message = "저장했어요.", undo?: RecordPatch["changes"]) => {
+    /** undo: the changes that put the saved record back, offered as Undo in the toast. */
+    const patch = async (record: DashboardRecord, changes: RecordPatch["changes"], message = text().saved, undo?: RecordPatch["changes"]) => {
       setBusy(true);
       setToast(null);
       try {
         const saved = await patchRecord(current(record), changes, latest.current.csrf);
         replace(saved);
-        setToast({ message, tone: "info", key: Date.now(), ...(undo ? { undo: () => { void patch(saved, undo, "되돌렸어요."); } } : {}) });
+        setToast({ message, tone: "info", key: Date.now(), ...(undo ? { undo: () => { void patch(saved, undo, text().undone); } } : {}) });
         return saved;
       } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); return null; }
       finally { setBusy(false); }
@@ -218,8 +262,8 @@ export function App() {
       else navigate({ view: now.view, id: null, params: now.params }, { replace: true });
     };
     /**
-     * When the open inbox item leaves the 미확인 queue, the reader moves to its neighbour (and the toast says so). `leaves` is false when the change keeps it queued.
-     * Under the 전체/확인함 filters a review change keeps the item listed, so the reader stays.
+     * When the open inbox item leaves the pending queue, the reader moves to its neighbour (and the toast says so). `leaves` is false when the change keeps it queued.
+     * Under the all/approved filters a review change keeps the item listed, so the reader stays.
      */
     const leaveQueue = async (record: DashboardRecord, run: (moved: string) => Promise<DashboardRecord | null>, leaves = true) => {
       const { route: now, records: all } = latest.current;
@@ -228,21 +272,21 @@ export function App() {
       const advances = leaves && now.view === "inbox" && inboxStateOf(now.params) === "pending"
         && now.id === record.id && queue.some(item => item.id === record.id);
       const next = advances ? nextInQueue(queue, record.id) : null;
-      const saved = await run(next ? " 다음 항목을 열었어요." : "");
+      const saved = await run(next ? text().openedNext : "");
       if (saved && advances) navigate({ view: "inbox", id: next?.id ?? null, params: now.params }, { replace: true });
     };
     const confirm = async (record: DashboardRecord) => {
-      if (record.kind === "task") { await leaveQueue(record, moved => patch(record, { status: "done" }, "완료로 표시했어요." + moved)); return; }
+      if (record.kind === "task") { await leaveQueue(record, moved => patch(record, { status: "done" }, text().markedDone + moved)); return; }
       const changes = confirmationChanges(current(record));
       // While the quiet confirmation of this record is still in flight, a second PATCH would only conflict with it.
       if (!changes || reading.current.has(record.id)) return;
-      await leaveQueue(record, moved => patch(record, changes, "확인했어요." + moved), !revisitDue(current(record)));
+      await leaveQueue(record, moved => patch(record, changes, text().confirmed + moved), !revisitDue(current(record)));
     };
     const create = async (input: RecordInput, requestId: string, review?: ReviewState) => {
       setToast(null);
       let saved = await createRecord(input, latest.current.csrf, requestId);
       if (isRecord(input) && review && saved.reviewState !== review) saved = await patchRecord(saved, { reviewState: review }, latest.current.csrf);
-      replace(saved); setModal(null); notify("저장했어요.");
+      replace(saved); setModal(null); notify(text().saved);
       navigate({ view: homeViewOf(saved), id: saved.id });
       return saved;
     };
@@ -253,7 +297,7 @@ export function App() {
       try {
         replace(await restoreRecord(id, latest.current.csrf));
         setTrash(items => items.filter(item => item.record.id !== id));
-        notify("복원했어요.");
+        notify(text().restored);
         // The silent refresh started by the delete may still be in flight; this one settles both lists on the server's state.
         void refresh(true);
       } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); }
@@ -273,7 +317,7 @@ export function App() {
           const step = unread === wasUnread ? 0 : unread ? 1 : -1;
           if (step) setDigests(page => page && { ...page, unread: Math.max(0, page.unread + step),
             parts: { ...page.parts, [part]: { ...page.parts[part], unread: Math.max(0, page.parts[part].unread + step) } } });
-          if (!quiet) notify(read ? "읽음으로 표시했어요." : "안 읽음으로 표시했어요.");
+          if (!quiet) notify(read ? text().markedRead : text().markedUnread);
         } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); }
       },
       addComment: async (record, body) => {
@@ -298,8 +342,8 @@ export function App() {
         for (const [key, value] of Object.entries(params)) { if (value) merged[key] = value; else delete merged[key]; }
         navigate({ view: now.view, id: now.id, params: merged }, options);
       },
-      toggleStar: async record => { await patch(record, { fields: { ...current(record).fields, starred: current(record).fields.starred !== true } }, current(record).fields.starred === true ? "별표를 뺐어요." : "별표를 달았어요."); },
-      markPending: async record => { await patch(record, { reviewState: "pending" }, "미확인으로 바꿨어요.", { reviewState: "approved" }); },
+      toggleStar: async record => { await patch(record, { fields: { ...current(record).fields, starred: current(record).fields.starred !== true } }, current(record).fields.starred === true ? text().unstarred : text().starred); },
+      markPending: async record => { await patch(record, { reviewState: "pending" }, text().markedPending, { reviewState: "approved" }); },
       markRead: async record => {
         const now = current(record);
         if (!isRecord(now) || now.reviewState !== "pending" || reading.current.has(now.id)) return;
@@ -310,20 +354,20 @@ export function App() {
       },
       clearRevisit: async record => {
         const before = current(record);
-        await leaveQueue(record, moved => patch(record, { fields: { ...before.fields, revisitDate: null } }, "다시 볼 날을 지웠어요." + moved,
+        await leaveQueue(record, moved => patch(record, { fields: { ...before.fields, revisitDate: null } }, text().revisitCleared + moved,
           { fields: before.fields }), before.reviewState !== "pending");
       },
       snooze: async record => {
         const before = current(record);
-        await leaveQueue(record, moved => patch(record, { reviewState: "approved", fields: { ...before.fields, revisitDate: addDays(seoulDate(), 7) } },
-          "7일 뒤에 다시 보여 드릴게요." + moved, { reviewState: before.reviewState, fields: before.fields }));
+        await leaveQueue(record, moved => patch(record, { reviewState: "approved", fields: { ...before.fields, revisitDate: addDays(localDate(), 7) } },
+          text().snoozed + moved, { reviewState: before.reviewState, fields: before.fields }));
       },
       toggleArchive: async record => {
         const archived = current(record).archivedAt !== null;
-        if (archived) { await patch(record, { archived: false }, "복원했어요."); return; }
+        if (archived) { await patch(record, { archived: false }, text().restored); return; }
         // Archiving the open record goes back to the list it was opened from, not on to another record.
         const open = latest.current.route.id === record.id;
-        const saved = await patch(record, { archived: true }, "보관했어요.", { archived: false });
+        const saved = await patch(record, { archived: true }, text().archived, { archived: false });
         if (saved && open) select(null);
       },
       remove: async record => {
@@ -337,39 +381,39 @@ export function App() {
           // Records that referenced it were detached and got new versions on the server, and the trash has a new item.
           void refresh(true);
           if (open) select(null);
-          setToast({ message: "휴지통으로 옮겼어요.", tone: "info", key: Date.now(), undo: () => { void restoreById(record.id); } });
+          setToast({ message: text().trashed, tone: "info", key: Date.now(), undo: () => { void restoreById(record.id); } });
         } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); }
         finally { setBusy(false); }
       },
       restore: item => restoreById(item.record.id),
       purge: async item => {
-        if (!window.confirm(`"${item.record.title}" 항목을 영구 삭제할까요? 되돌릴 수 없어요.`)) return;
+        if (!window.confirm(text().purgeConfirm(item.record.title))) return;
         setBusy(true);
         setToast(null);
         try {
           await purgeRecord(item.record.id, latest.current.csrf);
           setTrash(items => items.filter(entry => entry.record.id !== item.record.id));
-          notify("영구 삭제했어요.");
+          notify(text().purged);
         } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); }
         finally { setBusy(false); }
       },
       emptyTrash: async () => {
-        if (!window.confirm("휴지통을 비울까요? 모든 항목이 영구 삭제되고 되돌릴 수 없어요.")) return;
+        if (!window.confirm(text().emptyConfirm)) return;
         setBusy(true);
         setToast(null);
         try {
           await emptyTrashApi(latest.current.csrf);
           setTrash([]);
-          notify("휴지통을 비웠어요.");
+          notify(text().emptied);
         } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); }
         finally { setBusy(false); }
       },
-      revertAiFill: async record => { const changes = aiFillRevert(current(record)); if (changes) await patch(record, changes, "원래 제목과 요약으로 되돌렸어요."); },
+      revertAiFill: async record => { const changes = aiFillRevert(current(record)); if (changes) await patch(record, changes, text().aiReverted); },
       update: async (record, input, review) => {
         setToast(null);
         const { kind: _kind, ...changes } = input;
         const saved = await patchRecord(current(record), { ...changes, ...(isRecord(input) && review ? { reviewState: review } : {}) }, latest.current.csrf);
-        replace(saved); setModal(null); notify("저장했어요.");
+        replace(saved); setModal(null); notify(text().saved);
         return saved;
       },
       compose: (kind = "social") => { setToast(null); if (!latest.current.csrf) setModal({ mode: "login" }); else setModal({ mode: "compose", kind }); },
@@ -377,7 +421,7 @@ export function App() {
       share: record => { setToast(null); setModal({ mode: "share", record: current(record) }); },
       followUp: record => {
         const task = blankRecord("task");
-        editDraft({ ...task, title: `${record.title} 후속 할 일`.slice(0, 200), projectId: record.projectId,
+        editDraft({ ...task, title: text().followUp(record.title).slice(0, 200), projectId: record.projectId,
           fields: { ...task.fields, evidenceIds: [record.id], taskType: record.projectId ? "project" : "general" } });
       },
       refresh: () => refresh(),
@@ -386,7 +430,7 @@ export function App() {
         const auth = await session(token);
         setCsrf(auth.csrfToken); store(await loadAll(report)); setModal(null);
       },
-      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); navigate({ view: "inbox" }); notify("로그아웃했어요."); },
+      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "inbox" }); notify(text().loggedOut); },
       importJson: async text => create(recordInputSchema.parse(JSON.parse(text)), crypto.randomUUID()),
     };
   }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store]);
@@ -420,7 +464,7 @@ export function App() {
   }, [dashboard]);
 
   const selected = route.id ? dashboard.byId.get(route.id) : undefined;
-  // A digest opened from 받은 항목 reads there in full (기사 and 메시지), so back returns to the inbox with its filters.
+  // A digest opened from the inbox reads there in full (articles and messages), so back returns to the inbox with its filters.
   const inboxDigest = route.view === "inbox" && !selected && route.id !== null && digests?.items.some(item => item.id === route.id) ? route.id : null;
   const hasDetail = connected && !singlePane(route.view) && route.id !== null;
   const counts: Record<View, number> = {
@@ -434,6 +478,10 @@ export function App() {
     digest: digests?.unread ?? 0,
     settings: 0,
   };
+  const t = text();
+  // Agents and record sources make the channel list; set before the views below read it.
+  const channels = useMemo(() => channelsFor(agents, records), [agents, records]);
+  setChannelKeys(channels);
   const link = (view: View) => formatRoute({ view, id: null, params: {} });
   const title = viewTitles[route.view];
   const navItem = (view: View) => {
@@ -446,26 +494,26 @@ export function App() {
   const locked = !connected && !loading;
   const toastView = toast && <div key={toast.key} className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>
     <span>{toast.message}</span>
-    {toast.undo && <button type="button" className="toast-action" onClick={() => { const undo = toast.undo; setToast(null); undo?.(); }}>되돌리기</button>}
-    <button type="button" onClick={() => setToast(null)}>닫기</button>
+    {toast.undo && <button type="button" className="toast-action" onClick={() => { const undo = toast.undo; setToast(null); undo?.(); }}>{t.undo}</button>}
+    <button type="button" onClick={() => setToast(null)}>{t.close}</button>
   </div>;
 
   return <DashboardContext.Provider value={dashboard}>
-    <a href="#main" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById("main")?.focus(); }}>본문으로 바로가기</a>
-    {loading && <div className="loading-line" role="status" aria-label="불러오는 중" />}
+    <a href="#main" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById("main")?.focus(); }}>{t.skip}</a>
+    {loading && <div className="loading-line" role="status" aria-label={t.loading} />}
     <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}`}>
-      <nav className="sidebar" aria-label="주 메뉴">
-        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">Agentic Dashboard</span></a>
-        <button type="button" className="btn btn-primary compose-btn" onClick={() => dashboard.compose()} aria-label="새로 저장" title="새로 저장 (C)"><Plus size={17} aria-hidden="true" /><span>새로 저장</span></button>
-        <ul className="nav-list">{tabViews.map(navItem)}</ul>
+      <nav className="sidebar" aria-label={t.mainMenu}>
+        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
+        <button type="button" className="btn btn-primary compose-btn" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.composeShortcut}><Plus size={17} aria-hidden="true" /><span>{t.compose}</span></button>
+        <ul className="nav-list">{tabViews().map(navItem)}</ul>
         {connected && <>
-          <p className="nav-section">보관</p>
+          <p className="nav-section">{t.stored}</p>
           <ul className="nav-list">{navItem("archive")}{navItem("trash")}</ul>
-          <p className="nav-section">채널</p>
+          <p className="nav-section">{t.channels}</p>
           <ul className="nav-list">{navItem("channels")}</ul>
-          <p className="nav-section">설정</p>
+          <p className="nav-section">{t.settings}</p>
           <ul className="nav-list">{navItem("settings")}</ul>
-          <ul className="nav-list channel-nav">{channelKeys.map(channel => {
+          <ul className="nav-list channel-nav">{channels.map(channel => {
             const total = records.filter(record => isRecord(record) && !record.archivedAt && channelOf(record) === channel).length;
             const active = route.view === "library" && route.params.channel === channel;
             return <li key={channel}><a className="nav-item" href={formatRoute({ view: "library", id: null, params: { channel } })} aria-current={active ? "page" : undefined}>
@@ -474,50 +522,50 @@ export function App() {
           })}</ul>
         </>}
         <div className="sidebar-foot">
-          <span className={`status${offline ? " offline" : ""}`} role="status">{offline ? "오프라인 · 저장되지 않아요" : connected ? syncLabel(syncedAt) : "연결 안 됨"}</span>
-          {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label="새로고침" title="새로고침"><RefreshCw size={16} aria-hidden="true" /></button>}
+          <span className={`status${offline ? " offline" : ""}`} role="status">{offline ? t.offline : connected ? syncLabel(syncedAt) : t.disconnected}</span>
+          {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh} title={t.refresh}><RefreshCw size={16} aria-hidden="true" /></button>}
         </div>
       </nav>
 
       <header className="appbar">
         {back && <button type="button" className="btn appbar-back" onClick={dashboard.goBack}><ArrowLeft size={18} aria-hidden="true" />{backLabel(back.hash)}</button>}
-        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">Agentic Dashboard</span></a>
-        {connected && <button type="button" className="icon-btn appbar-compose" onClick={() => dashboard.compose()} aria-label="새로 저장" title="새로 저장"><Plus size={20} aria-hidden="true" /></button>}
-        {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label="새로고침"><RefreshCw size={18} aria-hidden="true" /></button>}
+        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
+        {connected && <button type="button" className="icon-btn appbar-compose" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.compose}><Plus size={20} aria-hidden="true" /></button>}
+        {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh}><RefreshCw size={18} aria-hidden="true" /></button>}
       </header>
 
       <main id="main" tabIndex={-1} className={`workspace${!connected || singlePane(route.view) ? " single" : ""}`}>
         {!connected ? loading ? null : <section className="pane">
-          <OwnerGate origin={location.origin} hash={formatRoute(route)} onToken={() => setModal({ mode: "login" })} />
+          <OwnerGate onToken={() => setModal({ mode: "login" })} />
         </section>
           : route.view === "more" ? <section className="pane" aria-label={title}><MorePane /></section>
           : route.view === "channels" ? <section className="pane" aria-label={title}><ChannelsView /></section>
           : route.view === "trash" ? <section className="pane" aria-label={title}><TrashPane /></section>
           : route.view === "settings" ? <section className="pane" aria-label={title}><SettingsPane /></section>
           : route.view === "digest" ? <>
-            <section className="pane list-pane" aria-label="다이제스트 목록"><DigestPane /></section>
-            <section className="pane reader-pane" aria-label="상세">
+            <section className="pane list-pane" aria-label={t.digestList}><DigestPane /></section>
+            <section className="pane reader-pane" aria-label={t.detail}>
               {route.id ? <DigestReader key={`${route.id}:${digestPart(route.params)}`} id={route.id} part={digestPart(route.params)} />
-                : <div className="reader-empty"><Empty icon={<Newspaper size={20} aria-hidden="true" />}>목록에서 다이제스트를 고르면 여기에 보여요</Empty></div>}
+                : <div className="reader-empty"><Empty icon={<Newspaper size={20} aria-hidden="true" />}>{t.pickDigest}</Empty></div>}
             </section>
           </>
             : <>
-              <section className="pane list-pane" aria-label={`${title} 목록`}>
+              <section className="pane list-pane" aria-label={t.list(title)}>
                 {route.view === "inbox" && <InboxPane />}
                 {route.view === "library" && <LibraryPane />}
                 {route.view === "archive" && <ArchivePane />}
                 {route.view === "work" && <WorkPane />}
               </section>
-              <section className="pane reader-pane" aria-label="상세">
+              <section className="pane reader-pane" aria-label={t.detail}>
                 {selected ? <Reader key={selected.id} record={selected} />
                   : inboxDigest ? <DigestReader key={`inbox:${inboxDigest}`} id={inboxDigest} part="all" />
-                  : <div className="reader-empty"><Empty>{route.id ? "항목을 찾을 수 없음" : "목록에서 항목을 고르면 여기에 보여요"}</Empty></div>}
+                  : <div className="reader-empty"><Empty>{route.id ? t.notFound : t.pickItem}</Empty></div>}
               </section>
             </>}
       </main>
 
-      <nav className="tabbar" aria-label="주 메뉴">
-        {(["inbox", "library", "digest"] as const).map(view => <TabLink key={view} view={view} current={route.view}
+      <nav className="tabbar" aria-label={t.mainMenu}>
+        {tabViews().filter(view => view !== "work").map(view => <TabLink key={view} view={view} current={route.view}
           count={connected && (view === "inbox" || view === "digest") ? counts[view] : 0} />)}
         {(["work", "more"] as const).map(view => <TabLink key={view} view={view} current={route.view}
           count={view === "work" && connected ? records.filter(record => record.kind === "task" && !record.archivedAt && record.status === "review").length : 0} />)}
@@ -534,10 +582,10 @@ export function App() {
   </DashboardContext.Provider>;
 }
 
-/** A tab is current on its own screen (page) and on the screens under it (true: 보관함, 휴지통 and 채널 관리 under 더보기). */
+/** A tab is current on its own screen (page) and on the screens under it (true: archive, trash, channels and settings under More). */
 function TabLink({ view, current, count }: { readonly view: View; readonly current: View; readonly count: number }) {
   const Icon = icons[view];
   return <a className="tab" href={formatRoute({ view, id: null, params: {} })} aria-current={current === view ? "page" : sectionOf(current) === view ? "true" : undefined}>
-    <Icon size={20} aria-hidden="true" />{viewTitles[view]}{count > 0 && <span className="tab-badge" aria-label={`${count}건`}>{count}</span>}
+    <Icon size={20} aria-hidden="true" />{viewTitles[view]}{count > 0 && <span className="tab-badge" aria-label={text().count(count)}>{count}</span>}
   </a>;
 }
