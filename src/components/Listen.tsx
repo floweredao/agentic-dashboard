@@ -19,6 +19,8 @@ const RATE_KEY = "agentic:listen-rate-v2";
 /** The first player's key, written on every mount; a rate stored there was still the owner's last choice. */
 const OLD_RATE_KEY = "agentic:listen-rate";
 const positionKey = (recordId: string) => `agentic:listen:${recordId}`;
+/** The failure (its updatedAt) the owner closed with x for this record or digest part, on this device. */
+const dismissKey = (recordId: string) => `agentic:listen-dismissed:${recordId}`;
 const POLL_MS = 3000;
 /** How long a finished job's bar stays at 100% before the player replaces it. */
 const FINISH_HOLD_MS = 900;
@@ -132,6 +134,14 @@ const knownRate = (value: string | null) => RATES.find(item => value !== null &&
 /** The rate the owner last picked, else 1x. */
 export function initialRate(read: (key: string) => string | null = stored): number {
   return knownRate(read(RATE_KEY)) ?? knownRate(read(OLD_RATE_KEY)) ?? DEFAULT_RATE;
+}
+
+/** Whether the owner already closed this failure here: it stays closed on every visit until the job fails again. */
+export function failureDismissed(recordId: string, updatedAt: string | undefined, read: (key: string) => string | null = stored): boolean {
+  return updatedAt !== undefined && read(dismissKey(recordId)) === updatedAt;
+}
+export function rememberDismissed(recordId: string, updatedAt: string, write: (key: string, value: string) => void = (key, value) => localStorage.setItem(key, value)) {
+  write(dismissKey(recordId), updatedAt);
 }
 
 const working = (state: NarrationState | null) => state?.narration ? WORKING.has(state.narration.status) : false;
@@ -481,9 +491,13 @@ export function useNarration({ record, collection = "records", label }: {
   const paragraphs = state.narration?.script?.split(/\n{2,}/) ?? [];
   const bar = <>
     <NarrationBar record={record} state={state} label={label} pending={pending} cancelling={cancelling}
-      dismissed={dismissed !== null && dismissed === state.narration?.updatedAt} open={open} finishing={finishing} playNonce={playNonce}
+      dismissed={(dismissed !== null && dismissed === state.narration?.updatedAt) || failureDismissed(forId, state.narration?.updatedAt)} open={open} finishing={finishing} playNonce={playNonce}
       onCancel={() => { void cancel(); }} onRetry={force => { void request(force); }}
-      onDismiss={() => setDismissed(state.narration?.updatedAt ?? null)} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} />
+      onDismiss={() => {
+        const updatedAt = state.narration?.updatedAt ?? null;
+        if (updatedAt) rememberDismissed(forId, updatedAt);
+        setDismissed(updatedAt);
+      }} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} />
     {script && paragraphs.length > 0 && <Dialog title={`${label ? `${label} ` : ""}${text().script}`} onClose={() => setScript(false)}>
       <div className="listen-script">{paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
     </Dialog>}

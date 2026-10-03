@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NarrationStateSchema } from "../../shared/contracts";
 import type { NarrationState } from "../../shared/contracts";
-import { clock, initialRate, NarrationBar, narrationFailure, narrationItems, StyleChoice } from "./Listen";
+import { clock, failureDismissed, initialRate, NarrationBar, narrationFailure, narrationItems, rememberDismissed, StyleChoice } from "./Listen";
 
 const record = { id: "00000000-0000-4000-8000-000000000201", title: "조사" };
 const base = {
@@ -51,6 +51,20 @@ test("a running job shows one compact row with its stage, a percent bar inside t
   expect(text(speaking)).toContain("음성을 만드는 중 3/5");
   expect(speaking).toMatch(/<button[^>]*aria-label="음성 만들기 취소"/);
   expect(labels({ narration: { ...base, status: "queued" }, available: true })).toEqual(["음성 만들기 취소"]);
+});
+
+test("a failure the owner closed stays closed on this device, until the job fails again", () => {
+  const saved = new Map<string, string>();
+  const read = (key: string) => saved.get(key) ?? null;
+  // Given a failure from 20:10 that was never closed
+  expect(failureDismissed(record.id, "2026-10-02T11:10:00.000Z", read)).toBe(false);
+  // When x is pressed, then the record is opened again
+  rememberDismissed(record.id, "2026-10-02T11:10:00.000Z", (key: string, value: string) => { saved.set(key, value); });
+  expect(failureDismissed(record.id, "2026-10-02T11:10:00.000Z", read)).toBe(true);
+  expect([...saved.keys()]).toEqual([`agentic:listen-dismissed:${record.id}`]);
+  // Then a later failure, or another record's failure, still shows once
+  expect(failureDismissed(record.id, "2026-10-02T12:30:00.000Z", read)).toBe(false);
+  expect(failureDismissed("00000000-0000-4000-8000-000000000202", "2026-10-02T11:10:00.000Z", read)).toBe(false);
 });
 
 test("while the cancel is in flight the row says 취소하는 중 and the x is disabled", () => {
