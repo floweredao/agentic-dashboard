@@ -74,6 +74,13 @@ export const SCRIPT_SYSTEM = [
   `Separate paragraphs with a blank line, 3-5 sentences each. Keep the whole script within ${NARRATION_LIMITS.scriptChars - 500} characters, trimming less important detail if needed.`,
   "Answer with the script text only.",
 ].join("\n");
+/**
+ * Added to the instructions only when the source is Korean: polite speech (존댓말) that mixes 해요체 and 습니다체, never 반말.
+ * Script models drift into plain '~다' endings, so a Korean script with such endings is written once more (see `plainSentences`).
+ */
+export const KOREAN_POLITE = "한국어 원고의 말투는 존댓말로 쓰되 해요체('~예요', '~했어요')와 습니다체('~입니다', '~했습니다')를 자연스럽게 섞는다. 사실을 전하는 문장은 습니다체를 주로, 연결·안내·마무리 문장은 해요체를 주로 쓰고, 한 가지로만 통일하지 않는다. '~다', '~이다', '~한다', '~했다' 같은 평서 종결과 '~해', '~야' 같은 반말은 쓰지 않는다.";
+const KOREAN_POLITE_AGAIN = "직전에 쓴 원고에 반말이나 '~다'로 끝난 문장이 있었다. 이번에는 모든 문장을 해요체나 습니다체 존댓말로 끝낸다.";
+
 /** A digest (articles and messages): a one- or two-sentence opening, then straight into every item. */
 export const DIGEST_SCRIPT_SYSTEM = [
   "You turn a digest of articles and messages into a script that is pleasant to listen to. Use only what is in [Record] and [Body].",
@@ -150,6 +157,24 @@ function scriptPrompt(record: DashboardRecord, label?: string) {
   if (sources.length) lines.push(`Sources: ${sources.join(", ")}`);
   lines.push("", "[Body]", record.body.trim().slice(0, NARRATION_LIMITS.sourceChars) || "(none)");
   return lines.join("\n");
+}
+
+/** Whether the source is mostly Korean: Hangul syllables make up at least a fifth of its letters. */
+function isKorean(record: DashboardRecord) {
+  const content = [record.title, text(record, "summary"), text(record, "conclusion"), record.body, text(record, "nextActions")].join(" ");
+  const hangul = content.match(/[가-힣]/g)?.length ?? 0;
+  const latin = content.match(/[A-Za-z]/g)?.length ?? 0;
+  return hangul > 0 && hangul * 5 >= hangul + latin;
+}
+/** Korean sentences ending in a plain (반말 or written) form instead of 해요체 or 습니다체; lines without a closing mark are ignored. */
+export function plainSentences(script: string): string[] {
+  return script.split(/\n+/)
+    .flatMap(line => line.replace(/(^|\s)[AB]\s*[:：]\s*/g, "$1").match(/[^.!?]+[.!?]+/g) ?? [])
+    .map(sentence => sentence.trim())
+    .filter(sentence => {
+      const end = sentence.replace(/[.!?'"”’)\]\s]+$/, "");
+      return /[가-힣]$/.test(end) && !/(?:요|죠|니다|니까)$/.test(end);
+    });
 }
 
 /** Removes what a listener should not hear (URLs, Markdown, code) and keeps the script within the length cap. */
@@ -430,8 +455,16 @@ export function createNarration(options: NarrationOptions) {
       if (!script) {
         set(id, { status: "scripting", job_hash: hash });
         const digest = label !== undefined;
-        const system = podcast ? PODCAST_SCRIPT_SYSTEM : digest ? DIGEST_SCRIPT_SYSTEM : SCRIPT_SYSTEM;
-        script = normalizeScript(await writeScript(provider, system, scriptPrompt(record, label), cancel));
+        const korean = isKorean(record);
+        const base = podcast ? PODCAST_SCRIPT_SYSTEM : digest ? DIGEST_SCRIPT_SYSTEM : SCRIPT_SYSTEM;
+        const system = korean ? `${base}\n${KOREAN_POLITE}` : base;
+        const prompt = scriptPrompt(record, label);
+        script = normalizeScript(await writeScript(provider, system, prompt, cancel));
+        // One more script when a Korean script slipped into 반말; a second slip is kept rather than paid for again.
+        if (korean && plainSentences(script).length > 0) {
+          check();
+          script = normalizeScript(await writeScript(provider, `${system}\n${KOREAN_POLITE_AGAIN}`, prompt, cancel)) || script;
+        }
         if (!script) throw new ProviderError("empty_script", false);
         // Kept even when cancelled meanwhile: it is paid for, and a later request reuses it.
         set(id, { script, script_hash: hash, script_style: style });

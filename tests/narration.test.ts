@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
-import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, normalizeScript, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
+import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, normalizeScript, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
 import type { NarrationOptions, NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
@@ -18,6 +18,8 @@ function deferred<T>(): Deferred<T> {
 type Fake = {
   provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[]; systems: string[]; converse: SpeechTurn[][]; models: string[] }; available: boolean;
   failSpeak: number | "always"; error: Error | null; scriptText: string; hold: Hold | null;
+  /** Returned, one per call and in order, before `scriptText`. */
+  scriptTexts: string[];
   /** Thrown, one per call and in order, by the next script and speak calls. */
   scriptErrors: ProviderError[]; speakErrors: ProviderError[];
 };
@@ -25,7 +27,7 @@ type Fake = {
 /** A TTS provider that returns one second of silence per chunk and records what it was asked. */
 function fake(): Fake {
   const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [], models: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT,
-    hold: null, scriptErrors: [], speakErrors: [], provider: null as never };
+    hold: null, scriptErrors: [], speakErrors: [], scriptTexts: [], provider: null as never };
   state.provider = {
     ttsModel: "fake-tts", scriptModel: "fake-script", fallbackScriptModel: "fake-lite", voice: "Kore", hosts: ["Kore", "Puck"],
     available: async () => state.available,
@@ -33,7 +35,7 @@ function fake(): Fake {
       state.calls.models.push(model ?? "fake-script");
       const failure = state.scriptErrors.shift();
       if (failure) throw failure;
-      state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system); return state.scriptText;
+      state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system); return state.scriptTexts.shift() ?? state.scriptText;
     },
     converse: async (turns, _style, signal) => {
       state.calls.converse.push([...turns]);
@@ -91,6 +93,8 @@ async function research(f: Fixture, headers: HeadersInit) {
   return recordResult.parse(await response.json()).record;
 }
 const narration = (id: string) => `/api/v1/records/${id}/narration`;
+/** The instructions a Korean record is written with: the base ones plus the Korean polite-speech rule. */
+const korean = (system: string) => `${system}\n${KOREAN_POLITE}`;
 const hold = (tts: Fake): Hold => (tts.hold = { entered: deferred<AbortSignal>(), release: deferred<void>() });
 /** Two paragraphs that cannot share one chunk, so a job has a second paid call left to skip. */
 const TWO_CHUNKS = `${"첫 문단입니다. ".repeat(100)}\n\n${"둘째 문단입니다. ".repeat(100)}`;
@@ -318,6 +322,8 @@ test("a busy script model is retried with growing waits, then the lighter model 
   await idle();
   // Then: the main model is tried 1 + retries times with exponential waits (plus a little jitter), then the fallback succeeds.
   expect(tts.calls.models).toEqual([...Array.from({ length: NARRATION_LIMITS.retries + 1 }, () => "fake-script"), "fake-lite"]);
+  // The lighter model gets the same instructions (polite speech, order, what not to read).
+  expect(tts.calls.systems).toEqual([korean(SCRIPT_SYSTEM)]);
   expect(clock.slept).toHaveLength(NARRATION_LIMITS.retries);
   clock.slept.forEach((ms, index) => {
     expect(ms).toBeGreaterThanOrEqual(1000 * 2 ** index);
@@ -399,10 +405,68 @@ test("a digest is written with the digest instructions (a one- or two-sentence o
   await f.call(`/api/v1/digests/${id}/narration`, "POST", {}, owner);
   await f.call(narration((await research(f, owner)).id), "POST", {}, owner);
   await idle();
-  expect(tts.calls.systems).toEqual([DIGEST_SCRIPT_SYSTEM, SCRIPT_SYSTEM]);
+  expect(tts.calls.systems).toEqual([DIGEST_SCRIPT_SYSTEM, korean(SCRIPT_SYSTEM)]);
   expect(DIGEST_SCRIPT_SYSTEM).toContain("one or two sentences");
   expect(tts.calls.prompts[0]).toContain("2026-10-02 evening");
   expect(tts.calls.prompts[0]).toContain("Domestic 1");
+});
+
+test("plain (반말) Korean sentence endings are found; 해요체, 습니다체 and lines without an ending are not", () => {
+  expect(plainSentences("10월 2일 아침 다이제스트다. 국내 1건이에요.\n\n메일이 왔다! 확인했나요? 확인했습니다.\n\nB: 좋죠. A: 그런가?\n\n국내 소식"))
+    .toEqual(["10월 2일 아침 다이제스트다.", "메일이 왔다!", "그런가?"]);
+  expect(plainSentences("This is a plain English sentence. Is it?")).toEqual([]);
+});
+
+test("a Korean script mixing 해요체 and 습니다체 has no plain sentence and costs one script call", async () => {
+  const mixed = "10월 2일 저녁 다이제스트예요. 국내 2건, 해외 1건입니다.\n\n서울시가 지하철을 하루 40회 늘린다고 밝혔습니다. 한국은행은 기준금리를 연 2.5퍼센트로 유지했습니다.\n\n"
+    + "해외 소식이에요. 엔화 약세가 이어지고 있습니다. 메시지도 하나 있어요! 서류를 준비하시면 됩니다. 확인하셨나요? 그렇죠. 맞습니까?";
+  expect(plainSentences(mixed)).toEqual([]);
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  tts.scriptText = mixed;
+  const record = await research(f, owner);
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  expect(tts.calls.script).toBe(1);
+  expect(tts.calls.systems).toEqual([korean(SCRIPT_SYSTEM)]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", script: mixed });
+});
+
+test("a Korean script with 반말 endings is written once more with a polite-speech reminder; the second script is used even if it slips again", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  // Given: the model first answers with plain endings, then politely.
+  tts.scriptTexts = ["시험 기록이다.\n\n결론은 A가 싸다.", "시험 기록이에요.\n\n결론은 A가 쌉니다."];
+  const record = await research(f, owner);
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  // Then: a second script call carries the same instructions plus the reminder, and its script is kept.
+  expect(tts.calls.script).toBe(2);
+  expect(tts.calls.systems[0]).toBe(korean(SCRIPT_SYSTEM));
+  expect(tts.calls.systems[1]?.startsWith(korean(SCRIPT_SYSTEM))).toBe(true);
+  expect(tts.calls.systems[1]?.length).toBeGreaterThan(korean(SCRIPT_SYSTEM).length);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.script).toBe("시험 기록이에요.\n\n결론은 A가 쌉니다.");
+  // And: a second slip is used rather than failing or paying again.
+  tts.scriptTexts = ["반말이다.", "또 반말이다."];
+  const twice = await research(f, owner);
+  await f.call(narration(twice.id), "POST", {}, owner);
+  await idle();
+  expect(tts.calls.script).toBe(4);
+  expect((await read(await f.call(narration(twice.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", script: "또 반말이다." });
+});
+
+test("an English record gets no Korean rule and is never asked twice", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const created = await f.call("/api/v1/records", "POST", { requestId: crypto.randomUUID(), record: {
+    kind: "research", title: "Price comparison", body: "App A is the cheapest at five dollars a month.", fields: { summary: "Summary", conclusion: "Pick app A" },
+  } }, owner);
+  const record = recordResult.parse(await created.json()).record;
+  tts.scriptText = "This is the comparison. App A is cheapest.";
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  expect(tts.calls.systems).toEqual([SCRIPT_SYSTEM]);
+  expect(tts.calls.script).toBe(1);
 });
 
 test("a failed TTS reuses the saved script, retries each chunk, and stops after the attempt limit", async () => {
@@ -643,7 +707,7 @@ test("a podcast narration writes a two-host script, speaks it as dialogue turns 
   await idle();
 
   // Then: the script was asked for as a dialogue and reached the provider as A/B turns with both hosts, not read by one voice.
-  expect(tts.calls.systems).toEqual([PODCAST_SCRIPT_SYSTEM]);
+  expect(tts.calls.systems).toEqual([korean(PODCAST_SCRIPT_SYSTEM)]);
   expect(tts.calls.speak).toEqual([]);
   expect(tts.calls.converse).toEqual([[
     { speaker: "A", text: "Today we look at the app price comparison." },
@@ -664,7 +728,7 @@ test("a podcast narration writes a two-host script, speaks it as dialogue turns 
   tts.scriptText = SCRIPT;
   expect((await f.call(narration(record.id), "POST", { style: "read" }, owner)).status).toBe(202);
   await idle();
-  expect(tts.calls.systems).toEqual([PODCAST_SCRIPT_SYSTEM, SCRIPT_SYSTEM]);
+  expect(tts.calls.systems).toEqual([korean(PODCAST_SCRIPT_SYSTEM), korean(SCRIPT_SYSTEM)]);
   expect(tts.calls.speak).toHaveLength(1);
   const read2 = await read(await f.call(narration(record.id), "GET", undefined, owner));
   expect(read2.narration).toMatchObject({ status: "ready", style: "read" });
