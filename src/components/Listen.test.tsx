@@ -118,6 +118,15 @@ test("finished audio has a 음성 삭제 button beside the player, folded and un
   expect(deleteButtons(bar({ narration: { ...base, status: "speaking" }, available: true }))).toEqual([]);
 });
 
+test("only the Make audio command is marked as one, so a screen with several narrations can fold them into one choice", () => {
+  const make = items({ narration: null, available: true });
+  expect(make.map(item => [item.label, item.make])).toEqual([["음성 만들기", true]]);
+  const ready = items({ narration: { ...base, status: "ready", audio, script: "원고" }, available: true });
+  expect(ready.filter(item => item.make)).toEqual([]);
+  const failed = items({ narration: { ...base, status: "failed", attempts: 1, error: "http_500" }, available: true });
+  expect(failed.filter(item => item.make)).toEqual([]);
+});
+
 test("stale audio is tagged 예전 내용 and offers 새로 만들기 instead of 다시 만들기", () => {
   const state = { narration: { ...base, status: "ready" as const, stale: true, audio }, available: true };
   expect(text(bar(state))).toContain("듣기 · 13분 예전 내용");

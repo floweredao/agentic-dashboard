@@ -19,6 +19,8 @@ test("the reader, markdown and share message render in English with a locale dat
   try {
     const html = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([record])}><Reader record={record} /></DashboardContext.Provider>);
     expect(html).toContain('aria-label="Share"');
+    // More is a ⋯ icon button: its name lives in the label and tooltip, with no visible text beside the icon.
+    expect(html).toMatch(/<button[^>]*class="btn btn-outline menu-button"[^>]*aria-label="More" title="More"[^>]*><svg[^>]*lucide-ellipsis[^>]*>(?:<circle[^>]*><\/circle>)+<\/svg><\/button>/);
     expect(html).toContain("Saved September 28 · Edited September 30");
     expect(html).toContain("Confirmed");
     expect(renderToStaticMarkup(<Markdown text={"- [x] a\n- [ ] b"} />)).toContain('aria-label="Not done"');

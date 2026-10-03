@@ -28,6 +28,8 @@ const FINISH_HOLD_MS = 900;
 const EASE_MS = 220;
 
 type Failures = Readonly<Record<string, string>>;
+/** A narration command; `make` marks Make audio, which a screen with several narrations (a digest under All) folds into one choice. */
+export type NarrationMenuItem = MenuItem & { readonly make?: boolean };
 type Text = { readonly failures: Failures; readonly requests: Failures; readonly [key: string]: unknown };
 const text = strings({
   en: {
@@ -310,21 +312,21 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
   readonly pending: boolean; readonly cancelling: boolean; readonly label?: string | undefined;
   readonly onRequest: (force: boolean) => void; readonly onMake: (force: boolean) => void; readonly onCancel: () => void; readonly onListen: () => void;
   readonly onScript: () => void; readonly onRemove: () => void;
-}): MenuItem[] {
+}): NarrationMenuItem[] {
   if (!state) return [];
   const prefix = label ? `${label} ` : "";
   const narration = state.narration;
   const blocked = pending || !state.available;
   const icon = (Icon: typeof Play) => <Icon size={16} aria-hidden="true" />;
   if (working(state)) return [{ label: `${prefix}${text().cancelMake}`, icon: icon(X), disabled: cancelling, onSelect: onCancel }];
-  const items: MenuItem[] = [];
+  const items: NarrationMenuItem[] = [];
   if (failedFor(state)) {
     const exhausted = (narration?.attempts ?? 0) >= NARRATION_LIMITS.attempts;
     items.push({ label: `${prefix}${text().retry}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(exhausted) });
   }
   const audio = narration?.audio ?? null;
   if (!audio) {
-    if (items.length === 0) items.push({ label: `${prefix}${text().make}${state.available ? "" : text().keyNeeded}`, icon: icon(Headphones), disabled: blocked, onSelect: () => onMake(false) });
+    if (items.length === 0) items.push({ label: `${prefix}${text().make}${state.available ? "" : text().keyNeeded}`, icon: icon(Headphones), disabled: blocked, make: true, onSelect: () => onMake(false) });
     return items;
   }
   items.push({ label: `${prefix}${text().listen}`, icon: icon(Play), onSelect: onListen });
@@ -408,7 +410,7 @@ export function StyleChoice({ initial, force, pending, onSubmit, onClose }: {
  */
 export function useNarration({ record, collection = "records", label }: {
   readonly record: Pick<DashboardRecord, "id" | "title" | "version"> | null; readonly collection?: NarrationCollection; readonly label?: string | undefined;
-}): { items: MenuItem[]; bar: ReactNode; state: NarrationState | null; renew: () => void } {
+}): { items: NarrationMenuItem[]; bar: ReactNode; state: NarrationState | null; renew: () => void } {
   const d = useDashboard();
   const id = record?.id ?? null;
   const [loaded, setLoaded] = useState<{ id: string; state: NarrationState } | null>(null);

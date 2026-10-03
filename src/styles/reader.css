@@ -27,7 +27,7 @@
 .reader-actions .btn-primary.is-confirmed:disabled { opacity: 1; background: var(--selected); color: var(--ink); }
 .reader-actions .icon-toggle { width: 32px; padding: 0; justify-content: center; }
 .reader-actions .icon-toggle[aria-pressed="true"] { color: var(--ch-share); }
-.reader-actions .menu-wrap { position: relative; }
+.reader-actions .menu-wrap > .menu-button { width: 32px; }
 
 .menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; display: grid; min-width: 188px; padding: 4px;
@@ -204,20 +204,16 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
   /* 다시 봤어요 keeps its name through aria-label; its visible text shrinks to nothing so only the icon shows. */
   .reader-actions .revisit-button { width: 44px; padding: 0; justify-content: center; gap: 0; font-size: 0; }
   .menu-item { min-height: 44px; font-size: 15px; }
+  .reader-actions .menu-wrap > .menu-button { width: 44px; min-height: 44px; }
   .relation-list button { min-height: 44px; }
   .link-card { min-height: 56px; }
   .inline-add, .inline-tag-add .btn, .inline-add-actions .btn { min-height: 44px; }
   .inline-tag-add .input { min-height: 44px; }
 }
-/* Narrow phones: 더보기 keeps its name for assistive tech but shows only the icon, so the toolbar (with 공유) stays on one row. */
-@media (max-width: 389px) {
-  .reader-actions .menu-label { display: none; }
-  .reader-actions .menu-wrap > .btn { width: 44px; padding: 0; justify-content: center; }
-}
-/* A due revisit adds a sixth button: on phones up to 429px 편집 and 더보기 go icon-only (names kept) so the bar stays one row. */
+/* A due revisit adds a sixth button: on phones up to 429px Edit goes icon-only too (name kept) so the bar stays one row. */
 @media (max-width: 429px) {
-  .reader-actions.has-revisit .edit-label, .reader-actions.has-revisit .menu-label { display: none; }
-  .reader-actions.has-revisit .edit-button, .reader-actions.has-revisit .menu-wrap > .btn { width: 44px; padding: 0; justify-content: center; }
+  .reader-actions.has-revisit .edit-label { display: none; }
+  .reader-actions.has-revisit .edit-button { width: 44px; padding: 0; justify-content: center; }
 }
 @media (max-width: 389px) {
   .reader-actions.has-revisit .btn-primary svg { display: none; }
