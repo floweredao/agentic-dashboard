@@ -68,6 +68,16 @@ export function followSystemLanguage() {
   });
 }
 
+/** An object whose entries are read from `read()` on each access, so labels exported as constants follow the language in use. */
+export function localized<T extends object>(read: () => T): T {
+  return new Proxy({} as T, {
+    get: (_target, key) => Reflect.get(read(), key),
+    has: (_target, key) => Reflect.has(read(), key),
+    ownKeys: () => Reflect.ownKeys(read()),
+    getOwnPropertyDescriptor: (_target, key) => ({ ...Reflect.getOwnPropertyDescriptor(read(), key), configurable: true }),
+  });
+}
+
 export interface Dictionary { readonly en: unknown; readonly ko: unknown }
 /** Every dictionary made with `strings`, so a test can check both languages have the same entries. */
 export const dictionaries: Dictionary[] = [];

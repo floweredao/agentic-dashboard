@@ -9,7 +9,7 @@ afterAll(() => applyLocale("ko"));
 
 function values(value: unknown): string[] {
   if (typeof value === "string") return [value];
-  if (typeof value === "function") return values(value(1, 2, "x"));
+  if (typeof value === "function") return values(value("1", "2", "3"));
   if (Array.isArray(value)) return value.flatMap(values);
   if (value !== null && typeof value === "object") return Object.values(value).flatMap(values);
   return [];

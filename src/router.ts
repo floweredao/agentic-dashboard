@@ -1,4 +1,4 @@
-import { strings } from "./i18n";
+import { localized, strings } from "./i18n";
 
 export type View = "inbox" | "library" | "digest" | "work" | "more" | "archive" | "trash" | "channels" | "settings";
 export const views: readonly View[] = ["inbox", "library", "digest", "work", "more", "archive", "trash", "channels", "settings"];
@@ -12,7 +12,7 @@ const text = strings<{ readonly views: Record<View, string>; readonly previous: 
     previous: "이전 기록",
   },
 });
-export const viewTitles: Record<View, string> = text().views;
+export const viewTitles: Record<View, string> = localized(() => text().views);
 /** The screens under More, in the order the phone's More tab and the desktop sidebar list them. */
 export const moreViews = ["archive", "trash", "channels", "settings"] as const satisfies readonly View[];
 /** The tab (bottom tab bar) that owns a view: the screens under More belong to it, every other view is its own tab. */

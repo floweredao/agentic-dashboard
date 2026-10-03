@@ -2,7 +2,7 @@ import { DIGEST_PARTS } from "../shared/contracts";
 import type { Comment, DigestPart, DigestSummary, DashboardRecord, RecordInput, RecordKind, RecordPatch } from "../shared/contracts";
 import { zonedDate, zonedInstant } from "../shared/time";
 import { config } from "./config";
-import { formatMonthDay, strings } from "./i18n";
+import { formatMonthDay, localized, strings } from "./i18n";
 import type { Route } from "./router";
 
 type Option = { readonly id: string; readonly label: string };
@@ -60,14 +60,14 @@ const text = strings<ModelText>({
 
 export type Screen = "home" | "projects" | "tasks" | "research" | "social" | "archive" | "mobile";
 export type Space = "projects" | "tasks" | "research" | "social";
-export const spaces = {
+export const spaces = localized(() => ({
   projects: { ...text().spaces.projects, color: "pink", kind: "project" },
   tasks: { ...text().spaces.tasks, color: "blue", kind: "task" },
   research: { ...text().spaces.research, color: "green", kind: "research" },
   social: { ...text().spaces.social, color: "yellow", kind: "social" },
-} as const;
+} as const));
 export const spaceKeys: readonly Space[] = ["projects", "tasks", "research", "social"];
-export const kindLabels: Record<RecordKind, string> = text().kinds;
+export const kindLabels: Record<RecordKind, string> = localized(() => text().kinds);
 /** Where a record came in: a registered agent's name, `share` (a link captured through the trusted proxy) or `manual`. */
 export type Channel = string;
 /**
@@ -110,8 +110,8 @@ export function inboxItems(records: readonly DashboardRecord[], today = localDat
 }
 /** The inbox's review filter (`?state=`): all (every unarchived material) is the default; pending is the queue above; approved is confirmed material. */
 export type InboxState = "pending" | "approved" | "all";
-export const inboxStates: readonly { readonly id: InboxState; readonly label: string }[] = (["all", "pending", "approved"] as const)
-  .map(id => ({ id, label: text().inboxStates[id] }));
+export const inboxStates: readonly { readonly id: InboxState; readonly label: string }[] = localized(() =>
+  (["all", "pending", "approved"] as const).map(id => ({ id, label: text().inboxStates[id] })));
 export const inboxStateOf = (params: Readonly<Record<string, string>>): InboxState =>
   params.state === "approved" || params.state === "pending" ? params.state : "all";
 /** Unarchived material for one review filter, newest first. */
@@ -240,8 +240,8 @@ export function nextInQueue(queue: readonly DashboardRecord[], id: string): Dash
   const index = queue.findIndex(item => item.id === id);
   return index < 0 ? null : queue[index + 1] ?? queue[index - 1] ?? null;
 }
-export const projectStatuses = text().projectStatuses;
-export const taskStatuses = text().taskStatuses;
+export const projectStatuses = localized(() => text().projectStatuses);
+export const taskStatuses = localized(() => text().taskStatuses);
 /** One task's or project's timeline, oldest first. */
 export const timelineOf = (comments: readonly Comment[], id: string) => comments.filter(comment => comment.recordId === id);
 /** The owner's comments on an item that no agent has marked done yet (awaiting a reply). */
@@ -251,8 +251,8 @@ export const waitingReplies = (comments: readonly Comment[], id: string) =>
 export function lastActivity(record: DashboardRecord, comments: readonly Comment[]) {
   return timelineOf(comments, record.id).reduce((latest, comment) => comment.createdAt > latest ? comment.createdAt : latest, record.updatedAt);
 }
-export const sourceLabels: Record<string, string> = { manual: text().manual };
-export const filters: Record<Space, readonly Option[]> = text().filters;
+export const sourceLabels: Record<string, string> = localized(() => ({ manual: text().manual }));
+export const filters: Record<Space, readonly Option[]> = localized(() => text().filters);
 
 export function isRecord(record: Pick<DashboardRecord, "kind">) {
   return record.kind !== "project" && record.kind !== "task";
