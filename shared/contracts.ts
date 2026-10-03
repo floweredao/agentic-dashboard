@@ -205,10 +205,12 @@ export const NarrationAudioSchema = z.object({
  * A record's narration: the job state and the last finished audio, which stays playable while a new one is made.
  * `stale`: the audio was made from content (title, summary, conclusion, body, next actions) that has since changed.
  * `style`: the style last chosen for this record, the default for the next request.
+ * `waitUntil`: while the running job waits out a busy or rate-limited provider, when its next try starts; null otherwise.
  */
 export const NarrationSchema = z.object({
   recordId: z.string().uuid(), status: NarrationStatusSchema, style: NarrationStyleSchema, stale: z.boolean(),
   progress: z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict().nullable(),
+  waitUntil: z.iso.datetime().nullable(),
   attempts: z.number().int().nonnegative(), error: z.string().nullable(),
   requestedBy: z.string(), requestedAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
   audio: NarrationAudioSchema.nullable(), script: z.string().nullable(),

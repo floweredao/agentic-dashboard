@@ -260,7 +260,7 @@ export function createNarration(options: NarrationOptions) {
   }
   let chain: Promise<void> = Promise.resolve();
   /** The job being run, with its own controller: a cancel aborts only this run, never a later request for the same id. */
-  let running: { id: string; controller: AbortController } | null = null;
+  let running: { id: string; controller: AbortController; waitUntil: number | null } | null = null;
   const now = () => new Date(store.now()).toISOString();
   const available = async () => provider !== null && await provider.available();
 
@@ -284,6 +284,7 @@ export function createNarration(options: NarrationOptions) {
     return {
       recordId: current.record_id, status: current.status, style: current.style, stale: audio !== null && current.audio_hash !== sourceHash(record),
       progress: current.progress_total === null ? null : { done: current.progress_done ?? 0, total: current.progress_total },
+      waitUntil: running?.id === current.record_id && running.waitUntil !== null && ACTIVE.has(current.status) ? new Date(running.waitUntil).toISOString() : null,
       attempts: current.attempts, error: current.error, requestedBy: current.requested_by, requestedAt: current.requested_at,
       updatedAt: current.updated_at, audio, script: current.script,
     };
@@ -332,6 +333,13 @@ export function createNarration(options: NarrationOptions) {
     return { state: await state(record), started: true };
   }
 
+  /** A wait of the running job (a retry or the pace after a rate limit), shown to the owner while it lasts. */
+  async function pause(ms: number, cancel: AbortSignal) {
+    const job = running;
+    if (job) job.waitUntil = store.now() + ms;
+    try { await sleep(ms, cancel); }
+    finally { if (job) job.waitUntil = null; }
+  }
   async function call<T>(work: (signal: AbortSignal) => Promise<T>, cancel: AbortSignal): Promise<T> {
     if (cancel.aborted) throw new Cancelled();
     const signal = AbortSignal.any([AbortSignal.timeout(timeoutMs), cancel]);
@@ -361,7 +369,7 @@ export function createNarration(options: NarrationOptions) {
         if (asked !== undefined) pace?.(Math.min(asked, PACE_CAP_MS));
         const backoff = retryDelayMs * 2 ** attempt;
         const wait = asked ?? Math.round(backoff * (1 + Math.random() * 0.25));
-        if (wait > 0) await sleep(wait, cancel);
+        if (wait > 0) await pause(wait, cancel);
       }
     }
   }
@@ -380,7 +388,7 @@ export function createNarration(options: NarrationOptions) {
     const job = row(id);
     if (!job || job.status !== "queued") return;
     const controller = new AbortController();
-    running = { id, controller };
+    running = { id, controller, waitUntil: null };
     try { await work(id, job, controller.signal); }
     finally { if (running?.controller === controller) running = null; }
   }
@@ -423,7 +431,7 @@ export function createNarration(options: NarrationOptions) {
       set(id, { status: "speaking", job_hash: hash, progress_done: 0, progress_total: speeches.length });
       let pace = 0;
       for (const [index, speech] of speeches.entries()) {
-        if (index > 0 && pace > 0) await sleep(pace, cancel);
+        if (index > 0 && pace > 0) await pause(pace, cancel);
         const audio = await retrying(speech, cancel, ms => { pace = Math.max(pace, ms); });
         check();
         if (audio.byteLength === 0) throw new ProviderError("no_audio", false);

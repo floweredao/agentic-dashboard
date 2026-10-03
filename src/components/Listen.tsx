@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ChevronUp, FileText, Headphones, Pause, Play, RefreshCw, Trash2, X } from "lucide-react";
-import type { DashboardRecord, NarrationState, NarrationStatus, NarrationStyle } from "../../shared/contracts";
+import type { DashboardRecord, Narration, NarrationState, NarrationStatus, NarrationStyle } from "../../shared/contracts";
 import { NARRATION_LIMITS } from "../../shared/contracts";
 import { cancelNarration, deleteNarration, errorCode, errorMessage, loadNarration, requestNarration } from "../api";
 import type { NarrationCollection } from "../api";
@@ -9,6 +9,7 @@ import { config } from "../config";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
 import type { MenuItem } from "./Menu";
+import { narrationStage, stageValue } from "./narration-progress";
 import { Dialog, Tag } from "./primitives";
 
 const WORKING: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
@@ -19,6 +20,10 @@ const RATE_KEY = "agentic:listen-rate-v2";
 const OLD_RATE_KEY = "agentic:listen-rate";
 const positionKey = (recordId: string) => `agentic:listen:${recordId}`;
 const POLL_MS = 3000;
+/** How long a finished job's bar stays at 100% before the player replaces it. */
+const FINISH_HOLD_MS = 900;
+/** The bar's catch-up time constant: a jump to a new stage eases out over roughly three of these. */
+const EASE_MS = 220;
 
 type Failures = Readonly<Record<string, string>>;
 type Text = { readonly failures: Failures; readonly requests: Failures; readonly [key: string]: unknown };
@@ -50,7 +55,6 @@ const text = strings({
     seconds: (value: number) => `${value} sec`, minutes: (value: number) => `${value} min`,
     pause: "Pause", play: "Play", position: "Playback position", speed: (rate: number) => `Playback speed ${rate}x`,
     fold: "Collapse player", listen: "Listen", outdated: "Outdated",
-    polishing: "Polishing the script", speaking: (done: number, total: number) => `Making audio ${done}/${total}`, waiting: "Waiting in the queue",
     cancelMake: "Cancel audio", retry: "Try again", make: "Make audio", keyNeeded: " · key needed",
     makeNew: "Make new", makeAgain: "Make again", viewScript: "View script", deleteAudio: "Delete audio",
     cancelling: "Cancelling", progress: "Audio progress", dismiss: "Dismiss",
@@ -89,7 +93,6 @@ const text = strings({
     seconds: (value: number) => `${value}초`, minutes: (value: number) => `${value}분`,
     pause: "일시정지", play: "재생", position: "재생 위치", speed: (rate: number) => `재생 속도 ${rate}배`,
     fold: "플레이어 접기", listen: "듣기", outdated: "예전 내용",
-    polishing: "원고를 다듬는 중", speaking: (done: number, total: number) => `음성을 만드는 중 ${done}/${total}`, waiting: "만들 차례를 기다리는 중",
     cancelMake: "음성 만들기 취소", retry: "다시 시도", make: "음성 만들기", keyNeeded: " · 키 필요",
     makeNew: "새로 만들기", makeAgain: "다시 만들기", viewScript: "원고 보기", deleteAudio: "음성 삭제",
     cancelling: "취소하는 중", progress: "음성 만드는 진행", dismiss: "알림 닫기",
@@ -227,12 +230,61 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
   </div>;
 }
 
-const stageText = (state: NarrationState) => {
-  const narration = state.narration;
-  if (narration?.status === "scripting") return text().polishing;
-  if (narration?.status === "speaking" && narration.progress) return text().speaking(narration.progress.done, narration.progress.total);
-  return text().waiting;
-};
+function useReducedMotion() {
+  const query = typeof window === "undefined" || !window.matchMedia ? null : window.matchMedia("(prefers-reduced-motion: reduce)");
+  const [reduced, setReduced] = useState(query?.matches ?? false);
+  useEffect(() => {
+    if (!query) return;
+    const change = () => setReduced(query.matches);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
+  return reduced;
+}
+
+/**
+ * The job's stage and a percent bar. The bar never moves back: it eases toward the stage's value (see narration-progress),
+ * creeping inside the stage while it runs and gliding to the next stage's start when the server reports it. With reduced
+ * motion it shows each stage's start and jumps without easing.
+ */
+function NarrationProgress({ narration, prefix }: { readonly narration: Narration; readonly prefix: string }) {
+  const reduced = useReducedMotion();
+  const target = (now: number) => {
+    const stage = narrationStage(narration, now);
+    return reduced ? stage.from : stageValue(stage, now);
+  };
+  const shown = useRef<number | null>(null);
+  shown.current ??= target(Date.now());
+  const fill = useRef<HTMLSpanElement>(null);
+  const [percent, setPercent] = useState(() => Math.floor(shown.current ?? 0));
+  const [label, setLabel] = useState(() => narrationStage(narration, Date.now()).label);
+  useEffect(() => {
+    let frame = 0;
+    let last = performance.now();
+    const draw = (time: number) => {
+      const now = Date.now();
+      const current = shown.current ?? 0;
+      const goal = Math.max(current, target(now));
+      const eased = reduced ? goal : current + (goal - current) * (1 - Math.exp(-(time - last) / EASE_MS));
+      last = time;
+      shown.current = goal - eased < 0.05 ? goal : eased;
+      if (fill.current) fill.current.style.transform = `scaleX(${shown.current / 100})`;
+      setPercent(Math.floor(shown.current));
+      setLabel(narrationStage(narration, now).label);
+      if (!reduced || narration.waitUntil !== null) frame = requestAnimationFrame(draw);
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, [narration, reduced]);
+  return <>
+    <span className="listen-stage">{prefix}{label}</span>
+    <span className="listen-track" role="progressbar" aria-label={`${prefix}${text().progress}`} aria-valuemin={0} aria-valuemax={100}
+      aria-valuenow={percent} aria-valuetext={`${label} ${percent}%`}>
+      <span ref={fill} className="listen-fill" style={{ transform: `scaleX(${(shown.current ?? 0) / 100})` }} />
+    </span>
+    <span className="listen-percent" aria-hidden="true">{percent}%</span>
+  </>;
+}
 
 /**
  * The narration commands for a reader's More menu; `label` (e.g. Mail, News) prefixes each when one screen holds several.
@@ -272,25 +324,24 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
  * The narration line under a reader's action bar: a running job with its stage and a cancel x, a failure with a retry button,
  * or the (folded) player. Nothing when there is no audio and nothing running.
  */
-export function NarrationBar({ record, state, label, pending, cancelling, dismissed, open, playNonce, onCancel, onRetry, onDismiss, onOpen, onFold }: {
+export function NarrationBar({ record, state, label, pending, cancelling, dismissed, open, finishing, playNonce, onCancel, onRetry, onDismiss, onOpen, onFold }: {
   readonly record: Pick<DashboardRecord, "id" | "title">; readonly state: NarrationState; readonly label?: string | undefined;
-  readonly pending: boolean; readonly cancelling: boolean; readonly dismissed: boolean; readonly open: boolean; readonly playNonce: number;
+  readonly pending: boolean; readonly cancelling: boolean; readonly dismissed: boolean; readonly open: boolean;
+  /** The job has just become ready: the bar finishes at 100% before the player takes its place. */
+  readonly finishing: boolean; readonly playNonce: number;
   readonly onCancel: () => void; readonly onRetry: (force: boolean) => void; readonly onDismiss: () => void;
   readonly onOpen: () => void; readonly onFold: () => void;
 }): ReactNode {
   const narration = state.narration;
   const prefix = label ? `${label} ` : "";
-  if (narration && working(state)) {
-    const determinate = narration.status === "speaking" && narration.progress;
+  const done = finishing && narration?.status === "ready";
+  if (narration && (working(state) || done)) {
     return <div className="listen-bar listen-working" role="status">
       <Headphones size={15} aria-hidden="true" />
-      <span className="listen-stage">{prefix}{cancelling ? text().cancelling : stageText(state)}</span>
-      {!cancelling && (determinate
-        ? <progress aria-label={text().progress} max={narration.progress?.total} value={narration.progress?.done} />
-        : <progress aria-label={text().progress} />)}
-      <button type="button" className="icon-btn listen-icon" aria-label={`${prefix}${text().cancelMake}`} disabled={cancelling} onClick={onCancel}>
+      {cancelling ? <span className="listen-stage">{prefix}{text().cancelling}</span> : <NarrationProgress narration={narration} prefix={prefix} />}
+      {!done && <button type="button" className="icon-btn listen-icon" aria-label={`${prefix}${text().cancelMake}`} disabled={cancelling} onClick={onCancel}>
         <X size={16} aria-hidden="true" />
-      </button>
+      </button>}
     </div>;
   }
   if (narration && failedFor(state) && !dismissed) {
@@ -352,10 +403,25 @@ export function useNarration({ record, collection = "records", label }: {
   const [playNonce, setPlayNonce] = useState(0);
   const [script, setScript] = useState(false);
   const [choosing, setChoosing] = useState<{ force: boolean } | null>(null);
+  const [finishing, setFinishing] = useState(false);
   const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => { setOpen(false); setPlayNonce(0); setScript(false); setDismissed(null); setChoosing(null); }, [id]);
+  const wasWorking = useRef(false);
+  const finishTimer = useRef(0);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; window.clearTimeout(finishTimer.current); }; }, []);
+  useEffect(() => {
+    setOpen(false); setPlayNonce(0); setScript(false); setDismissed(null); setChoosing(null); setFinishing(false);
+    wasWorking.current = false;
+  }, [id]);
   const state = id && loaded?.id === id ? loaded.state : null;
+  useEffect(() => {
+    const now = working(state);
+    if (wasWorking.current && !now && state?.narration?.status === "ready") {
+      setFinishing(true);
+      window.clearTimeout(finishTimer.current);
+      finishTimer.current = window.setTimeout(() => { if (alive.current) setFinishing(false); }, FINISH_HOLD_MS);
+    }
+    wasWorking.current = now;
+  }, [state]);
   const put = (forId: string, next: NarrationState) => { if (alive.current) setLoaded({ id: forId, state: next }); };
   const show = async (error: unknown) => {
     const code = await errorCode(error);
@@ -415,7 +481,7 @@ export function useNarration({ record, collection = "records", label }: {
   const paragraphs = state.narration?.script?.split(/\n{2,}/) ?? [];
   const bar = <>
     <NarrationBar record={record} state={state} label={label} pending={pending} cancelling={cancelling}
-      dismissed={dismissed !== null && dismissed === state.narration?.updatedAt} open={open} playNonce={playNonce}
+      dismissed={dismissed !== null && dismissed === state.narration?.updatedAt} open={open} finishing={finishing} playNonce={playNonce}
       onCancel={() => { void cancel(); }} onRetry={force => { void request(force); }}
       onDismiss={() => setDismissed(state.narration?.updatedAt ?? null)} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} />
     {script && paragraphs.length > 0 && <Dialog title={`${label ? `${label} ` : ""}${text().script}`} onClose={() => setScript(false)}>

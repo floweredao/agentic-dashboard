@@ -52,7 +52,10 @@
 }
 .listen-bar > svg { flex: none; }
 .listen-stage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.listen-working progress { flex: 1 1 64px; max-width: 160px; height: 4px; accent-color: var(--accent); }
+.listen-working .listen-stage { flex: 1 1 auto; }
+.listen-track { position: relative; flex: none; width: clamp(64px, 26%, 160px); height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.listen-fill { position: absolute; inset: 0; border-radius: inherit; background: var(--accent); transform-origin: left center; will-change: transform; }
+.listen-percent { flex: none; min-width: 4ch; color: var(--ink); text-align: right; }
 .listen-bar .icon-btn { width: 32px; min-height: 32px; height: 32px; margin-left: auto; flex: none; }
 .listen-bar .btn { min-height: 32px; padding: 0 10px; font-size: 13px; flex: none; }
 .listen-error { color: var(--danger); }

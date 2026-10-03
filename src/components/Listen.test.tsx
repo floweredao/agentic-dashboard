@@ -6,16 +6,16 @@ import { clock, initialRate, NarrationBar, narrationFailure, narrationItems, Sty
 
 const record = { id: "00000000-0000-4000-8000-000000000201", title: "조사" };
 const base = {
-  recordId: record.id, style: "read" as const, stale: false, progress: null, attempts: 0, error: null, requestedBy: "owner",
+  recordId: record.id, style: "read" as const, stale: false, progress: null, waitUntil: null, attempts: 0, error: null, requestedBy: "owner",
   requestedAt: "2026-10-01T12:00:00Z", updatedAt: "2026-10-01T12:00:00Z", audio: null, script: null,
 };
 const audio = { url: `/api/v1/records/${record.id}/narration/audio?v=abcd1234`, mime: "audio/mp4", bytes: 1000, durationMs: 754_000,
   model: "gemini-3.8-flash-tts", voice: "Kore", style: "read" as const, createdAt: "2026-10-01T12:01:00Z" };
 const noop = () => {};
 const parse = (state: NarrationState) => NarrationStateSchema.parse(state);
-const bar = (state: NarrationState, extra: { cancelling?: boolean; open?: boolean; label?: string } = {}) => renderToStaticMarkup(
+const bar = (state: NarrationState, extra: { cancelling?: boolean; open?: boolean; label?: string; finishing?: boolean } = {}) => renderToStaticMarkup(
   <NarrationBar record={record} state={parse(state)} label={extra.label} pending={false} cancelling={extra.cancelling ?? false}
-    dismissed={false} open={extra.open ?? false} playNonce={0}
+    dismissed={false} open={extra.open ?? false} finishing={extra.finishing ?? false} playNonce={0}
     onCancel={noop} onRetry={noop} onDismiss={noop} onOpen={noop} onFold={noop} />);
 const items = (state: NarrationState, label?: string) => narrationItems(parse(state), {
   pending: false, cancelling: false, label, onRequest: noop, onMake: noop, onCancel: noop, onListen: noop, onScript: noop, onRemove: noop,
@@ -33,16 +33,22 @@ test("without narration there is no bar and the menu offers 음성 만들기, di
   expect(missing.map(item => [item.label, item.disabled])).toEqual([["음성 만들기 · 키 필요", true]]);
 });
 
-test("a running job shows one compact row with its stage, honest progress and a cancel x", () => {
-  // Given a job that is drafting the script, then one speaking part 2 of 5
+const percentOf = (html: string) => Number(/role="progressbar"[^>]*aria-valuenow="(\d+)"/.exec(html)?.[1] ?? NaN);
+
+test("a running job shows one compact row with its stage, a percent bar inside that stage's band, and a cancel x", () => {
+  // Given a job that is drafting the script, then one speaking part 3 of 5
   const scripting = bar({ narration: { ...base, status: "scripting" }, available: true });
   const speaking = bar({ narration: { ...base, status: "speaking", progress: { done: 2, total: 5 } }, available: true });
-  // Then the stage is stated, progress is determinate only with a real count, and x cancels
+  // Then the stage is stated with a percent, the bar stays inside the stage's band, and x cancels
   expect(scripting).toContain('class="listen-bar listen-working" role="status"');
   expect(text(scripting)).toContain("원고를 다듬는 중");
-  expect(scripting).toMatch(/<progress aria-label="[^"]+"><\/progress>/);
-  expect(speaking).toMatch(/<progress aria-label="[^"]+" max="5" value="2"><\/progress>/);
-  expect(text(speaking)).toContain("음성을 만드는 중 2/5");
+  expect(scripting).toMatch(/role="progressbar" aria-label="[^"]+" aria-valuemin="0" aria-valuemax="100"/);
+  expect(percentOf(scripting)).toBeGreaterThanOrEqual(4);
+  expect(percentOf(scripting)).toBeLessThan(30);
+  expect(text(scripting)).toContain(`${percentOf(scripting)}%`);
+  expect(percentOf(speaking)).toBeGreaterThanOrEqual(56);
+  expect(percentOf(speaking)).toBeLessThan(69);
+  expect(text(speaking)).toContain("음성을 만드는 중 3/5");
   expect(speaking).toMatch(/<button[^>]*aria-label="음성 만들기 취소"/);
   expect(labels({ narration: { ...base, status: "queued" }, available: true })).toEqual(["음성 만들기 취소"]);
 });
@@ -52,8 +58,17 @@ test("while the cancel is in flight the row says 취소하는 중 and the x is d
   const html = bar({ narration: { ...base, status: "speaking", progress: { done: 1, total: 5 } }, available: true }, { cancelling: true });
   // Then nothing claims it is cancelled
   expect(text(html)).toContain("취소하는 중");
-  expect(html).not.toContain("<progress");
+  expect(html).not.toContain("progressbar");
   expect(html).toMatch(/<button[^>]*aria-label="음성 만들기 취소"[^>]*disabled=""/);
+});
+
+test("a job that just finished holds the row at 100% before the player takes its place", () => {
+  const state = { narration: { ...base, status: "ready" as const, audio }, available: true };
+  const html = bar(state, { finishing: true });
+  expect(percentOf(html)).toBe(100);
+  expect(text(html)).toContain("다 만들었어요 100%");
+  expect(html).not.toContain("<audio");
+  expect(bar(state)).toContain("<audio");
 });
 
 test("finished audio shows a folded player, and the menu offers 듣기, 다시 만들기, 원고 보기 and 음성 삭제", () => {

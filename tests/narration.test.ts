@@ -368,6 +368,28 @@ test("a per-minute 429 waits as long as the provider asks, then keeps that pace 
   expect((await read(await f.call(narration(other.id), "GET", undefined, owner))).narration).toMatchObject({ status: "failed", error: "http_429" });
 });
 
+test("while a retry waits, the narration says until when, and the wait clears once the call goes through", async () => {
+  const gate = deferred<void>();
+  const entered = deferred<number>();
+  const { f, tts, idle } = setup(undefined, { sleep: async (ms: number) => { entered.resolve(ms); await gate.promise; } });
+  const owner = await f.login();
+  const record = await research(f, owner);
+  // Given: the first chunk is rate limited and the provider asks for 7 seconds.
+  tts.speakErrors = [Object.assign(new ProviderError("http_429", true), { retryAfterMs: 7000 })];
+  await f.call(narration(record.id), "POST", {}, owner);
+  expect(await entered.promise).toBe(7000);
+  // Then: during the wait the state names the moment the next try starts.
+  const waiting = (await read(await f.call(narration(record.id), "GET", undefined, owner))).narration;
+  expect(waiting?.status).toBe("speaking");
+  const until = Date.parse(waiting?.waitUntil ?? "");
+  expect(until - Date.now()).toBeGreaterThan(5000);
+  expect(until - Date.now()).toBeLessThanOrEqual(7000);
+  // When: the wait ends, the job finishes and no wait is reported.
+  gate.resolve();
+  await idle();
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", waitUntil: null });
+});
+
 test("a failed TTS reuses the saved script, retries each chunk, and stops after the attempt limit", async () => {
   const { f, tts, idle } = setup();
   const owner = await f.login();
