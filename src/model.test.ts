@@ -1,7 +1,17 @@
 import { expect, test } from "bun:test";
 import { DashboardRecordSchema, DigestSummarySchema } from "../shared/contracts";
-import { digestCounts, digestUnread, inboxBadge, listedDigestsFor, withDigestReads } from "./model";
+import { applyLocale } from "./i18n";
 import { aiFilled, aiFillRevert, channelOf, confirmationChanges, digest, viewRecords, weekBounds, excerpt, groupByDay, homeRouteOf, hostOf, inboxItems, inboxStateOf, inQueue, libraryItems, listedFor, nextInQueue, revisitDue } from "./model";
+import { dateLabel, digestCounts, digestUnread, inboxBadge, listedDigestsFor, withDigestReads } from "./model";
+
+test("date labels read the language at the moment they are formatted", () => {
+  try {
+    applyLocale("en");
+    expect(dateLabel("2026-10-02")).toBe("October 2");
+    applyLocale("ko");
+    expect(dateLabel("2026-10-02")).toBe("10월 2일");
+  } finally { applyLocale("ko"); }
+});
 
 const record = DashboardRecordSchema.parse({
   id: "0db63b14-e45e-4b84-9e6c-dee3fc02592a", kind: "research", title: "Due record",
