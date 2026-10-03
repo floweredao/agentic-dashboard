@@ -17,8 +17,9 @@
 }
 .app[data-sidebar="open"] .sidebar-scrim { opacity: 1; pointer-events: auto; }
 .sidebar-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
-.sidebar-head .brand { flex: 1; min-width: 0; padding: 0 8px; }
-.sidebar-head .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-head .brand { flex: 1; min-width: 0; gap: 8px; padding: 0 2px 0 4px; }
+/* A configurable app name ("Agentic Dashboard") fits beside the hide button at the sidebar's 248px. */
+.sidebar-head .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
 .sidebar-toggle { color: var(--faint); }
 .sidebar-toggle:hover { color: var(--ink); }
 .compose-btn { width: 100%; min-height: 36px; margin: 0 0 12px; padding: 0 12px; justify-content: flex-start; }
