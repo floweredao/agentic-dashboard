@@ -55,8 +55,11 @@ Numbers use tabular figures.
 
 A 4px base: 2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 56. Radii: 6 (chips, small buttons), 8 (buttons, inputs, rows), 12 (panes, dialogs, cards), 999 (dots, counts).
 
-- **1100px and wider:** a 248px sidebar plus content. Views with a detail split into a list pane (340 to 400px) and a reader pane, each its own labelled scroll container at full height.
-- **768 to 1099px:** the sidebar collapses to a 64px icon rail.
+- **Sidebar (every width):** one 248px panel (at most 86vw) whose head holds the app name and Hide sidebar. Breakpoints follow available space, not device: iPad windows top out at 1376pt and a full-screen desktop browser starts around 1440px.
+- **1400px and wider:** the sidebar docks beside the list and reader by default. Hide sidebar folds it away and the 52px app bar (Show sidebar, app name, new item, refresh) folds in; the choice is stored per device (`localStorage agentic:sidebar` = shown | hidden).
+- **768 to 1399px:** list and reader only, with the app bar. Show sidebar slides the panel over the panes with a scrim; nothing is stored.
+- **Over the panes (split and phone):** opens from Show sidebar, `⌘\` / `Ctrl+\` (on wide windows it docks and undocks) or a touch drag from the left 20px edge (record rows leave that strip to it); closes with Hide sidebar, Escape, a tap on the scrim, a leftward drag, choosing a destination, opening a dialog or a resize that changes layout. While it is open the app bar, main and tab bar are inert and focus moves into it; on close focus returns to Show sidebar. Opening or closing never adds a history entry.
+- Views with a detail split into a list pane (`clamp(300px, 30vw, 400px)`) and a reader pane, each its own labelled scroll container.
 - **Below 768px:** one column with document scroll, a 52px app bar and a 60px bottom tab bar plus safe area. Five tabs: Inbox, Library, Digest, Tasks, More. Selecting a record replaces the list with the reader; back returns to the same list, filters and scroll position.
 - Nothing overflows horizontally at 320px. Chip groups wrap.
 
@@ -74,11 +77,11 @@ Routes are hash based and the URL owns committed state: `#/inbox`, `#/library`, 
 - **Dialogs:** native `<dialog>`, radius 12, a bottom sheet on phones.
 - **Toasts:** bottom center, ink fill, `role=status`, 4 seconds (6 with Undo).
 - **Empty states:** a 20px muted icon and one factual line.
-- **Demo badge:** in demo mode only, a small outlined "Demo" chip (11.5px, `--muted`, `--line-strong` border) beside the app name in the sidebar and app bar; hidden on the 64px icon rail.
+- **Demo badge:** in demo mode only, a small outlined "Demo" chip (11.5px, `--muted`, `--line-strong` border) beside the app name in the sidebar and app bar.
 
 ## Motion
 
-Motion only marks state change: 120ms hover and selection washes, 180ms swipe settle, 160ms toast and dialog entry. `prefers-reduced-motion: reduce` removes all transitions.
+Motion only marks state change: the sidebar slides in 240ms (docking also moves the panes over and folds the app bar on the same curve; a touch drag follows the finger and commits like a row swipe), 120ms hover and selection washes, 180ms swipe settle, 160ms toast and dialog entry. `prefers-reduced-motion: reduce` removes all transitions.
 
 Keyboard: `j` and `k` move through lists, `Enter` opens, `e` confirms, `s` stars, `c` or `n` opens a new save, `/` focuses search. Shortcuts ignore text fields and modifier keys.
 

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, Inbox, Library, Newspaper, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
+import { Archive, ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, Inbox, Library, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
 import type { Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
 import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadAgents, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
 import type { DigestPage } from "./api";
 import { syncPush } from "./push";
 import { Empty, ChannelMark, DialogToast } from "./components/primitives";
 import { ShareDialog } from "./components/ShareDialog";
+import { SPLIT_MIN, WIDE_MIN, layoutOf, readDocked, useSidebarDrag, writeDocked } from "./components/sidebar";
 import { config } from "./config";
 import { isTypingTarget } from "./hooks";
 import { formatClock, strings } from "./i18n";
@@ -40,6 +41,7 @@ const text = strings({
     undo: "Undo", close: "Close", skip: "Skip to content", loading: "Loading", mainMenu: "Main menu",
     compose: "New item", composeShortcut: "New item (C)", stored: "Storage", channels: "Channels", settings: "Settings",
     offline: "Offline · changes won't save", disconnected: "Not connected", refresh: "Refresh",
+    showSidebar: "Show sidebar", hideSidebar: "Hide sidebar", showSidebarShortcut: "Show sidebar (⌘\\)", hideSidebarShortcut: "Hide sidebar (⌘\\)",
     digestList: "Digest list", detail: "Details", pickDigest: "Pick a digest from the list to read it here",
     list: (title: string) => `${title} list`, notFound: "Item not found", pickItem: "Pick an item from the list to read it here",
     count: (count: number) => `${count} items`,
@@ -57,6 +59,7 @@ const text = strings({
     undo: "되돌리기", close: "닫기", skip: "본문으로 바로가기", loading: "불러오는 중", mainMenu: "주 메뉴",
     compose: "새로 저장", composeShortcut: "새로 저장 (C)", stored: "보관", channels: "채널", settings: "설정",
     offline: "오프라인 · 저장되지 않아요", disconnected: "연결 안 됨", refresh: "새로고침",
+    showSidebar: "사이드바 보기", hideSidebar: "사이드바 숨기기", showSidebarShortcut: "사이드바 보기 (⌘\\)", hideSidebarShortcut: "사이드바 숨기기 (⌘\\)",
     digestList: "다이제스트 목록", detail: "상세", pickDigest: "목록에서 다이제스트를 고르면 여기에 보여요",
     list: (title: string) => `${title} 목록`, notFound: "항목을 찾을 수 없음", pickItem: "목록에서 항목을 고르면 여기에 보여요",
     count: (count: number) => `${count}건`,
@@ -118,6 +121,11 @@ export function App() {
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [offline, setOffline] = useState(() => !navigator.onLine);
   const [narrow, setNarrow] = useState(phone);
+  const [layout, setLayout] = useState(() => layoutOf(window.innerWidth));
+  /** Wide windows only: whether the sidebar docks beside the panes (remembered on this device). */
+  const [docked, setDocked] = useState(() => readDocked(localStorage));
+  /** Narrower windows: whether the sidebar lies over the panes. It never survives a resize, a navigation or a dialog. */
+  const [drawer, setDrawer] = useState(false);
   /** The hash of the entry the app was on, stamped as `from` on the next entry a link pushes. */
   const lastHash = useRef(location.hash);
   /** Phone list scroll offsets by list hash, restored when the reader goes back to that list. */
@@ -193,8 +201,48 @@ export function App() {
     return () => { window.removeEventListener("offline", down); window.removeEventListener("online", up); };
   }, [refresh]);
 
+  useEffect(() => {
+    const queries = [`(min-width: ${SPLIT_MIN}px)`, `(min-width: ${WIDE_MIN}px)`].map(query => window.matchMedia(query));
+    const refit = () => setLayout(layoutOf(window.innerWidth));
+    for (const query of queries) query.addEventListener("change", refit);
+    return () => { for (const query of queries) query.removeEventListener("change", refit); };
+  }, []);
+  const sidebar = layout === "wide" && docked ? "docked" : drawer ? "open" : "hidden";
+  const showSidebar = useCallback(() => {
+    if (layout !== "wide") { setDrawer(true); return; }
+    setDocked(true); writeDocked(localStorage, true);
+  }, [layout]);
+  const hideSidebar = useCallback(() => {
+    setDrawer(false);
+    if (layout === "wide") { setDocked(false); writeDocked(localStorage, false); }
+  }, [layout]);
+  const toggleSidebar = sidebar === "hidden" ? showSidebar : hideSidebar;
+  useSidebarDrag({ enabled: sidebar !== "docked", open: sidebar === "open", onOpen: showSidebar, onClose: hideSidebar });
+  // Focus follows the control that can act next: into the sidebar when it appears, back to the menu button when it goes.
+  const shownBefore = useRef(sidebar);
+  useLayoutEffect(() => {
+    if (shownBefore.current === sidebar) return;
+    shownBefore.current = sidebar;
+    const active = document.activeElement;
+    const panel = document.getElementById("sidebar");
+    const lost = !active || active === document.body;
+    if (sidebar === "hidden") { if (lost || panel?.contains(active)) document.querySelector<HTMLElement>(".appbar-menu")?.focus(); }
+    else if (sidebar === "open" || lost || active?.classList.contains("appbar-menu")) document.querySelector<HTMLElement>(".sidebar-toggle")?.focus();
+  }, [sidebar]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
+      if (event.key === "Escape" && sidebar === "open") { event.preventDefault(); hideSidebar(); }
+      else if (event.code === "Backslash" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) { event.preventDefault(); toggleSidebar(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebar, hideSidebar, toggleSidebar]);
+
   // Phone: the window scrolls, so a reader starts at its title and a list comes back where it was left.
   const routeKey = formatRoute(route);
+  // A drawer closes once it has done its job (a destination was chosen or a dialog opened) and when the window changes layout.
+  useEffect(() => { setDrawer(false); }, [routeKey, modal, layout]);
   useEffect(() => { lastHash.current = location.hash; }, [routeKey]);
   useLayoutEffect(() => {
     if (!phone() || document.body.style.position === "fixed") return;
@@ -506,9 +554,13 @@ export function App() {
   return <DashboardContext.Provider value={dashboard}>
     <a href="#main" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById("main")?.focus(); }}>{t.skip}</a>
     {loading && <div className="loading-line" role="status" aria-label={t.loading} />}
-    <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}`}>
-      <nav className="sidebar" aria-label={t.mainMenu}>
-        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
+    <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}`} data-sidebar={sidebar}>
+      <nav id="sidebar" className="sidebar" aria-label={t.mainMenu} inert={sidebar === "hidden"}>
+        <div className="sidebar-head">
+          <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
+          <button type="button" className="icon-btn sidebar-toggle" onClick={hideSidebar} aria-label={t.hideSidebar} title={t.hideSidebarShortcut}
+            aria-controls="sidebar" aria-expanded={sidebar !== "hidden"}><PanelLeftClose size={18} aria-hidden="true" /></button>
+        </div>
         <button type="button" className="btn btn-primary compose-btn" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.composeShortcut}><Plus size={17} aria-hidden="true" /><span>{t.compose}</span></button>
         <ul className="nav-list">{tabViews().map(navItem)}</ul>
         {connected && <>
@@ -531,15 +583,18 @@ export function App() {
           {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh} title={t.refresh}><RefreshCw size={16} aria-hidden="true" /></button>}
         </div>
       </nav>
+      <div className="sidebar-scrim" aria-hidden="true" onClick={hideSidebar} />
 
-      <header className="appbar">
+      <header className="appbar" inert={sidebar !== "hidden"}>
+        <button type="button" className="icon-btn appbar-menu" onClick={showSidebar} aria-label={t.showSidebar} title={t.showSidebarShortcut}
+          aria-controls="sidebar" aria-expanded={sidebar !== "hidden"}>{layout === "phone" ? <Menu size={20} aria-hidden="true" /> : <PanelLeftOpen size={18} aria-hidden="true" />}</button>
         {back && <button type="button" className="btn appbar-back" onClick={dashboard.goBack}><ArrowLeft size={18} aria-hidden="true" />{backLabel(back.hash)}</button>}
         <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
         {connected && <button type="button" className="icon-btn appbar-compose" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.compose}><Plus size={20} aria-hidden="true" /></button>}
         {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh}><RefreshCw size={18} aria-hidden="true" /></button>}
       </header>
 
-      <main id="main" tabIndex={-1} className={`workspace${!connected || singlePane(route.view) ? " single" : ""}`}>
+      <main id="main" tabIndex={-1} inert={sidebar === "open"} className={`workspace${!connected || singlePane(route.view) ? " single" : ""}`}>
         {!connected ? loading ? null : <section className="pane">
           <OwnerGate onToken={() => setModal({ mode: "login" })} />
         </section>
@@ -569,7 +624,7 @@ export function App() {
             </>}
       </main>
 
-      <nav className="tabbar" aria-label={t.mainMenu}>
+      <nav className="tabbar" aria-label={t.mainMenu} inert={sidebar === "open"}>
         {tabViews().filter(view => view !== "work").map(view => <TabLink key={view} view={view} current={route.view}
           count={connected && (view === "inbox" || view === "digest") ? counts[view] : 0} />)}
         {(["work", "more"] as const).map(view => <TabLink key={view} view={view} current={route.view}

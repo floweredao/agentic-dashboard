@@ -1,6 +1,27 @@
 .app { min-height: 100dvh; }
 
-.sidebar { display: none; }
+/* One sliding panel at every width: docked beside the panes on a wide window, otherwise off screen until the menu button,
+   the left-edge drag or ⌘\\ brings it over them with a scrim. */
+.sidebar {
+  position: fixed; inset: 0 auto 0 0; z-index: 40; display: flex; flex-direction: column; gap: 4px;
+  width: min(calc(var(--sidebar) + var(--safe-left)), 86vw);
+  padding: calc(14px + var(--safe-top)) 12px calc(14px + var(--safe-bottom)) calc(12px + var(--safe-left));
+  overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); background: var(--canvas);
+  transform: translateX(-100%); transition: transform 240ms var(--ease), box-shadow 240ms var(--ease);
+}
+.app[data-sidebar="docked"] .sidebar, .app[data-sidebar="open"] .sidebar { transform: none; }
+.app[data-sidebar="open"] .sidebar { box-shadow: var(--shadow-float); }
+.sidebar-scrim {
+  position: fixed; inset: 0; z-index: 39; background: var(--scrim); opacity: 0; pointer-events: none;
+  transition: opacity 240ms var(--ease); touch-action: none;
+}
+.app[data-sidebar="open"] .sidebar-scrim { opacity: 1; pointer-events: auto; }
+.sidebar-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.sidebar-head .brand { flex: 1; min-width: 0; padding: 0 8px; }
+.sidebar-head .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-toggle { color: var(--faint); }
+.sidebar-toggle:hover { color: var(--ink); }
+.compose-btn { width: 100%; min-height: 36px; margin: 0 0 12px; padding: 0 12px; justify-content: flex-start; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 40px; color: var(--ink); font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
 .brand img { width: 26px; height: 26px; border-radius: 7px; }
 /* The public demo's marker beside the app name: a quiet outlined chip, no color. */
@@ -74,6 +95,7 @@
 }
 .appbar .brand { flex: 1; }
 .appbar-back { display: none; margin-left: -12px; }
+.appbar-menu { margin-left: -10px; color: var(--muted); }
 /* The desktop copy of the back button, at the top of its pane; a phone shows it in the app bar instead. */
 .pane-back { justify-self: start; align-self: start; gap: 6px; margin-left: -10px; padding: 0 10px; color: var(--muted); }
 .pane-back:hover { color: var(--ink); }
@@ -130,7 +152,7 @@
   .has-detail .list-pane { display: none; }
   .app:not(.has-detail) .reader-pane { display: none; }
   .pane-back { display: none; }
-  .has-back .appbar .brand { display: none; }
+  .has-back .appbar .brand, .has-back .appbar-menu { display: none; }
   .has-back .appbar-back { display: inline-flex; }
   .has-back .appbar { justify-content: space-between; }
   /* Fill exactly the space between the bars; the 16px bottom padding keeps the last row clear of the tab bar. */
@@ -151,44 +173,24 @@
 }
 
 @media (min-width: 768px) {
-  .appbar, .tabbar { display: none; }
-  .app { display: grid; grid-template-columns: calc(var(--rail) + var(--safe-left)) minmax(0, 1fr); height: 100dvh; overflow: hidden; }
-  .sidebar {
-    display: flex; flex-direction: column; gap: 4px; min-height: 0; padding: 14px 10px calc(14px + var(--safe-bottom)) calc(10px + var(--safe-left)); overflow-y: auto;
-    border-right: 1px solid var(--line); background: var(--canvas);
+  .tabbar { display: none; }
+  /* Two rows, the app bar and the panes. Docked, the app bar folds away (the sidebar carries its commands) and the panes move over
+     by the sidebar's width; both animate with the sidebar's slide. */
+  .app {
+    display: grid; grid-template-rows: calc(var(--appbar) + var(--safe-top)) minmax(0, 1fr); height: 100dvh; overflow: hidden;
+    transition: padding-left 240ms var(--ease), grid-template-rows 240ms var(--ease);
   }
-  .sidebar .brand { justify-content: center; margin-bottom: 8px; }
-  .sidebar .brand-name, .sidebar .demo-badge, .sidebar .nav-label, .sidebar .nav-section, .sidebar .channel-nav, .sidebar .status { display: none; }
-  .sidebar .nav-item { position: relative; justify-content: center; padding: 0; min-height: 40px; }
-  .sidebar .nav-count { position: absolute; top: 2px; right: 4px; font-size: 10px; }
-  .sidebar .nav-count:not(.strong) { display: none; }
-  .compose-btn { width: 40px; min-height: 40px; margin: 0 auto 10px; padding: 0; }
-  .compose-btn span { display: none; }
-  .sidebar-foot { flex-direction: column; }
-  /* Touch on the icon rail: 44pt targets (the rail keeps its 64px width; side padding gives the extra pixel). */
-  @media (max-width: 1099px) and (pointer: coarse) {
-    .sidebar { padding-right: 9px; }
-    .sidebar .nav-item { min-height: 44px; }
-    .compose-btn { width: 44px; min-height: 44px; }
-  }
+  .app[data-sidebar="docked"] { grid-template-rows: 0px minmax(0, 1fr); padding-left: calc(var(--sidebar) + var(--safe-left)); }
+  .appbar { position: static; height: auto; min-height: 0; overflow: hidden; }
+  .app[data-sidebar="docked"] .appbar { border-bottom-color: transparent; }
   .toast { bottom: calc(24px + var(--safe-bottom)); }
-  .workspace { display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 100dvh; min-height: 0; }
+  /* The list narrows with the window (300px at a 2/3 iPad split, 400px from 1334px) and the reader takes the rest. */
+  .workspace { display: grid; grid-template-columns: clamp(300px, 30vw, var(--list)) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; }
   .workspace.single { grid-template-columns: minmax(0, 1fr); }
-  .pane { height: 100dvh; min-height: 0; padding-bottom: var(--safe-bottom); overflow-y: auto; overscroll-behavior: contain; }
+  .pane { min-height: 0; padding-bottom: var(--safe-bottom); overflow-y: auto; overscroll-behavior: contain; }
   .pane:last-child { padding-right: var(--safe-right); }
   .list-pane { border-right: 1px solid var(--line); }
 }
-
-@media (min-width: 1100px) {
-  .app { grid-template-columns: calc(var(--sidebar) + var(--safe-left)) minmax(0, 1fr); }
-  .sidebar { padding: 14px 12px calc(14px + var(--safe-bottom)) calc(12px + var(--safe-left)); }
-  .sidebar .brand { justify-content: flex-start; padding: 0 8px; }
-  .sidebar .brand-name, .sidebar .demo-badge, .sidebar .nav-label, .sidebar .status { display: revert; }
-  .sidebar .nav-section, .sidebar .channel-nav { display: revert; }
-  .sidebar .nav-item { justify-content: flex-start; padding: 0 10px; min-height: 36px; }
-  .sidebar .nav-count, .sidebar .nav-count:not(.strong) { position: static; display: revert; font-size: 12px; }
-  .compose-btn { width: 100%; min-height: 36px; margin: 0 0 12px; padding: 0 12px; justify-content: flex-start; }
-  .compose-btn span { display: revert; }
-  .sidebar-foot { flex-direction: row; }
-  .workspace { grid-template-columns: minmax(340px, var(--list)) minmax(0, 1fr); }
+@media (pointer: coarse) {
+  .sidebar .nav-item, .compose-btn { min-height: 44px; }
 }

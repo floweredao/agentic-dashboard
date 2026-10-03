@@ -7,6 +7,7 @@ import { strings } from "../i18n";
 import { formatRoute } from "../router";
 import { useDashboard } from "../state";
 import { Empty, isSample, Time } from "./primitives";
+import { SIDEBAR_EDGE } from "./sidebar";
 import { SWIPE_VELOCITY_WINDOW, swipeAxis, swipeDecision, swipeVelocity } from "./swipe";
 import type { SwipeAction, SwipeAxis, SwipeSample } from "./swipe";
 
@@ -95,7 +96,7 @@ export function RecordRow({ record }: { readonly record: DashboardRecord }) {
     state.suppressClick = false;
     state.gesture = null;
     const row = rowRef.current;
-    if (!connected || state.busy || !row || !isSwipePointer(event)) return;
+    if (!connected || state.busy || !row || !isSwipePointer(event) || event.clientX <= SIDEBAR_EDGE) return;
     state.gesture = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, width: row.offsetWidth, axis: null, dx: 0, samples: [{ t: event.timeStamp, x: event.clientX }] };
   };
   const onPointerMove = (event: RowPointerEvent<HTMLLIElement>) => {
