@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SyntheticEvent } from "react";
 import { HTTPError } from "ky";
 import { ArrowRight, KeyRound, LogOut } from "lucide-react";
-import { errorMessage } from "../api";
-import { BackButton, ChannelMark, Dialog } from "../components/primitives";
+import { errorMessage, listAgents } from "../api";
+import type { AgentInfo } from "../api";
+import { BackButton, ChannelMark, Dialog, SidebarOpen } from "../components/primitives";
 import { config } from "../config";
 import { strings } from "../i18n";
 import { channelKeys, channelOf, channelLabel, isRecord, relativeTime } from "../model";
@@ -16,6 +17,7 @@ const text = strings({
     savedBy: (name: string) => `Records saved by ${name}`,
     share: "Links saved with the share button",
     manual: "Records you saved in this app",
+    lastUsed: "Last used", removed: "Removed",
     noAgents: "No agents yet. Register one with",
     noAgentsAfter: "and give it the key that command prints.",
     total: "All", pending: "To review", latest: "Latest", none: "None", view: "View records",
@@ -36,6 +38,7 @@ const text = strings({
     savedBy: (name: string) => `${name} 에이전트가 저장한 기록`,
     share: "iPhone 공유 버튼으로 저장한 링크",
     manual: "이 앱에서 직접 저장한 기록",
+    lastUsed: "마지막 사용", removed: "연결 해제됨",
     noAgents: "아직 에이전트가 없어요. 다음 명령으로 등록하고",
     noAgentsAfter: "출력된 키를 에이전트에 넣어 주세요.",
     total: "전체", pending: "미확인", latest: "최근", none: "없음", view: "기록 보기",
@@ -56,9 +59,19 @@ const text = strings({
 
 const description = (channel: Channel) => channel === "share" ? text().share : channel === "manual" ? text().manual : text().savedBy(channel);
 
+/** When a registered agent last connected, or that its key was removed; nothing for share and manual. */
+export function AgentUsage({ agent }: { readonly agent: AgentInfo | undefined }) {
+  const t = text();
+  if (!agent) return null;
+  return <p className="channel-note">{agent.revokedAt !== null ? t.removed : `${t.lastUsed} ${agent.lastUsedAt ? relativeTime(agent.lastUsedAt) : t.none}`}</p>;
+}
+
 export function ChannelsView() {
   const t = text();
   const { records, importJson, logout } = useDashboard();
+  const [registered, setRegistered] = useState<readonly AgentInfo[]>([]);
+  // Usage is secondary to the cards, which already list every agent by name; a failure leaves them without it.
+  useEffect(() => { listAgents().then(setRegistered, () => setRegistered([])); }, []);
   const [json, setJson] = useState("");
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
@@ -81,7 +94,7 @@ export function ChannelsView() {
   return <div className="channels-page">
     <header className="channels-heading">
       <BackButton place="list" />
-      <h1>{viewTitles.channels}</h1>
+      <div className="pane-title-row"><SidebarOpen /><h1>{viewTitles.channels}</h1></div>
     </header>
     {agents.length === 0 && <p className="channel-note">{t.noAgents} <code>bun run agents add &lt;name&gt;</code> {t.noAgentsAfter}</p>}
     <div className="channel-grid">
@@ -98,6 +111,7 @@ export function ChannelsView() {
             <h2>{channelLabel(channel)}</h2>
           </header>
           <p className="channel-description">{description(channel)}</p>
+          <AgentUsage agent={registered.find(entry => entry.name === channel)} />
           <dl className="channel-stats">
             <div><dt>{t.total}</dt><dd>{items.length}</dd></div>
             <div><dt>{t.pending}</dt><dd>{pending}</dd></div>

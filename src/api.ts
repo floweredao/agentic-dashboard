@@ -51,10 +51,16 @@ export async function logout(csrfToken: string) {
   await http.delete("auth/session", { headers: { "X-CSRF-Token": csrfToken } });
 }
 
-const agentsSchema = z.object({ items: z.array(z.object({ name: z.string() })) });
-/** Names of every registered agent, revoked ones included (their records still name them). Owner session only. */
+const agentSchema = z.object({ name: z.string(), createdAt: z.string().nullable(), lastUsedAt: z.string().nullable(), revokedAt: z.string().nullable() });
+/** A registered agent: `lastUsedAt` is null until it first connects, `revokedAt` is set once its key is removed. */
+export type AgentInfo = z.infer<typeof agentSchema>;
+/** Every registered agent, revoked ones included (their records still name them). Owner session only. */
+export async function listAgents(): Promise<AgentInfo[]> {
+  return z.object({ items: z.array(agentSchema) }).parse(await http.get("agents").json()).items;
+}
+/** Names of every registered agent, revoked ones included. */
 export async function loadAgents(): Promise<string[]> {
-  return agentsSchema.parse(await http.get("agents").json()).items.map(agent => agent.name);
+  return (await listAgents()).map(agent => agent.name);
 }
 
 export async function loadRecords(): Promise<DashboardRecord[]> {
