@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
-import { dialogueChunks, normalizeScript, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
+import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, normalizeScript, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
 import type { NarrationOptions, NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
@@ -388,6 +388,21 @@ test("while a retry waits, the narration says until when, and the wait clears on
   gate.resolve();
   await idle();
   expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", waitUntil: null });
+});
+
+test("a digest is written with the digest instructions (a one- or two-sentence opening, every item), a record with the record ones", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const created = await f.call("/api/v1/digests", "POST", { date: "2026-10-02", slot: "evening", notify: false, sections: [
+    { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "a", title: "Local news", source: "Wire", summary: "Summary", url: "https://news.example.com/a" }] }] }, bearer("omo"));
+  const id = (await created.json() as { digest: { id: string } }).digest.id;
+  await f.call(`/api/v1/digests/${id}/narration`, "POST", {}, owner);
+  await f.call(narration((await research(f, owner)).id), "POST", {}, owner);
+  await idle();
+  expect(tts.calls.systems).toEqual([DIGEST_SCRIPT_SYSTEM, SCRIPT_SYSTEM]);
+  expect(DIGEST_SCRIPT_SYSTEM).toContain("one or two sentences");
+  expect(tts.calls.prompts[0]).toContain("2026-10-02 evening");
+  expect(tts.calls.prompts[0]).toContain("Domestic 1");
 });
 
 test("a failed TTS reuses the saved script, retries each chunk, and stops after the attempt limit", async () => {
