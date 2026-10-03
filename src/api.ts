@@ -11,6 +11,7 @@ import {
   type DigestSummary,
   type PushDevice,
   type PushKinds,
+  type PushLocale,
   CommentSchema as commentSchema,
   DashboardRecordSchema as dashboardRecordSchema,
   NarrationStateSchema as narrationStateSchema,
@@ -200,7 +201,7 @@ export async function loadPush(endpoint?: string) {
   return pushStateSchema.parse(await http.get("push", { searchParams: endpoint ? { endpoint } : {} }).json());
 }
 /** Without `kinds` an existing device keeps its choice and a new one gets every kind. */
-export async function savePushSubscription(subscription: PushSubscriptionJSON, kinds: PushKinds | undefined, csrfToken: string): Promise<PushDevice> {
+export async function savePushSubscription(subscription: PushSubscriptionJSON & { readonly locale?: PushLocale }, kinds: PushKinds | undefined, csrfToken: string): Promise<PushDevice> {
   return z.object({ device: PushDeviceSchema }).parse(await http.put("push/subscription", {
     json: { subscription, ...(kinds ? { kinds } : {}) }, headers: { "X-CSRF-Token": csrfToken },
   }).json()).device;

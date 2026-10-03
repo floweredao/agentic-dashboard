@@ -1,5 +1,8 @@
 import type { PushDevice, PushKinds } from "../shared/contracts";
 import { deletePushSubscription, loadPush, savePushSubscription, sendTestPush } from "./api";
+import { config } from "./config";
+import { getLocale } from "./i18n";
+import type { Locale } from "./i18n";
 
 /**
  * This device's Web Push subscription. Push needs a service worker and PushManager, which exist only in secure contexts
@@ -37,6 +40,9 @@ const keyBytes = (base64url: string) => {
 const sameKey = (current: ArrayBuffer | null, expected: Uint8Array) =>
   current !== null && current.byteLength === expected.length && new Uint8Array(current).every((byte, index) => byte === expected[index]);
 
+/** The server reads the device's language from the subscription it is sent. */
+const withLocale = (subscription: PushSubscription, locale: Locale) => ({ ...subscription.toJSON(), locale });
+
 export async function currentSubscription(): Promise<PushSubscription | null> {
   if (pushSupport() !== "supported") return null;
   const registration = await navigator.serviceWorker.getRegistration();
@@ -65,14 +71,22 @@ export async function enablePush(csrfToken: string, kinds?: PushKinds): Promise<
   // The browser's push service can refuse (AbortError "push service not available"); that is not a server failure.
   try { subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); }
   catch (error) { if (error instanceof DOMException) return "unavailable"; throw error; }
-  return await savePushSubscription(subscription.toJSON(), kinds, csrfToken);
+  return await savePushSubscription(withLocale(subscription, getLocale()), kinds, csrfToken);
 }
 
 /** On every load with permission granted: hand an existing subscription back to the server, keeping its kinds. */
 export async function syncPush(csrfToken: string): Promise<void> {
   const subscription = await currentSubscription();
   if (!subscription || Notification.permission !== "granted") return;
-  await savePushSubscription(subscription.toJSON(), undefined, csrfToken);
+  await savePushSubscription(withLocale(subscription, getLocale()), undefined, csrfToken);
+}
+
+/** Tells the server which language this device's notifications are in; nothing to do in demo mode or without a granted subscription. */
+export async function syncPushLocale(csrfToken: string, locale: Locale): Promise<void> {
+  if (config.features.demo) return;
+  const subscription = await currentSubscription();
+  if (!subscription || Notification.permission !== "granted") return;
+  await savePushSubscription(withLocale(subscription, locale), undefined, csrfToken);
 }
 
 /** The server forgets the device first, then the browser drops the subscription. */

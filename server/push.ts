@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import webpush from "web-push";
 import { z } from "zod";
 import { PushKindsSchema, PushSubscriptionSchema } from "../shared/contracts";
-import type { Comment, Digest, DashboardRecord, PushDevice, PushKinds, PushPayload, Source } from "../shared/contracts";
+import type { Comment, Digest, DashboardRecord, PushDevice, PushKinds, PushLocale, PushPayload, Source } from "../shared/contracts";
 import { headlines } from "./digests";
 import { ApiError } from "./errors";
 import { messages, type Locale } from "./messages";
@@ -30,38 +30,55 @@ const TIMEOUT_MS = 10_000;
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(?:^|\.)push\.apple\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(?:^|\.)notify\.windows\.com$/];
 /** Only the browsers' own push services: the server never posts to an address a client made up. */
 export const pushEndpointAllowed = (url: URL) => url.protocol === "https:" && !url.port && PUSH_HOSTS.some(host => host.test(url.hostname));
-const rowSchema = z.object({ endpoint: z.string(), p256dh: z.string(), auth: z.string(), kinds: z.string(), created_at: z.string(), updated_at: z.string() });
+const rowSchema = z.object({ endpoint: z.string(), p256dh: z.string(), auth: z.string(), kinds: z.string(), locale: z.string().nullable(), created_at: z.string(), updated_at: z.string() });
 const vapidSchema = z.object({ publicKey: z.string().min(1), privateKey: z.string().min(1) }).strict();
 const agentLabel = (source: Source, locale: Locale) => source === "manual" ? messages(locale).owner : source;
 const decoded = (value: string) => /^[A-Za-z0-9_-]+=*$/.test(value) ? Buffer.from(value, "base64url").length : -1;
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 const firstLine = (text: string) => text.trim().split("\n")[0]?.trim() ?? "";
 
+/**
+ * A payload built for one language remembers how to build itself for another, so the callers that build it once
+ * (`notify([{ kind, payload: reviewPayload(...) }])`) still reach every device in its own language.
+ */
+const localizers = new WeakMap<PushPayload, (locale: Locale) => PushPayload>();
+function localizable(locale: Locale, build: (locale: Locale) => PushPayload): PushPayload {
+  const payload = build(locale);
+  localizers.set(payload, build);
+  return payload;
+}
+
 export function digestPayload(digest: Digest, added: readonly string[], created: boolean, locale: Locale = "en"): PushPayload {
-  const text = messages(locale);
-  const label = text.digestLabel(digest.slot);
-  const addedSections = digest.sections.filter(section => added.includes(section.key));
-  const lines: string[] = [];
-  const messageItems = addedSections.flatMap(section => section.kind === "messages" ? section.items : []);
-  if (messageItems.length) lines.push(text.digestMessages(messageItems.length, messageItems.filter(item => item.importance === "urgent").length));
-  for (const title of headlines(digest, 3, added)) lines.push(`· ${clip(title, 80)}`);
-  // Only messages added opens the messages part, only articles the articles part; both open the whole digest.
-  const hasMessages = addedSections.some(section => section.kind === "messages");
-  const hasArticles = addedSections.some(section => section.kind === "articles");
-  const part = hasMessages && !hasArticles ? "?part=messages" : hasArticles && !hasMessages ? "?part=articles" : "";
-  return { kind: "digest", title: created ? text.digestArrived(label) : text.digestAdded(label, addedSections.map(section => section.title).join("·")),
-    body: lines.join("\n"), url: `/#/digest/${digest.id}${part}`, tag: `digest-${digest.id}` };
+  return localizable(locale, locale => {
+    const text = messages(locale);
+    const label = text.digestLabel(digest.slot);
+    const addedSections = digest.sections.filter(section => added.includes(section.key));
+    const lines: string[] = [];
+    const messageItems = addedSections.flatMap(section => section.kind === "messages" ? section.items : []);
+    if (messageItems.length) lines.push(text.digestMessages(messageItems.length, messageItems.filter(item => item.importance === "urgent").length));
+    for (const title of headlines(digest, 3, added)) lines.push(`· ${clip(title, 80)}`);
+    // Only messages added opens the messages part, only articles the articles part; both open the whole digest.
+    const hasMessages = addedSections.some(section => section.kind === "messages");
+    const hasArticles = addedSections.some(section => section.kind === "articles");
+    const part = hasMessages && !hasArticles ? "?part=messages" : hasArticles && !hasMessages ? "?part=articles" : "";
+    return { kind: "digest", title: created ? text.digestArrived(label) : text.digestAdded(label, addedSections.map(section => section.title).join("·")),
+      body: lines.join("\n"), url: `/#/digest/${digest.id}${part}`, tag: `digest-${digest.id}` };
+  });
 }
 export function reviewPayload(record: DashboardRecord, source: Source, report: string, locale: Locale = "en"): PushPayload {
-  const line = firstLine(report);
-  const text = messages(locale);
-  return { kind: "review", title: text.reviewTitle(clip(record.title, 60)), body: `${agentLabel(source, locale)}: ${line ? clip(line, 160) : text.reviewAsked}`,
-    url: `/#/work/${record.id}`, tag: `task-${record.id}` };
+  return localizable(locale, locale => {
+    const line = firstLine(report);
+    const text = messages(locale);
+    return { kind: "review", title: text.reviewTitle(clip(record.title, 60)), body: `${agentLabel(source, locale)}: ${line ? clip(line, 160) : text.reviewAsked}`,
+      url: `/#/work/${record.id}`, tag: `task-${record.id}` };
+  });
 }
 export function replyPayload(record: DashboardRecord, comment: Comment, locale: Locale = "en"): PushPayload {
-  const text = messages(locale);
-  return { kind: "reply", title: text.replyTitle(agentLabel(comment.source, locale), clip(record.title, 60)), body: clip(comment.body.trim() || text.statusChanged, 200),
-    url: `/#/work/${record.id}`, tag: `task-${record.id}` };
+  return localizable(locale, locale => {
+    const text = messages(locale);
+    return { kind: "reply", title: text.replyTitle(agentLabel(comment.source, locale), clip(record.title, 60)), body: clip(comment.body.trim() || text.statusChanged, 200),
+      url: `/#/work/${record.id}`, tag: `task-${record.id}` };
+  });
 }
 export const testPayload = (locale: Locale = "en"): PushPayload =>
   ({ kind: "test", title: messages(locale).testTitle, body: messages(locale).testBody, url: "/#/settings", tag: "test" });
@@ -83,6 +100,12 @@ function writePrivate(path: string, value: unknown) {
 export function createPush(store: Store, options: PushOptions) {
   store.db.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions(endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
     kinds TEXT NOT NULL CHECK(json_valid(kinds)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+  // Add-only migration: older databases gain the device language (NULL means the server's default language); no row is rewritten.
+  const columns = new Set(store.db.query("PRAGMA table_info(push_subscriptions)").all().map(column => z.object({ name: z.string() }).parse(column).name));
+  if (!columns.has("locale")) store.db.exec("ALTER TABLE push_subscriptions ADD COLUMN locale TEXT");
+  const defaultLocale: Locale = options.locale ?? "en";
+  /** A device that never said its language (NULL, or a database from before this column) uses the server's default language. */
+  const localeOf = (value: string | null): PushLocale => value === "en" || value === "ko" ? value : defaultLocale;
   const allow = options.allowEndpoint ?? pushEndpointAllowed;
   const pending = new Set<Promise<unknown>>();
   let vapid: z.infer<typeof vapidSchema> | null = null;
@@ -108,7 +131,7 @@ export function createPush(store: Store, options: PushOptions) {
     const value = store.db.query("SELECT * FROM push_subscriptions WHERE endpoint=?").get(endpoint);
     return value ? rowSchema.parse(value) : null;
   };
-  const view = (value: z.infer<typeof rowSchema>): PushDevice => ({ kinds: PushKindsSchema.parse(JSON.parse(value.kinds)), createdAt: value.created_at, updatedAt: value.updated_at });
+  const view = (value: z.infer<typeof rowSchema>): PushDevice => ({ kinds: PushKindsSchema.parse(JSON.parse(value.kinds)), locale: localeOf(value.locale), createdAt: value.created_at, updatedAt: value.updated_at });
 
   const send: Deliver = async (target, payload) => {
     const { publicKey, privateKey } = keys();
@@ -141,7 +164,7 @@ export function createPush(store: Store, options: PushOptions) {
     publicKey: () => keys().publicKey,
     device: (endpoint: string) => { const value = row(endpoint); return value ? view(value) : null; },
     count: () => z.object({ count: z.number() }).parse(store.db.query("SELECT count(*) AS count FROM push_subscriptions").get()).count,
-    /** Stores or refreshes a device; without `kinds` an existing device keeps its choice and a new one gets every kind. */
+    /** Stores or refreshes a device; without `kinds` or `locale` an existing device keeps its choice and a new one gets every kind and the server's language. */
     subscribe(raw: unknown, kinds?: PushKinds): PushDevice {
       const parsed = PushSubscriptionSchema.safeParse(raw);
       const url = parsed.success && URL.canParse(parsed.data.endpoint) ? new URL(parsed.data.endpoint) : null;
@@ -149,20 +172,20 @@ export function createPush(store: Store, options: PushOptions) {
         throw new ApiError(400, "invalid_subscription", "Send the browser's PushSubscription for a known push service");
       }
       keys();
-      const { endpoint, keys: { p256dh, auth } } = parsed.data;
+      const { endpoint, locale, keys: { p256dh, auth } } = parsed.data;
       const existing = row(endpoint);
       const chosen = kinds ?? (existing ? PushKindsSchema.parse(JSON.parse(existing.kinds)) : DEFAULT_PUSH_KINDS);
       const timestamp = now();
-      store.db.query(`INSERT INTO push_subscriptions(endpoint,p256dh,auth,kinds,created_at,updated_at) VALUES(?,?,?,?,?,?)
-        ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,kinds=excluded.kinds,updated_at=excluded.updated_at`)
-        .run(endpoint, p256dh, auth, JSON.stringify(chosen), existing?.created_at ?? timestamp, timestamp);
+      store.db.query(`INSERT INTO push_subscriptions(endpoint,p256dh,auth,kinds,locale,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
+        ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,kinds=excluded.kinds,locale=excluded.locale,updated_at=excluded.updated_at`)
+        .run(endpoint, p256dh, auth, JSON.stringify(chosen), locale ?? existing?.locale ?? null, existing?.created_at ?? timestamp, timestamp);
       return view(row(endpoint) ?? (() => { throw new Error("subscription vanished"); })());
     },
     unsubscribe(endpoint: string) { store.db.query("DELETE FROM push_subscriptions WHERE endpoint=?").run(endpoint); },
     async test(endpoint: string) {
       const value = row(endpoint);
       if (!value) throw new ApiError(404, "not_found", "This device is not subscribed");
-      const status = await track(deliver(value, testPayload(options.locale)));
+      const status = await track(deliver(value, testPayload(localeOf(value.locale))));
       return { delivered: status !== null && status >= 200 && status < 300, status };
     },
     /**
@@ -176,7 +199,8 @@ export function createPush(store: Store, options: PushOptions) {
         const choice = choices.find(item => kinds[item.kind]);
         if (!choice) continue;
         chosen += 1;
-        void track(deliver(value, choice.payload).catch((error: unknown) => {
+        const payload = localizers.get(choice.payload)?.(localeOf(value.locale)) ?? choice.payload;
+        void track(deliver(value, payload).catch((error: unknown) => {
           console.error(`push delivery failed: ${error instanceof Error ? error.name : "unknown"}`);
         }));
       }

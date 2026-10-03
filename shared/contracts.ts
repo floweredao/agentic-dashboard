@@ -316,11 +316,15 @@ export type DigestHit = z.infer<typeof DigestHitSchema>;
 export const PUSH_KINDS = ["digest", "review", "reply"] as const;
 export const PushKindsSchema = z.object({ digest: z.boolean(), review: z.boolean(), reply: z.boolean() }).strict();
 export type PushKinds = z.infer<typeof PushKindsSchema>;
+/** The language a device wants its notifications in; a device that never said uses the server's default language. */
+export const PUSH_LOCALES = ["en", "ko"] as const;
+export const PushLocaleSchema = z.enum(PUSH_LOCALES);
+export type PushLocale = z.infer<typeof PushLocaleSchema>;
 export const PushSubscriptionSchema = z.object({
-  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(),
+  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(), locale: PushLocaleSchema.optional(),
   keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }).strict(),
 }).strict();
-export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
+export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, locale: PushLocaleSchema, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
 export type PushDevice = z.infer<typeof PushDeviceSchema>;
 /** The JSON a notification carries; `url` is the in-app address the tap opens. */
 export const PushPayloadSchema = z.object({

@@ -7,9 +7,9 @@ import { BackButton, SidebarOpen } from "../components/primitives";
 import { config } from "../config";
 import { choosePreference, getPreference, localeNames, preferences, strings, systemLocale } from "../i18n";
 import type { Preference } from "../i18n";
-import { deviceState, disablePush, enablePush, pushSupport, testPush } from "../push";
-import { viewTitles } from "../router";
+import { deviceState, disablePush, enablePush, pushSupport, syncPushLocale, testPush } from "../push";
 import { useDashboard } from "../state";
+import { viewTitles } from "../router";
 
 type KindText = { readonly label: string; readonly note: string };
 const text = strings({
@@ -109,7 +109,14 @@ function Row({ icon, label, note, control }: { readonly icon: ReactNode; readonl
 /** The language: follow the system, English or Korean, stored on this device; the only place the language changes. */
 function LanguageChoice() {
   const t = text();
+  const d = useDashboard();
   const chosen = getPreference();
+  // The page reloads on a change, so a failed push update cannot be reported; the next load sends the language again.
+  const change = async (preference: Preference) => {
+    try { await syncPushLocale(d.csrfToken, preference === "system" ? systemLocale() : preference); }
+    catch { /* the language changes regardless */ }
+    choosePreference(preference);
+  };
   const label = (preference: Preference) => preference === "system" ? t.system : localeNames[preference];
   return <section className="more-group" aria-labelledby="settings-language">
     <h2 id="settings-language" className="more-heading">{t.language}</h2>
@@ -117,7 +124,7 @@ function LanguageChoice() {
       <legend className="visually-hidden">{t.language}</legend>
       {preferences.map(preference => <label key={preference} className="language-option">
         <input type="radio" name="language" value={preference} checked={chosen === preference}
-          onChange={() => choosePreference(preference)} />
+          onChange={() => void change(preference)} />
         <span className="language-option-text">
           <strong lang={preference === "system" ? undefined : preference}>{label(preference)}</strong>
           {preference === "system" && <span>{t.systemNote(localeNames[systemLocale()])}</span>}
