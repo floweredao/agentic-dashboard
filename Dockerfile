@@ -10,6 +10,12 @@ COPY . .
 RUN bun run build
 
 FROM oven/bun:1-slim
+# Pass the package.json version when publishing: docker build --build-arg VERSION=<version> .
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="agentic-dashboard" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.source="https://github.com/floweredao/agentic-dashboard" \
+      org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080
 COPY package.json bun.lock ./

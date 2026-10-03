@@ -113,6 +113,8 @@ bun start          # http://127.0.0.1:4310
 
 http://127.0.0.1:4310 을 열고 소유자 키로 로그인합니다. 브라우저 언어가 한국어면 처음부터 한국어로 보입니다.
 
+미리 빌드한 실행 파일은 [Releases](https://github.com/floweredao/agentic-dashboard/releases)에, 버전별 변경 내용은 [CHANGELOG.md](CHANGELOG.md)(영어)에 있습니다.
+
 **먼저 둘러보고 싶다면** [공개 데모](https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app)를 열어 보세요. 로그인 없이 바로 둘러볼 수 있습니다. 예시 데이터로 채운 읽기 전용 데모라 무엇을 눌러도 저장되지 않고, 서버가 다시 뜨면(쓰는 사람이 없으면 잠들었다가 다시 뛹니다) 같은 데이터로 처음부터 다시 시작합니다. 구성은 [docs/demo.md](docs/demo.md)에 있습니다.
 
 내 컴퓨터에서 띄우려면 데모 데이터를 별도 폴더에 넣습니다.
@@ -290,6 +292,7 @@ docker run -p 8080:8080 -v "$PWD/data:/app/data" -e APP_ORIGIN=http://localhost:
 | [docs/demo.md](docs/demo.md) | 읽기 전용 공개 데모와 Cloud Run에 직접 띄우는 법 |
 | [docs/security.md](docs/security.md) | 키, 데이터, 네트워크 노출 |
 | [CONTRACT.md](CONTRACT.md) | 데이터 모델, API, 권한, 한도 |
+| [CHANGELOG.md](CHANGELOG.md) | 버전별 변경 내용 |
 | [DESIGN.md](DESIGN.md) | 화면 디자인 규칙 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | 코드 작업 안내 |
 

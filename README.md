@@ -113,6 +113,8 @@ bun start          # http://127.0.0.1:4310
 
 Open http://127.0.0.1:4310 and sign in with the owner key.
 
+Prebuilt binaries are on the [Releases](https://github.com/floweredao/agentic-dashboard/releases) page, and [CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
+
 **Want to look around first?** Open the [live demo](https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app). No sign-in needed. It's read-only with sample data, so nothing you click is saved, and it starts over from the same data whenever the server restarts (it sleeps when nobody is using it). How it's set up: [docs/demo.md](docs/demo.md).
 
 Or load the demo data into a separate folder on your machine:
@@ -290,6 +292,7 @@ Each component keeps its strings in a colocated `{ en, ko }` dictionary built wi
 | [docs/demo.md](docs/demo.md) | The read-only public demo and how to run your own on Cloud Run |
 | [docs/security.md](docs/security.md) | Keys, data and network exposure |
 | [CONTRACT.md](CONTRACT.md) | Data model, API, permissions and limits |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 | [DESIGN.md](DESIGN.md) | Visual design contract |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Working on the code |
 
