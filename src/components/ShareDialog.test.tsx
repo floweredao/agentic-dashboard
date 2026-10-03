@@ -52,7 +52,7 @@ test("공유 shows the record's link and code at once, and 공유 중지 revokes
   expect(build.success).toBe(true);
   const [script, styles] = await Promise.all([".js", ".css"].map(extension => build.outputs.find(output => output.path.endsWith(extension))?.text() ?? ""));
   const server = Bun.serve({ port: 0, hostname: "127.0.0.1", routes: {
-    "/": new Response(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script type="module" src="/app.js"></script></body></html>`,
+    "/": new Response(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="/app.css"></head><body><script>localStorage.setItem("agentic:locale", "ko")</script><div id="root"></div><script type="module" src="/app.js"></script></body></html>`,
       { headers: { "Content-Type": "text/html; charset=utf-8" } }),
     "/app.js": new Response(script, { headers: { "Content-Type": "text/javascript; charset=utf-8" } }),
     "/app.css": new Response(styles, { headers: { "Content-Type": "text/css; charset=utf-8" } }),
