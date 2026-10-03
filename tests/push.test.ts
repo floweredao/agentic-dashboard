@@ -114,8 +114,8 @@ test("A new digest notifies devices that want digests, with its first headlines 
   await settle();
   // Then: one push to the device that wants digests.
   expect(id.notified).toBe(true);
-  expect(sent).toEqual([{ endpoint: wants.endpoint, payload: { kind: "digest", title: "Morning digest arrived",
-    body: "2 messages · 1 urgent\n· 국내 첫 소식\n· 해외 첫 소식\n· AI 첫 소식", url: `/#/digest/${id.digest.id}`, tag: `digest-${id.digest.id}` } }]);
+  expect(sent).toEqual([{ endpoint: wants.endpoint, payload: { kind: "digest", title: "Morning digest · 2 messages · 4 articles",
+    body: "Urgent · 계정 확인 +1 more\n· 국내 첫 소식\n· 해외 첫 소식\n· AI 첫 소식", url: `/#/digest/${id.digest.id}`, tag: `digest-${id.digest.id}` } }]);
   // When: the same digest is sent again, a filled section is corrected, and a quiet backfill arrives.
   sent = [];
   await upload(morning([articles("domestic", "Domestic", [article("a", "국내 첫 소식"), article("b", "국내 둘째")])]));
@@ -132,7 +132,7 @@ test("A new digest notifies devices that want digests, with its first headlines 
   sent = [];
   await upload({ date: "2026-10-01", slot: "evening", sections: [messages("inbox", "Inbox", [{ key: "q", importance: "todo", from: "Bank", subject: "서류 제출" }])] });
   await settle();
-  expect(sent.map(item => [item.payload.title, item.payload.body, item.payload.url])).toEqual([["Evening digest: Inbox added", "1 message", `/#/digest/${evening}?part=messages`]]);
+  expect(sent.map(item => [item.payload.title, item.payload.body, item.payload.url])).toEqual([["Evening digest · 1 message added", "To do · 서류 제출", `/#/digest/${evening}?part=messages`]]);
 });
 
 test("Digest notifications follow LOCALE: Korean titles name the slot and the added sections", async () => {
@@ -143,8 +143,39 @@ test("Digest notifications follow LOCALE: Korean titles name the slot and the ad
   await upload(morning([messages("inbox", "메일함", [{ key: "q", importance: "urgent", from: "Bank", subject: "서류 제출" }])]));
   await settle();
   expect(sent.map(item => [item.payload.title, item.payload.body])).toEqual([
-    ["아침 다이제스트 왔어요", "· 국내 첫 소식"], ["아침 다이제스트에 메일함이 추가됐어요", "메시지 1건 · 즉시 조치 1건"],
+    ["아침 다이제스트 · 기사 1", "· 국내 첫 소식"], ["아침 다이제스트 · 메시지 1 추가", "즉시 조치 · 서류 제출"],
   ]);
+});
+
+test("A digest alert fits a lock screen in each language: the most important message first, one item per line, four lines at most", async () => {
+  const owner = await f.login();
+  const en = device().subscription;
+  const ko = device().subscription;
+  await subscribe({ subscription: { ...en, locale: "en" } }, owner);
+  await subscribe({ subscription: { ...ko, locale: "ko" } }, owner);
+  // When: a messages-only digest arrives with four messages in mixed importance.
+  await upload(morning([messages("inbox", "Inbox", [
+    { key: "a", importance: "info", from: "Sender", subject: "뉴스레터" }, { key: "b", importance: "check", from: "Carrier", subject: "접속 알림" },
+    { key: "c", importance: "urgent", from: "X", subject: "계정 확인" }, { key: "d", importance: "todo", from: "Bank", subject: "서류 제출" },
+  ])]));
+  // And: an evening digest whose headlines run longer than one line.
+  await upload({ date: "2026-10-01", slot: "evening", sections: [
+    articles("world", "World", [article("l", "아주 긴 해외 뉴스 제목이 잠금 화면 한 줄을 넘어가면 뒷부분을 잘라서 보여 줍니다"), article("s", "짧은 소식")]),
+    articles("tech", "Tech", [article("e", "A very long world headline that runs past one lock screen line")]),
+  ] });
+  await settle();
+  const of = (endpoint: string) => sent.filter(item => item.endpoint === endpoint).map(item => [item.payload.title, item.payload.body]);
+  // Then: the title names the slot and the counts; the body has one item per line, the most important first, four lines at most.
+  const cut = "· 아주 긴 해외 뉴스 제목이 잠금 화면 한 줄…\n· A very long world headline that runs past…\n· 짧은 소식";
+  expect(of(en.endpoint)).toEqual([
+    ["Morning digest · 4 messages", "Urgent · 계정 확인 +3 more\n· To do · 서류 제출\n· Check · 접속 알림\n· FYI · 뉴스레터"],
+    ["Evening digest · 3 articles", cut],
+  ]);
+  expect(of(ko.endpoint)).toEqual([
+    ["아침 다이제스트 · 메시지 4", "즉시 조치 · 계정 확인 외 3건\n· 할 일 · 서류 제출\n· 확인 · 접속 알림\n· 참고 · 뉴스레터"],
+    ["저녁 다이제스트 · 기사 3", cut],
+  ]);
+  for (const [, body] of sent.map(item => [item.payload.title, item.payload.body])) expect(body?.split("\n").length).toBeLessThanOrEqual(4);
 });
 
 test("An agent asking for review or replying to the owner notifies devices by kind", async () => {
@@ -277,16 +308,16 @@ test("Each device is told in its own language; a device that never said gets the
   const id = z.object({ digest: z.object({ id: z.string() }) }).parse(await response.json()).digest.id;
   await settle();
   const digest = (title: string, body: string): PushPayload => ({ kind: "digest", title, body, url: `/#/digest/${id}`, tag: `digest-${id}` });
-  const english = digest("Morning digest arrived", "2 messages · 1 urgent\n· 국내 첫 소식");
+  const english = digest("Morning digest · 2 messages · 1 article", "Urgent · 계정 확인 +1 more\n· 국내 첫 소식");
   expect(byEndpoint(sent)).toEqual({ [en.endpoint]: english, [unset.endpoint]: english,
-    [ko.endpoint]: digest("아침 다이제스트 왔어요", "메시지 2건 · 즉시 조치 1건\n· 국내 첫 소식") });
+    [ko.endpoint]: digest("아침 다이제스트 · 메시지 2 · 기사 1", "즉시 조치 · 계정 확인 외 1건\n· 국내 첫 소식") });
   // A late section is announced as an addition in each language.
   sent = [];
   await upload({ date: "2026-10-01", slot: "evening", sections: [articles("domestic", "Domestic", [article("e", "저녁 소식")])] });
   await upload({ date: "2026-10-01", slot: "evening", sections: [messages("inbox", "Inbox", [{ key: "q", importance: "todo", from: "Bank", subject: "서류 제출" }])] });
   await settle();
-  expect(sent.filter(item => item.endpoint === en.endpoint).map(item => item.payload.title)).toEqual(["Evening digest arrived", "Evening digest: Inbox added"]);
-  expect(sent.filter(item => item.endpoint === ko.endpoint).map(item => item.payload.title)).toEqual(["저녁 다이제스트 왔어요", "저녁 다이제스트에 Inbox가 추가됐어요"]);
+  expect(sent.filter(item => item.endpoint === en.endpoint).map(item => item.payload.title)).toEqual(["Evening digest · 1 article", "Evening digest · 1 message added"]);
+  expect(sent.filter(item => item.endpoint === ko.endpoint).map(item => item.payload.title)).toEqual(["저녁 다이제스트 · 기사 1", "저녁 다이제스트 · 메시지 1 추가"]);
 });
 
 test("With LOCALE ko a device that never said its language is told in Korean, and an English device still gets English", async () => {
@@ -300,7 +331,7 @@ test("With LOCALE ko a device that never said its language is told in Korean, an
   expect([await deviceLocale(en.endpoint, owner), await deviceLocale(unset.endpoint, owner)]).toEqual(["en", "ko"]);
   await upload(morning([articles("domestic", "Domestic", [article("a", "국내 첫 소식")])]));
   await settle();
-  expect(Object.fromEntries(sent.map(item => [item.endpoint, item.payload.title]))).toEqual({ [en.endpoint]: "Morning digest arrived", [unset.endpoint]: "아침 다이제스트 왔어요" });
+  expect(Object.fromEntries(sent.map(item => [item.endpoint, item.payload.title]))).toEqual({ [en.endpoint]: "Morning digest · 1 article", [unset.endpoint]: "아침 다이제스트 · 기사 1" });
 });
 
 test("A database from before device languages opens, keeps its subscriptions and gives them the server's language", async () => {

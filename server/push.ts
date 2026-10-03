@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { dirname } from "node:path";
 import webpush from "web-push";
 import { z } from "zod";
-import { PushKindsSchema, PushSubscriptionSchema } from "../shared/contracts";
+import { MESSAGE_IMPORTANCE, PushKindsSchema, PushSubscriptionSchema } from "../shared/contracts";
 import type { Comment, Digest, DashboardRecord, PushDevice, PushKinds, PushLocale, PushPayload, Source } from "../shared/contracts";
 import { headlines } from "./digests";
 import { ApiError } from "./errors";
@@ -48,21 +48,61 @@ function localizable(locale: Locale, build: (locale: Locale) => PushPayload): Pu
   return payload;
 }
 
+/** Columns a character takes: two for Hangul and other wide East Asian script, one for the rest. */
+const columns = (char: string) => {
+  const code = char.codePointAt(0) ?? 0;
+  return (code >= 0x1100 && code <= 0x11ff) || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3)
+    || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6) ? 2 : 1;
+};
+const width = (text: string) => [...text].reduce((sum, char) => sum + columns(char), 0);
+/** Cuts text to `units` columns, ending with … when anything was cut. */
+function fit(text: string, units: number) {
+  if (width(text) <= units) return text;
+  let kept = "";
+  let used = 0;
+  for (const char of text) {
+    if (used + columns(char) > units - 1) break;
+    kept += char;
+    used += columns(char);
+  }
+  return `${kept.trimEnd()}…`;
+}
+/**
+ * A phone's lock screen shows a notification's title on one line and about four body lines, about 44 columns each (22
+ * Korean characters) before cutting it off; a line per item keeps every item visible instead of one long item wrapping
+ * over the rest. https://developer.apple.com/design/human-interface-guidelines/notifications
+ */
+const LINE = 44;
+const BODY_LINES = 4;
+
+/**
+ * Title: which digest and how much (`Morning digest · 3 messages · 12 articles`, `… · 1 message added` when a section
+ * arrives late). Body: the most important added message with its importance and how many more, then one headline per
+ * line; messages alone list the next messages instead.
+ */
 export function digestPayload(digest: Digest, added: readonly string[], created: boolean, locale: Locale = "en"): PushPayload {
   return localizable(locale, locale => {
     const text = messages(locale);
-    const label = text.digestLabel(digest.slot);
     const addedSections = digest.sections.filter(section => added.includes(section.key));
+    const messageItems = addedSections.flatMap(section => section.kind === "messages" ? section.items : [])
+      .sort((a, b) => MESSAGE_IMPORTANCE.indexOf(a.importance) - MESSAGE_IMPORTANCE.indexOf(b.importance));
+    const articleCount = addedSections.reduce((sum, section) => sum + (section.kind === "articles" ? section.items.length : 0), 0);
+    const counts = [messageItems.length ? text.digestMessageCount(messageItems.length) : "", articleCount ? text.digestArticleCount(articleCount) : ""].filter(Boolean);
+    const title = [text.digestLabel(digest.slot), ...counts].join(" · ") + (created ? "" : text.digestAdded);
+    const item = (importance: (typeof MESSAGE_IMPORTANCE)[number], subject: string, more = "") => {
+      const head = `${text.importance[importance]} · `;
+      return `${head}${fit(subject, Math.max(16, LINE - width(head) - width(more)))}${more}`;
+    };
     const lines: string[] = [];
-    const messageItems = addedSections.flatMap(section => section.kind === "messages" ? section.items : []);
-    if (messageItems.length) lines.push(text.digestMessages(messageItems.length, messageItems.filter(item => item.importance === "urgent").length));
-    for (const title of headlines(digest, 3, added)) lines.push(`· ${clip(title, 80)}`);
+    const [top, ...rest] = messageItems;
+    if (top) lines.push(item(top.importance, top.subject, rest.length ? text.digestMore(rest.length) : ""));
+    for (const headline of headlines(digest, BODY_LINES - lines.length, added)) lines.push(`· ${fit(headline, LINE - 2)}`);
+    if (!articleCount) for (const each of rest.slice(0, BODY_LINES - lines.length)) lines.push(`· ${item(each.importance, each.subject)}`);
     // Only messages added opens the messages part, only articles the articles part; both open the whole digest.
     const hasMessages = addedSections.some(section => section.kind === "messages");
     const hasArticles = addedSections.some(section => section.kind === "articles");
     const part = hasMessages && !hasArticles ? "?part=messages" : hasArticles && !hasMessages ? "?part=articles" : "";
-    return { kind: "digest", title: created ? text.digestArrived(label) : text.digestAdded(label, addedSections.map(section => section.title).join("·")),
-      body: lines.join("\n"), url: `/#/digest/${digest.id}${part}`, tag: `digest-${digest.id}` };
+    return { kind: "digest", title, body: lines.join("\n"), url: `/#/digest/${digest.id}${part}`, tag: `digest-${digest.id}` };
   });
 }
 export function reviewPayload(record: DashboardRecord, source: Source, report: string, locale: Locale = "en"): PushPayload {
