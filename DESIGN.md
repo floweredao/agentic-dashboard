@@ -70,7 +70,7 @@ Routes are hash based and the URL owns committed state: `#/inbox`, `#/library`, 
 
 - **Buttons:** 34px tall, radius 8. Primary is ink fill with on-ink text; ghost and quiet variants for the rest. Pressed opacity .7, disabled .45.
 - **Chips:** 28px, fully rounded, 12px text, count in muted tabular figures; selected is ink fill (`aria-pressed`). Touch targets reach 44px.
-- **Record row:** title on one line, summary clamped to two lines, a meta line with agent, kind and dates. Unread rows get a 6px accent dot and heavier title. The whole row is one link.
+- **Record row:** title on one line, summary clamped to two lines, a meta line with agent, kind and dates. Unread rows get a 6px accent dot and heavier title. The whole row is one link. Inbox rows, which mix kinds, start with a 28px category tile (radius 8, `--raised`) carrying the tab bar's icon: Digest (accent), Library or Tasks; other lists have no tile.
 - **Swipe (touch only):** right archives, left deletes to the trash. The axis locks after 10px; the row commits at 40% of its width or 120px.
 - **Reader:** meta, title, dates, then a sticky action bar (primary action first, then star, edit, share and a menu). Content shows the conclusion and summary on `--raised`, then the Markdown body (rendered to elements, never raw HTML), next actions, links as cards and tags. Max width 68ch.
 - **Menus:** APG menu button pattern with arrow keys, Home, End and Escape returning focus.

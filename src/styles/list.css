@@ -13,6 +13,15 @@
   transition: box-shadow 120ms var(--ease);
   touch-action: pan-y;
 }
+/* Inbox rows lead with the tile of the tab they belong to (digest, library, tasks), the same icons as the tab bar. */
+.row:has(> .row-kind-icon) { display: flex; gap: 12px; align-items: flex-start; }
+.row-kind-icon {
+  width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; flex: none; margin-top: 1px;
+  border: 1px solid var(--line); background: var(--raised); color: var(--muted);
+}
+.kind-digest { color: var(--accent); }
+.kind-record { color: var(--ink); }
+.kind-task { color: var(--muted); }
 .row:hover { box-shadow: inset 0 0 0 100vmax var(--wash); }
 .row[aria-current="true"] { box-shadow: inset 0 0 0 100vmax var(--selected); }
 /* Inset ring: neighbouring opaque rows and the viewport edge would hide an outer one. */
@@ -35,6 +44,7 @@
 .swipe-action svg { transition: transform 120ms var(--ease); }
 .swipe[data-armed] .swipe-action svg { transform: scale(1.1); }
 .row-main { display: grid; gap: 2px; min-width: 0; }
+.row:has(> .row-kind-icon) .row-main { flex: 1; min-width: 0; }
 .row-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .row-title {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

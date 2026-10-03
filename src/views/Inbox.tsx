@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { MouseEvent } from "react";
 import type { DigestSummary } from "../../shared/contracts";
+import { Newspaper } from "lucide-react";
 import { RecordList } from "../components/RecordList";
 import { Chip, Time, SidebarOpen } from "../components/primitives";
 import { SearchField, useSearch } from "../components/SearchField";
@@ -43,6 +44,7 @@ export function InboxDigestRow({ summary }: { readonly summary: DigestSummary })
   return <li>
     <a id={`row-${summary.id}`} className={`row${unread ? " unread" : ""}`} href={formatRoute({ view: route.view, id: summary.id, params: route.params })}
       aria-current={route.id === summary.id ? "true" : undefined} onClick={onClick}>
+      <span className="row-kind-icon kind-digest" aria-hidden="true"><Newspaper size={16} /></span>
       <span className="row-main">
         <span className="row-top">
           <span className="row-title">{unread && <span className="unread-dot" aria-hidden="true" />}{unread && <span className="visually-hidden">{t.unread}</span>}{slotTitle(summary.slot)}</span>
@@ -94,7 +96,7 @@ export function InboxPane() {
         </div>
       </div>
     </header>
-    <RecordList grouped records={items} empty={q ? t.noResults : t.empty[state]}
+    <RecordList grouped kinds records={items} empty={q ? t.noResults : t.empty[state]}
       extra={listedDigests.map(summary => ({ id: summary.id, at: summary.scheduledAt, row: <InboxDigestRow key={summary.id} summary={summary} /> }))}
       emptyAction={q ? <button type="button" className="btn btn-outline" onClick={() => search.clear({ q: null })}>{t.clearSearch}</button> : undefined} />
   </>;

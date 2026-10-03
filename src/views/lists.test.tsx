@@ -165,6 +165,27 @@ test("InboxPane mixes digests into the records by time, with unread marks, filte
   expect((await scan(inbox({ q: "첫 기사" }), ".row-title")).text).toBe("미확인 아침 다이제스트");
 });
 
+test("InboxPane starts digest and record rows with their category tile without changing LibraryPane rows", async () => {
+  // Given: an unread digest and a record waiting in the inbox.
+  const digest = DigestSummarySchema.parse({
+    id: "00000000-0000-4000-8000-000000000031", date: "2026-09-21", slot: "morning", scheduledAt: "2026-09-21T00:00:00Z", createdBy: "omo",
+    createdAt: "2026-09-21T00:00:00Z", updatedAt: "2026-09-21T00:00:00Z", version: 1, articlesReadAt: null, messagesReadAt: null, readAt: null,
+    counts: { local: 1 }, outline: [{ key: "local", title: "Local", kind: "articles", items: 1 }], headlines: ["기사"], messageHeadline: "", urgent: 0, todo: 0,
+  });
+  const page = { items: [digest], from: "2026-09-08", to: "2026-09-21", unread: 1, earliestDate: "2026-09-21", latestDate: "2026-09-21",
+    parts: { articles: { unread: 1, earliestDate: "2026-09-21" }, messages: { unread: 0, earliestDate: null } } };
+  const record = make("00000000-0000-4000-8000-000000000032", { reviewState: "pending" });
+  // When: the inbox and the library are rendered.
+  const inbox = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([record], { view: "inbox" }, { digests: page })}>
+    <InboxPane />
+  </DashboardContext.Provider>);
+  const library = render([record], "library");
+  // Then: each inbox row leads with the tile of its tab (digest, library) and library rows have none.
+  expect((await scan(inbox, ".row > .row-kind-icon.kind-digest")).count).toBe(1);
+  expect((await scan(inbox, ".row > .row-kind-icon.kind-record")).count).toBe(1);
+  expect((await scan(library, ".row-kind-icon")).count).toBe(0);
+});
+
 test("an empty filter combination keeps every active chip and offers to clear all conditions", async () => {
   // Given: a starred ChatGPT link exists, but the owner also asks for reports only.
   const records = [make("00000000-0000-4000-8000-000000000011", { source: "chatgpt", createdBy: "chatgpt", fields: { starred: true } })];
