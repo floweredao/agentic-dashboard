@@ -8,7 +8,7 @@ const text = strings<{ readonly views: Record<View, string>; readonly previous: 
     previous: "Previous record",
   },
   ko: {
-    views: { inbox: "받은 항목", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", archive: "보관함", trash: "휴지통", channels: "채널 관리", settings: "알림 설정" },
+    views: { inbox: "받은 항목", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", archive: "보관함", trash: "휴지통", channels: "채널 관리", settings: "설정" },
     previous: "이전 기록",
   },
 });

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { DashboardRecordSchema } from "../../shared/contracts";
 import { Markdown } from "../components/Markdown";
 import { agentMessage } from "../components/ShareDialog";
-import { setLocale } from "../i18n";
+import { applyLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { Reader } from "./Reader";
@@ -15,7 +15,7 @@ const record = DashboardRecordSchema.parse({
 });
 
 test("the reader, markdown and share message render in English with a locale date", () => {
-  setLocale("en");
+  applyLocale("en");
   try {
     const html = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([record])}><Reader record={record} /></DashboardContext.Provider>);
     expect(html).toContain('aria-label="Share"');
@@ -25,6 +25,6 @@ test("the reader, markdown and share message render in English with a locale dat
     expect(agentMessage({ code: "AAAA-BBBB-CCCC", url: "https://dashboard.example.test/s/AAAA-BBBB-CCCC", createdAt: "2026-09-29T03:00:00.000Z" }))
       .toContain("one GET request");
   } finally {
-    setLocale("ko");
+    applyLocale("ko");
   }
 });

@@ -13,14 +13,14 @@ const text = strings({
     trashNote: (days: number) => `Deleted items are kept for ${days} days`,
     channels: "Channels", manage: "Manage channels", manageNote: "Status by channel · Import JSON · Sign out",
     records: (channel: string) => `${channel} records`,
-    settings: "Settings", notifications: "Notification settings", notificationsNote: "Digests · Needs review · Replies · Test",
+    settings: "Settings", notifications: "Language and notifications", notificationsNote: "Language · Digests · Needs review · Replies · Test",
   },
   ko: {
     title: "더보기", keep: "보관", archive: "보관함", trash: "휴지통",
     trashNote: (days: number) => `삭제한 항목은 ${days}일 동안 보관`,
     channels: "채널", manage: "채널 관리", manageNote: "채널별 현황 · JSON 가져오기 · 로그아웃",
     records: (channel: string) => `${channel} 기록`,
-    settings: "설정", notifications: "알림 설정", notificationsNote: "브리핑 · 확인 필요 · 답글 · 테스트",
+    settings: "설정", notifications: "언어와 알림", notificationsNote: "언어 · 다이제스트 · 확인 필요 · 답글 · 테스트",
   },
 });
 

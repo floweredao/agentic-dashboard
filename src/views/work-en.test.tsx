@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { setLocale } from "../i18n";
+import { applyLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { WorkPane } from "./Work";
 
-afterEach(() => setLocale("ko"));
+afterEach(() => applyLocale("ko"));
 
 test("the work pane renders its own text in English and in Korean", () => {
   const render = () => renderToStaticMarkup(
@@ -13,11 +13,11 @@ test("the work pane renders its own text in English and in Korean", () => {
       <WorkPane />
     </DashboardContext.Provider>,
   );
-  setLocale("en");
+  applyLocale("en");
   const english = render();
   expect(english).toContain("New task");
   expect(english).toContain("No tasks");
-  setLocale("ko");
+  applyLocale("ko");
   const korean = render();
   expect(korean).toContain("새 할 일");
   expect(korean).toContain("할 일 없음");

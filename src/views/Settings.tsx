@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Bell, BellRing, Languages, MessageSquareReply, Newspaper, Send, SquareCheck } from "lucide-react";
+import { Bell, BellRing, MessageSquareReply, Newspaper, Send, SquareCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import type { PushDevice, PushKinds } from "../../shared/contracts";
 import { errorMessage } from "../api";
-import { BackButton } from "../components/primitives";
+import { BackButton, SidebarOpen } from "../components/primitives";
 import { config } from "../config";
-import { getLocale, localeNames, locales, strings, switchLocale } from "../i18n";
-import type { Locale } from "../i18n";
+import { choosePreference, getPreference, localeNames, preferences, strings, systemLocale } from "../i18n";
+import type { Preference } from "../i18n";
 import { deviceState, disablePush, enablePush, pushSupport, testPush } from "../push";
 import { viewTitles } from "../router";
 import { useDashboard } from "../state";
@@ -14,7 +14,10 @@ import { useDashboard } from "../state";
 type KindText = { readonly label: string; readonly note: string };
 const text = strings({
   en: {
-    language: "Language", languageNote: "The page reloads in the chosen language",
+    language: "Language",
+    system: "Follow the system",
+    systemNote: (name: string) => `This device: ${name}`,
+    languageNote: "Saved on this device only. The page reloads in the chosen language.",
     kinds: {
       digest: { label: "New digest", note: "When an agent posts a digest, with its headlines" },
       review: { label: "Needs review", note: "When an agent marks a task as needing review" },
@@ -46,7 +49,10 @@ const text = strings({
     ],
   },
   ko: {
-    language: "언어", languageNote: "선택한 언어로 페이지를 다시 불러와요",
+    language: "언어",
+    system: "시스템 설정 따르기",
+    systemNote: (name: string) => `지금 이 기기: ${name}`,
+    languageNote: "이 기기에만 저장하고, 고른 언어로 페이지를 다시 불러와요.",
     kinds: {
       digest: { label: "다이제스트 도착", note: "에이전트가 다이제스트를 올리면 헤드라인과 함께" },
       review: { label: "확인 필요", note: "에이전트가 할 일을 확인 필요로 바꾸면" },
@@ -100,24 +106,36 @@ function Row({ icon, label, note, control }: { readonly icon: ReactNode; readonl
   </li>;
 }
 
-/** Settings: the language, then (when the server has push) this device's Web Push by kind, a test, and the iOS home-screen steps. */
-export function SettingsPane() {
+/** The language: follow the system, English or Korean, stored on this device; the only place the language changes. */
+function LanguageChoice() {
   const t = text();
+  const chosen = getPreference();
+  const label = (preference: Preference) => preference === "system" ? t.system : localeNames[preference];
+  return <section className="more-group" aria-labelledby="settings-language">
+    <h2 id="settings-language" className="more-heading">{t.language}</h2>
+    <fieldset className="settings-languages">
+      <legend className="visually-hidden">{t.language}</legend>
+      {preferences.map(preference => <label key={preference} className="language-option">
+        <input type="radio" name="language" value={preference} checked={chosen === preference}
+          onChange={() => choosePreference(preference)} />
+        <span className="language-option-text">
+          <strong lang={preference === "system" ? undefined : preference}>{label(preference)}</strong>
+          {preference === "system" && <span>{t.systemNote(localeNames[systemLocale()])}</span>}
+        </span>
+      </label>)}
+    </fieldset>
+    <p className="setting-note settings-language-note">{t.languageNote}</p>
+  </section>;
+}
+
+/** Settings: the language for this device, then (when the server has push) this device's Web Push by kind, a test, and the iOS home-screen steps. */
+export function SettingsPane() {
   return <div className="more-page settings-page">
     <header className="pane-head">
       <BackButton place="list" />
-      <div className="pane-title-row"><h1 className="pane-title">{viewTitles.settings}</h1></div>
+      <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{viewTitles.settings}</h1></div>
     </header>
-    <section className="more-group" aria-labelledby="settings-language">
-      <h2 id="settings-language" className="more-heading">{t.language}</h2>
-      <ul className="more-list">
-        <Row icon={<Languages size={18} aria-hidden="true" />} label={t.language} note={t.languageNote}
-          control={<select className="input settings-language" aria-label={t.language} value={getLocale()}
-            onChange={event => switchLocale(event.target.value as Locale)}>
-            {locales.map(locale => <option key={locale} value={locale} lang={locale}>{localeNames[locale]}</option>)}
-          </select>} />
-      </ul>
-    </section>
+    <LanguageChoice />
     {config.features.push && <PushSettings />}
   </div>;
 }

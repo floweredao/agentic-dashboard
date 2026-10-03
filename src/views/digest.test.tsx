@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DigestSchema, DigestSummarySchema } from "../../shared/contracts";
-import { setLocale } from "../i18n";
+import { applyLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { DigestPane, DigestRow, DigestView, digestPart, dayHeading, parseCollapsed, publishedLabel } from "./Digest";
@@ -152,7 +152,7 @@ test("Day headings and publish times read in Seoul time", () => {
 });
 
 test("DigestView and DigestRow render in English when the locale is en", async () => {
-  setLocale("en");
+  applyLocale("en");
   try {
     const html = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
       <DigestView digest={digest} part="all" /></DashboardContext.Provider>);
@@ -166,5 +166,5 @@ test("DigestView and DigestRow render in English when the locale is en", async (
     const row = renderToStaticMarkup(<ul><DigestRow summary={summary} part="all" selected={false} href="#/digest" onOpen={() => {}} /></ul>);
     expect(await scan(row, ".digest-row-title")).toEqual(["Unread Morning digest"]);
     expect(await scan(row, ".digest-row-meta span")).toEqual(["Local 1 · Inbox 2", "Act now 1"]);
-  } finally { setLocale("ko"); }
+  } finally { applyLocale("ko"); }
 });

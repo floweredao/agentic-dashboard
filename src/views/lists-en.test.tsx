@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { setLocale } from "../i18n";
+import { applyLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
 import { ArchivePane } from "./Archive";
@@ -8,14 +8,14 @@ import { LibraryPane } from "./Library";
 import { MorePane } from "./More";
 import { purgeLabel } from "./Trash";
 
-afterEach(() => setLocale("ko"));
+afterEach(() => applyLocale("ko"));
 
 const render = (pane: React.ReactNode, view: "library" | "archive" | "more") =>
   renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view, params: {}, id: null })}>{pane}</DashboardContext.Provider>);
 
 test("list views render their text in English", () => {
   // Given: the English locale.
-  setLocale("en");
+  applyLocale("en");
   // When: panes with no records are rendered.
   const library = render(<LibraryPane />, "library");
   const archive = render(<ArchivePane />, "archive");

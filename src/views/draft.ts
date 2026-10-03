@@ -4,7 +4,7 @@ import { blankRecord } from "../model";
 
 const genericLabels = {
   en: { source: "Source", link: "Link" },
-  ko: { source: "원문", link: "링크" },
+  ko: { source: "원문", link: "링크" }, // i18n-allow: a dictionary object that strings() registers below
 };
 const generic = strings(genericLabels);
 const everyGeneric: readonly string[] = [...Object.values(genericLabels.en), ...Object.values(genericLabels.ko)];
