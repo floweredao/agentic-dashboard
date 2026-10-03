@@ -13,20 +13,26 @@ export interface SpeechTurn { readonly speaker: "A" | "B"; readonly text: string
 export interface NarrationProvider {
   readonly ttsModel: string;
   readonly scriptModel: string;
+  /** A lighter model that writes the script when `scriptModel` stays busy or its daily quota is used up. */
+  readonly fallbackScriptModel?: string;
   readonly voice: string;
   /** The voices of podcast hosts A and B. */
   readonly hosts: readonly [string, string];
   /** Whether a key is configured; checked before any paid call. */
   available(): Promise<boolean>;
-  script(system: string, prompt: string, signal: AbortSignal): Promise<string>;
+  /** Writes the script with `model`, else `scriptModel`. */
+  script(system: string, prompt: string, signal: AbortSignal, model?: string): Promise<string>;
   /** Speaks one chunk as 24 kHz mono 16-bit little-endian PCM. */
   speak(text: string, style: string, signal: AbortSignal): Promise<Uint8Array>;
   /** Speaks a run of podcast turns in one request, each in its host's voice, as the same PCM. */
   converse(turns: readonly SpeechTurn[], style: string, signal: AbortSignal): Promise<Uint8Array>;
 }
-/** A provider failure reduced to a code; `transient` failures (429, 5xx, network) are retried once per chunk. */
+/**
+ * A provider failure reduced to a code; `transient` failures (429, 5xx, network, timeout) are retried with backoff, waiting
+ * `retryAfterMs` when the provider said how long. `quota_daily` (the day's free quota is used up) is final.
+ */
 export class ProviderError extends Error {
-  constructor(readonly code: string, readonly transient: boolean) {
+  constructor(readonly code: string, readonly transient: boolean, readonly retryAfterMs?: number) {
     super(code);
     this.name = "ProviderError";
   }
@@ -45,7 +51,10 @@ export interface NarrationOptions {
   /** The zone whose calendar day the daily limit counts in; defaults to UTC. */
   readonly timeZone?: string;
   readonly timeoutMs?: number;
+  /** The first backoff wait; each retry doubles it (plus up to a quarter of jitter). 0 retries at once. */
   readonly retryDelayMs?: number;
+  /** Waits between retries and chunks; resolves early when `signal` aborts. */
+  readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 export type Narrator = ReturnType<typeof createNarration>;
 /** The owner stopped this job; nothing more is paid for and the row was already settled by `cancel`. */
@@ -87,6 +96,14 @@ const KIND_LABELS: Record<string, string> = { research: "Research", "work-report
 const FILE_NAME = /^[0-9a-f-]{36}-[0-9a-f]{8}\.(?:m4a|wav)$/;
 const PART_NAME = /^[0-9a-f-]{36}\.part\.(?:m4a|wav)$/;
 const BYTES_PER_MS = 48;
+/** A provider asking for a longer wait is not sat out: the job fails and the owner retries later. */
+const MAX_WAIT_MS = 60_000;
+/** After a rate limit, the rest of a job keeps the asked wait between chunks, up to this. */
+const PACE_CAP_MS = 20_000;
+const abortableSleep = (ms: number, signal: AbortSignal) => new Promise<void>(resolve => {
+  const timer = setTimeout(resolve, ms);
+  signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+});
 const rowSchema = z.object({
   record_id: z.string(), status: NarrationStatusSchema, job_hash: z.string(), requested_by: z.string(),
   requested_at: z.string(), updated_at: z.string(), attempts: z.number().int(), error: z.string().nullable(),
@@ -229,6 +246,7 @@ export function createNarration(options: NarrationOptions) {
   const timeZone = options.timeZone ?? "UTC";
   const timeoutMs = options.timeoutMs ?? 180_000;
   const retryDelayMs = options.retryDelayMs ?? 2000;
+  const sleep = options.sleep ?? abortableSleep;
   store.db.exec(`CREATE TABLE IF NOT EXISTS narrations(record_id TEXT PRIMARY KEY, status TEXT NOT NULL, job_hash TEXT NOT NULL,
       requested_by TEXT NOT NULL, requested_at TEXT NOT NULL, updated_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, error TEXT,
       progress_done INTEGER, progress_total INTEGER, script TEXT, script_hash TEXT, audio_file TEXT, audio_hash TEXT, audio_mime TEXT,
@@ -328,14 +346,33 @@ export function createNarration(options: NarrationOptions) {
       throw error;
     }
   }
-  /** One TTS call, retried once on a transient failure. */
-  async function speak(speech: (signal: AbortSignal) => Promise<Uint8Array>, cancel: AbortSignal) {
+  /**
+   * One provider call, retried up to NARRATION_LIMITS.retries times on a transient failure: after the wait the provider asked
+   * for (also reported to `pace`), else after exponential backoff with jitter (https://ai.google.dev/gemini-api/docs/troubleshooting).
+   */
+  async function retrying<T>(work: (signal: AbortSignal) => Promise<T>, cancel: AbortSignal, pace?: (ms: number) => void): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await call(work, cancel);
+      } catch (error) {
+        if (!(error instanceof ProviderError) || !error.transient || attempt >= NARRATION_LIMITS.retries) throw error;
+        const asked = error.retryAfterMs;
+        if (asked !== undefined && asked > MAX_WAIT_MS) throw error;
+        if (asked !== undefined) pace?.(Math.min(asked, PACE_CAP_MS));
+        const backoff = retryDelayMs * 2 ** attempt;
+        const wait = asked ?? Math.round(backoff * (1 + Math.random() * 0.25));
+        if (wait > 0) await sleep(wait, cancel);
+      }
+    }
+  }
+  /** The script from the main model, or from the lighter one when the main one stays busy or is out of today's quota. */
+  async function writeScript(source: NarrationProvider, system: string, prompt: string, cancel: AbortSignal) {
     try {
-      return await call(speech, cancel);
+      return await retrying(signal => source.script(system, prompt, signal), cancel);
     } catch (error) {
-      if (!(error instanceof ProviderError) || !error.transient) throw error;
-      if (retryDelayMs) await Bun.sleep(retryDelayMs);
-      return await call(speech, cancel);
+      const fallback = source.fallbackScriptModel;
+      if (!(error instanceof ProviderError) || !fallback || !(error.transient || error.code === "quota_daily")) throw error;
+      return await retrying(signal => source.script(system, prompt, signal, fallback), cancel);
     }
   }
 
@@ -371,7 +408,7 @@ export function createNarration(options: NarrationOptions) {
       if (!script) {
         set(id, { status: "scripting", job_hash: hash });
         const system = podcast ? PODCAST_SCRIPT_SYSTEM : SCRIPT_SYSTEM;
-        script = normalizeScript(await call(signal => provider.script(system, scriptPrompt(record, label), signal), cancel));
+        script = normalizeScript(await writeScript(provider, system, scriptPrompt(record, label), cancel));
         if (!script) throw new ProviderError("empty_script", false);
         // Kept even when cancelled meanwhile: it is paid for, and a later request reuses it.
         set(id, { script, script_hash: hash, script_style: style });
@@ -384,8 +421,10 @@ export function createNarration(options: NarrationOptions) {
       if (speeches.length === 0) throw new ProviderError("empty_script", false);
       const pcm: Uint8Array[] = [];
       set(id, { status: "speaking", job_hash: hash, progress_done: 0, progress_total: speeches.length });
+      let pace = 0;
       for (const [index, speech] of speeches.entries()) {
-        const audio = await speak(speech, cancel);
+        if (index > 0 && pace > 0) await sleep(pace, cancel);
+        const audio = await retrying(speech, cancel, ms => { pace = Math.max(pace, ms); });
         check();
         if (audio.byteLength === 0) throw new ProviderError("no_audio", false);
         pcm.push(audio);

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NarrationStateSchema } from "../../shared/contracts";
 import type { NarrationState } from "../../shared/contracts";
-import { clock, initialRate, NarrationBar, narrationItems, StyleChoice } from "./Listen";
+import { clock, initialRate, NarrationBar, narrationFailure, narrationItems, StyleChoice } from "./Listen";
 
 const record = { id: "00000000-0000-4000-8000-000000000201", title: "조사" };
 const base = {
@@ -93,6 +93,14 @@ test("a failure is an alert in Korean with 다시 시도; a cancel is not a fail
   expect(labels(failed)).toEqual(["다시 시도"]);
   expect(bar(cancelled)).toBe("");
   expect(labels(cancelled)).toEqual(["음성 만들기"]);
+});
+
+test("each cause of a failure reads differently: a busy server, a per-minute limit, today's free quota used up, depleted credits", () => {
+  const [busy, server, minute, daily, credits] = ["http_503", "http_500", "http_429", "quota_daily", "http_402"].map(code => narrationFailure(code));
+  expect(busy).toBe(server);
+  expect(new Set([busy, minute, daily, credits, narrationFailure(null)]).size).toBe(5);
+  expect(daily).toContain("무료 한도");
+  expect(daily).toContain("내일");
 });
 
 test("a label prefixes the commands and the row text for the digest 전체 view", () => {

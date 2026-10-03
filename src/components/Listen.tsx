@@ -29,12 +29,14 @@ const text = strings({
       http_400: "Gemini rejected the request.",
       http_401: "Gemini rejected the API key.",
       http_403: "Gemini rejected the API key.",
-      http_429: "Gemini's usage limit was reached. Please try again in a moment.",
+      http_402: "Gemini's prepaid credits ran out, so the audio couldn't be made.",
+      http_429: "Gemini's per-minute limit was reached. Please try again in about a minute.",
+      quota_daily: "Today's free Gemini quota is used up. Please try again tomorrow.",
       timeout: "It took too long.",
       network: "Couldn't connect to Gemini.",
       record_missing: "The record was deleted, so the audio couldn't be made.",
     },
-    serverError: "Gemini had a server problem. Please try again in a moment.",
+    serverError: "Gemini's servers were busy and several retries didn't get through. Please try again in a moment.",
     failed: "Couldn't make the audio.",
     requests: {
       narration_unavailable: "No Gemini API key is set, so audio can't be made.",
@@ -66,12 +68,14 @@ const text = strings({
       http_400: "Gemini가 요청을 거절했어요.",
       http_401: "Gemini가 API 키를 거절했어요.",
       http_403: "Gemini가 API 키를 거절했어요.",
-      http_429: "Gemini 사용량 한도에 걸렸어요. 잠시 뒤 다시 시도해 주세요.",
+      http_402: "Gemini 선불 크레딧이 바닥나 만들지 못했어요.",
+      http_429: "Gemini 분당 사용 한도에 걸렸어요. 1분쯤 뒤 다시 시도해 주세요.",
+      quota_daily: "오늘 Gemini 무료 한도를 다 썼어요. 내일 다시 시도해 주세요.",
       timeout: "시간이 너무 오래 걸렸어요.",
       network: "Gemini에 연결하지 못했어요.",
       record_missing: "기록이 삭제되어 만들지 못했어요.",
     },
-    serverError: "Gemini 서버에 문제가 있었어요. 잠시 뒤 다시 시도해 주세요.",
+    serverError: "Gemini 서버가 붐비어 여러 번 다시 해 봤지만 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.",
     failed: "음성을 만들지 못했어요.",
     requests: {
       narration_unavailable: "Gemini API 키가 설정되지 않아 음성을 만들 수 없어요.",
@@ -332,11 +336,12 @@ export function StyleChoice({ initial, force, pending, onSubmit, onClose }: {
 
 /**
  * Loads the narration of a record (or a digest part), follows a running job every few seconds and runs the owner's commands.
- * `record: null` turns it off (tasks, projects, a digest not yet loaded). Returns the menu items and the bar to show.
+ * `record: null` turns it off (tasks, projects, a digest not yet loaded). Returns the menu items, the bar to show, the loaded
+ * state, and `renew`, which makes the audio again from the current content (as Make new does).
  */
 export function useNarration({ record, collection = "records", label }: {
   readonly record: Pick<DashboardRecord, "id" | "title" | "version"> | null; readonly collection?: NarrationCollection; readonly label?: string | undefined;
-}): { items: MenuItem[]; bar: ReactNode } {
+}): { items: MenuItem[]; bar: ReactNode; state: NarrationState | null; renew: () => void } {
   const d = useDashboard();
   const id = record?.id ?? null;
   const [loaded, setLoaded] = useState<{ id: string; state: NarrationState } | null>(null);
@@ -366,7 +371,7 @@ export function useNarration({ record, collection = "records", label }: {
     const timer = window.setTimeout(() => { void load(id); }, POLL_MS);
     return () => window.clearTimeout(timer);
   }, [state]);
-  if (!record || !state) return { items: [], bar: null };
+  if (!record || !state) return { items: [], bar: null, state: null, renew: () => undefined };
   const forId = record.id;
   /** `style` comes from the choice, which already said what a remake costs; digests have no choice and confirm here. */
   const request = async (force: boolean, style?: NarrationStyle) => {
@@ -421,5 +426,5 @@ export function useNarration({ record, collection = "records", label }: {
         onSubmit={style => { setChoosing(null); void request(choosing.force, style); }} />
     </Dialog>}
   </>;
-  return { items, bar };
+  return { items, bar, state, renew: () => { void request(false); } };
 }

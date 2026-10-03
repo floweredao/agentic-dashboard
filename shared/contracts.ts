@@ -190,7 +190,7 @@ export const NARRATABLE_KINDS = ["research", "work-report", "note", "social"] as
  * Cost guards for narration: script length, TTS chunk length, model input, queued jobs, generations started per Seoul day,
  * and failed generations per content version before only the owner may try again.
  */
-export const NARRATION_LIMITS = { scriptChars: 6000, chunkChars: 1500, sourceChars: 20000, queue: 20, dailyRuns: 20, attempts: 3 } as const;
+export const NARRATION_LIMITS = { scriptChars: 6000, chunkChars: 1500, sourceChars: 20000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
 /** queued -> scripting (listening script) -> speaking (TTS chunks) -> ready | failed. */
 export const NarrationStatusSchema = z.enum(["queued", "scripting", "speaking", "ready", "failed"]);
 export type NarrationStatus = z.infer<typeof NarrationStatusSchema>;
@@ -228,13 +228,17 @@ export const DigestPartSchema = DigestKindSchema;
 export type DigestPart = DigestKind;
 /** An agent-chosen section key: lowercase letters, digits and dashes, starting with a letter. */
 export const DigestSectionKeySchema = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, "lowercase letters, digits and dashes, starting with a letter");
+/** What of a digest can be narrated: one part, or `all` (the articles, then the messages, in one audio). */
+export type DigestNarration = DigestPart | "all";
 /**
  * The id a part is narrated under: the articles under the digest's own id, the messages under the same UUID with its
- * version digit set to 8 (RFC 9562 custom). Digest ids are version 4, so the two never collide and either maps back.
+ * version digit set to 8 (RFC 9562 custom), the whole digest with it set to 7. Digest and record ids are version 4,
+ * so none of them collide and each maps back.
  */
-export const digestPartId = (id: string, part: DigestPart) => part === "articles" ? id : `${id.slice(0, 14)}8${id.slice(15)}`;
-export const digestOfPartId = (id: string): { readonly id: string; readonly part: DigestPart } =>
-  id[14] === "8" ? { id: `${id.slice(0, 14)}4${id.slice(15)}`, part: "messages" } : { id, part: "articles" };
+export const digestPartId = (id: string, part: DigestNarration) => part === "articles" ? id : `${id.slice(0, 14)}${part === "messages" ? "8" : "7"}${id.slice(15)}`;
+export const digestOfPartId = (id: string): { readonly id: string; readonly part: DigestNarration } =>
+  id[14] === "8" ? { id: `${id.slice(0, 14)}4${id.slice(15)}`, part: "messages" }
+    : id[14] === "7" ? { id: `${id.slice(0, 14)}4${id.slice(15)}`, part: "all" } : { id, part: "articles" };
 /** Message importance, most pressing first: urgent (act now), todo, check, info. */
 export const MESSAGE_IMPORTANCE = ["urgent", "todo", "check", "info"] as const;
 export type MessageImportance = (typeof MESSAGE_IMPORTANCE)[number];

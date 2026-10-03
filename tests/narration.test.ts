@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
+import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
 import { dialogueChunks, normalizeScript, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
-import type { NarrationProvider, SpeechTurn } from "../server/narration";
+import type { NarrationOptions, NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
 const SCRIPT = "# 조사 제목\n첫 문단입니다. 자세한 내용은 https://example.com/a?b=1 에 있어요.\n\n**둘째** 문단입니다.";
@@ -16,17 +16,25 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 type Fake = {
-  provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[]; systems: string[]; converse: SpeechTurn[][] }; available: boolean;
+  provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[]; systems: string[]; converse: SpeechTurn[][]; models: string[] }; available: boolean;
   failSpeak: number | "always"; error: Error | null; scriptText: string; hold: Hold | null;
+  /** Thrown, one per call and in order, by the next script and speak calls. */
+  scriptErrors: ProviderError[]; speakErrors: ProviderError[];
 };
 
 /** A TTS provider that returns one second of silence per chunk and records what it was asked. */
 function fake(): Fake {
-  const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT, hold: null, provider: null as never };
+  const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [], models: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT,
+    hold: null, scriptErrors: [], speakErrors: [], provider: null as never };
   state.provider = {
-    ttsModel: "fake-tts", scriptModel: "fake-script", voice: "Kore", hosts: ["Kore", "Puck"],
+    ttsModel: "fake-tts", scriptModel: "fake-script", fallbackScriptModel: "fake-lite", voice: "Kore", hosts: ["Kore", "Puck"],
     available: async () => state.available,
-    script: async (system, prompt) => { state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system); return state.scriptText; },
+    script: async (system, prompt, _signal, model) => {
+      state.calls.models.push(model ?? "fake-script");
+      const failure = state.scriptErrors.shift();
+      if (failure) throw failure;
+      state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system); return state.scriptText;
+    },
     converse: async (turns, _style, signal) => {
       state.calls.converse.push([...turns]);
       const hold = state.hold;
@@ -51,6 +59,8 @@ function fake(): Fake {
         });
       }
       if (state.error) throw state.error;
+      const failure = state.speakErrors.shift();
+      if (failure) throw failure;
       if (state.failSpeak === "always" || state.failSpeak > 0) {
         if (state.failSpeak !== "always") state.failSpeak -= 1;
         throw new ProviderError("http_500", true);
@@ -64,9 +74,9 @@ const wavOnly = async (path: string) => ({ path, mime: "audio/wav" });
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()?.(); });
 
-function setup(dailyLimit?: number) {
+function setup(dailyLimit?: number, extra: Partial<Omit<NarrationOptions, "store" | "provider" | "audioDir">> = {}) {
   const tts = fake();
-  const f = fixture(10000, Date.now, { narration: { provider: tts.provider, encode: wavOnly, retryDelayMs: 0, ...(dailyLimit ? { dailyLimit } : {}) } });
+  const f = fixture(10000, Date.now, { narration: { provider: tts.provider, encode: wavOnly, retryDelayMs: 0, ...(dailyLimit ? { dailyLimit } : {}), ...extra } });
   cleanups.push(() => f.close());
   const audioFiles = () => existsSync(join(f.dir, "audio")) ? readdirSync(join(f.dir, "audio")) : [];
   return { f, tts, audioFiles, idle: () => f.app.narration.idle() };
@@ -289,7 +299,76 @@ test("changed content marks the audio stale; regenerating replaces the file and 
   expect(second[0]).not.toBe(first[0]);
 });
 
-test("a failed TTS reuses the saved script, retries once per chunk, and stops after the attempt limit", async () => {
+/** A recorder for the waits between retries, which returns at once. */
+function waits() {
+  const slept: number[] = [];
+  return { slept, sleep: async (ms: number) => { slept.push(ms); } };
+}
+const busy = () => new ProviderError("http_503", true);
+
+test("a busy script model is retried with growing waits, then the lighter model writes the script", async () => {
+  // Given: the script model answers 503 (high demand) to every try.
+  const clock = waits();
+  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  const owner = await f.login();
+  const record = await research(f, owner);
+  tts.scriptErrors = Array.from({ length: NARRATION_LIMITS.retries + 1 }, busy);
+  // When: the owner asks for audio.
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  // Then: the main model is tried 1 + retries times with exponential waits (plus a little jitter), then the fallback succeeds.
+  expect(tts.calls.models).toEqual([...Array.from({ length: NARRATION_LIMITS.retries + 1 }, () => "fake-script"), "fake-lite"]);
+  expect(clock.slept).toHaveLength(NARRATION_LIMITS.retries);
+  clock.slept.forEach((ms, index) => {
+    expect(ms).toBeGreaterThanOrEqual(1000 * 2 ** index);
+    expect(ms).toBeLessThanOrEqual(1000 * 2 ** index * 1.25);
+  });
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
+});
+
+test("a used-up daily quota is not retried: the script moves to the lighter model, and speech fails as quota_daily", async () => {
+  const clock = waits();
+  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  const owner = await f.login();
+  const record = await research(f, owner);
+  // Given: the script model's daily free quota is used up, and so is the speech model's.
+  tts.scriptErrors = [new ProviderError("quota_daily", false)];
+  tts.speakErrors = [new ProviderError("quota_daily", false)];
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  // Then: no waits, the script came from the fallback, speech was tried once, and the failure says why.
+  expect(clock.slept).toEqual([]);
+  expect(tts.calls.models).toEqual(["fake-script", "fake-lite"]);
+  expect(tts.calls.speak).toHaveLength(1);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "failed", error: "quota_daily", attempts: 1 });
+});
+
+test("a per-minute 429 waits as long as the provider asks, then keeps that pace between the chunks; a wait over a minute is not sat out", async () => {
+  const clock = waits();
+  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  const owner = await f.login();
+  const record = await research(f, owner);
+  // Given: a script of three chunks, and a rate limit on the first chunk that asks for 7 seconds.
+  tts.scriptText = Array.from({ length: 3 }, (_, index) => `Paragraph ${index}. ${"a".repeat(NARRATION_LIMITS.chunkChars - 15)}`).join("\n\n");
+  tts.speakErrors = [Object.assign(new ProviderError("http_429", true), { retryAfterMs: 7000 })];
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  // Then: one 7 s wait for the retry, and a 7 s pause before each later chunk.
+  expect(tts.calls.speak).toHaveLength(4);
+  expect(clock.slept).toEqual([7000, 7000, 7000]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
+
+  // And: when the provider asks for more than a minute, the job fails as a rate limit instead of hanging.
+  const other = await research(f, owner);
+  clock.slept.length = 0;
+  tts.speakErrors = [Object.assign(new ProviderError("http_429", true), { retryAfterMs: 120_000 })];
+  await f.call(narration(other.id), "POST", {}, owner);
+  await idle();
+  expect(clock.slept).toEqual([]);
+  expect((await read(await f.call(narration(other.id), "GET", undefined, owner))).narration).toMatchObject({ status: "failed", error: "http_429" });
+});
+
+test("a failed TTS reuses the saved script, retries each chunk, and stops after the attempt limit", async () => {
   const { f, tts, idle } = setup();
   const owner = await f.login();
   const record = await research(f, owner);
@@ -478,6 +557,38 @@ test("the owner narrates a digest's messages on their own: the messages part has
     { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "e", title: "저녁 소식", source: "", summary: "", url: "https://news.example.com/e" }] }] }, bearer("omo"));
   const eveningId = (await evening.json() as { digest: { id: string } }).digest.id;
   expect((await f.call(`/api/v1/digests/${digestPartId(eveningId, "messages")}/narration`, "GET", undefined, owner)).status).toBe(404);
+});
+
+test("the owner narrates a whole digest at once, articles then messages, under its own id beside the separate parts", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const upload = (sections: unknown[]) => f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections }, bearer("omo"));
+  const created = await upload([
+    { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "a", title: "Local news", source: "Wire", summary: "Summary", url: "https://news.example.com/a" }] },
+    { key: "inbox", title: "Inbox", kind: "messages", items: [{ key: "m", importance: "urgent", from: "Carrier", subject: "Sign-in alert" }] }]);
+  const id = (await created.json() as { digest: { id: string } }).digest.id;
+  const allId = digestPartId(id, "all");
+  // The whole digest has an id of its own that maps back, distinct from both parts.
+  expect(new Set([allId, id, digestPartId(id, "messages")]).size).toBe(3);
+  expect(digestOfPartId(allId)).toEqual({ id, part: "all" });
+  const path = `/api/v1/digests/${allId}/narration`;
+  // When: the owner asks for the whole digest.
+  expect((await f.call(path, "POST", {}, owner)).status).toBe(202);
+  await idle();
+  // Then: one script covers the articles, then the messages.
+  const prompt = tts.calls.prompts[0] ?? "";
+  expect(prompt).toContain("Whole digest");
+  expect(prompt.indexOf("Local news")).toBeGreaterThan(-1);
+  expect(prompt.indexOf("Sign-in alert")).toBeGreaterThan(prompt.indexOf("Local news"));
+  const state = await read(await f.call(path, "GET", undefined, owner));
+  expect(state.narration).toMatchObject({ recordId: allId, status: "ready", stale: false });
+  expect(state.narration?.audio?.url).toStartWith(`${path}/audio?v=`);
+  expect((await f.call(state.narration?.audio?.url ?? "", "GET", undefined, owner)).status).toBe(200);
+  // And: the parts keep their own (still empty) narrations, and new messages make the whole audio stale.
+  expect((await read(await f.call(`/api/v1/digests/${id}/narration`, "GET", undefined, owner))).narration).toBeNull();
+  await upload([{ key: "inbox", title: "Inbox", kind: "messages", items: [{ key: "n", importance: "todo", from: "Bank", subject: "Deposit notice" }] }]);
+  expect((await read(await f.call(path, "GET", undefined, owner))).narration?.stale).toBe(true);
+  expect((await f.call(path, "POST", { style: "podcast" }, owner)).status).toBe(400);
 });
 
 const DIALOGUE = "A: Today we look at the app price comparison.\n\nB: Shall we start with the conclusion?\n\nA: The cheapest is app A.\nIt costs five dollars a month.";

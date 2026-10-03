@@ -63,7 +63,7 @@ test("the script call sends the system instruction and joins the model's text ou
 });
 
 test("HTTP failures become codes: 429 and 5xx are transient, and the key never appears in the error", async () => {
-  for (const [status, transient] of [[429, true], [503, true], [400, false], [403, false]] as const) {
+  for (const [status, transient] of [[429, true], [503, true], [400, false], [402, false], [403, false]] as const) {
     const { gemini } = provider(() => new Response(`{"error":"bad key ${KEY}"}`, { status }));
     const error = await gemini.speak("가", "", signal()).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ProviderError);
@@ -72,6 +72,39 @@ test("HTTP failures become codes: 429 and 5xx are transient, and the key never a
   }
   const empty = provider(() => steps([{ type: "text", text: "" }]));
   expect(await empty.gemini.speak("가", "", signal()).catch((caught: unknown) => caught)).toMatchObject({ code: "no_audio" });
+});
+
+const quota = (quotaId: string, retryDelay?: string) => Response.json({ error: { code: 429, status: "RESOURCE_EXHAUSTED", message: `Quota exceeded ${KEY}`, details: [
+  { "@type": "type.googleapis.com/google.rpc.QuotaFailure", violations: [{ quotaMetric: "generativelanguage.googleapis.com/generate_requests", quotaId }] },
+  ...(retryDelay ? [{ "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay }] : []),
+] } }, { status: 429 });
+
+test("a 429 says how long to wait: RetryInfo or Retry-After; a used-up daily free quota is its own, final code", async () => {
+  // Given: a per-minute quota with a RetryInfo delay, a bare 429 with Retry-After, a daily quota, and an overloaded 503.
+  const answers: [string, () => Response][] = [
+    ["minute", () => quota("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "17.4s")],
+    ["header", () => new Response("busy", { status: 429, headers: { "retry-after": "5" } })],
+    ["daily", () => quota("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "40s")],
+    ["busy", () => Response.json({ error: { code: 503, status: "UNAVAILABLE", message: "This model is currently experiencing high demand." } }, { status: 503 })],
+  ];
+  const errors: Record<string, unknown> = {};
+  for (const [name, reply] of answers) errors[name] = await provider(reply).gemini.script("", "", signal()).catch((caught: unknown) => caught);
+  // Then: the waits come through in milliseconds, the daily quota is not retried, and no message text (or key) is kept.
+  expect(errors.minute).toMatchObject({ code: "http_429", transient: true, retryAfterMs: 17400 });
+  expect(errors.header).toMatchObject({ code: "http_429", transient: true, retryAfterMs: 5000 });
+  expect(errors.daily).toMatchObject({ code: "quota_daily", transient: false });
+  expect(errors.busy).toMatchObject({ code: "http_503", transient: true });
+  for (const error of Object.values(errors)) {
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(String(error instanceof Error ? error.message : error)).not.toContain(KEY);
+  }
+});
+
+test("a script can be asked of another model, and the provider names its lighter fallback", async () => {
+  const { gemini, sent } = provider(() => steps([{ type: "text", text: "Script" }]));
+  expect(gemini.fallbackScriptModel).toBe("gemini-3.5-flash-lite");
+  await gemini.script("Rules", "[Record]", signal(), "gemini-3.5-flash-lite");
+  expect(sent[0]?.body).toMatchObject({ model: "gemini-3.5-flash-lite" });
 });
 
 test("no key means unavailable and no request", async () => {

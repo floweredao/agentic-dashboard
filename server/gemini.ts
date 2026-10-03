@@ -5,6 +5,11 @@ import type { NarrationProvider } from "./narration";
 /** Gemini 3.8 Flash TTS (stable): https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts */
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
 export const GEMINI_SCRIPT_MODEL = "gemini-3.8-flash";
+/**
+ * Writes the script when the script model stays overloaded (503 "high demand") or its free daily quota is used up: a stable
+ * model on the free tier with its own per-model quota (https://ai.google.dev/gemini-api/docs/models, /pricing).
+ */
+export const GEMINI_SCRIPT_FALLBACK_MODEL = "gemini-3.5-flash-lite";
 export const GEMINI_VOICE = "Kore";
 /** Podcast host B, a prebuilt voice that is easy to tell apart from host A; multi-speaker requests take at most two prebuilt voices. */
 export const GEMINI_PODCAST_VOICE = "Puck";
@@ -23,6 +28,41 @@ const responseSchema = z.object({
   }).passthrough()),
 }).passthrough();
 
+/** The parts of a Google error body that say how long to wait and which quota was hit; messages are never kept. */
+const errorSchema = z.object({ error: z.object({
+  details: z.array(z.object({
+    retryDelay: z.string().optional(),
+    violations: z.array(z.object({ quotaId: z.string().optional() }).passthrough()).optional(),
+  }).passthrough()).optional(),
+}).passthrough() }).passthrough();
+const SECONDS = /^(\d+(?:\.\d+)?)s$/;
+
+/**
+ * A failed response as a code. 429/408/5xx are transient and carry the wait Google asked for (RetryInfo `retryDelay`, else
+ * Retry-After); a 429 on a per-day quota (quotaId `...PerDay...`, e.g. the free tier's requests per day) is `quota_daily`,
+ * which no retry fixes until the quota resets (https://ai.google.dev/gemini-api/docs/rate-limits).
+ */
+export async function failureOf(response: Response): Promise<ProviderError> {
+  const status = response.status;
+  let details: z.infer<typeof errorSchema>["error"]["details"] = [];
+  try {
+    const parsed = errorSchema.safeParse(JSON.parse(await response.text()));
+    if (parsed.success) details = parsed.data.error.details ?? [];
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+  }
+  if (status === 429 && details.some(detail => detail.violations?.some(violation => /PerDay/i.test(violation.quotaId ?? "")))) {
+    return new ProviderError("quota_daily", false);
+  }
+  const transient = status === 429 || status === 408 || status >= 500;
+  if (!transient) return new ProviderError(`http_${status}`, false);
+  const delay = details.map(detail => SECONDS.exec(detail.retryDelay ?? "")).find(match => match !== null);
+  const header = response.headers.get("retry-after");
+  const retryAfterMs = delay ? Math.round(Number(delay[1]) * 1000)
+    : header !== null && /^\d+$/.test(header.trim()) ? Number(header.trim()) * 1000 : undefined;
+  return new ProviderError(`http_${status}`, true, retryAfterMs);
+}
+
 /** Strips a RIFF/WAVE header when the API answers WAV instead of the requested raw PCM. */
 export function pcmOf(bytes: Uint8Array): Uint8Array {
   const view = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -37,12 +77,14 @@ export function pcmOf(bytes: Uint8Array): Uint8Array {
 
 /** Interactions API with `store: false`; the key goes only in the x-goog-api-key header and never into errors. */
 export function geminiProvider(options: {
-  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly voice?: string; readonly podcastVoice?: string;
+  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly fallbackScriptModel?: string;
+  readonly voice?: string; readonly podcastVoice?: string;
   readonly fetch?: (input: string, init: RequestInit) => Promise<Response>;
 }): NarrationProvider {
   const send = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   const ttsModel = options.ttsModel ?? GEMINI_TTS_MODEL;
   const scriptModel = options.scriptModel ?? GEMINI_SCRIPT_MODEL;
+  const fallbackScriptModel = options.fallbackScriptModel ?? GEMINI_SCRIPT_FALLBACK_MODEL;
   const voice = options.voice ?? GEMINI_VOICE;
   const hosts = [voice, options.podcastVoice ?? GEMINI_PODCAST_VOICE] as const;
   async function output(body: unknown, signal: AbortSignal) {
@@ -57,10 +99,7 @@ export function geminiProvider(options: {
       if (error instanceof Error) throw new ProviderError("network", true);
       throw error;
     }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new ProviderError(`http_${response.status}`, response.status === 429 || response.status >= 500);
-    }
+    if (!response.ok) throw await failureOf(response);
     let json: unknown;
     try { json = await response.json(); }
     catch (error) {
@@ -83,10 +122,10 @@ export function geminiProvider(options: {
     return pcmOf(Buffer.from(audio, "base64"));
   }
   return {
-    ttsModel, scriptModel, voice, hosts,
+    ttsModel, scriptModel, fallbackScriptModel, voice, hosts,
     available: async () => await options.key() !== null,
-    async script(system, prompt, signal) {
-      const content = await output({ model: scriptModel, system_instruction: system, input: prompt, store: false }, signal);
+    async script(system, prompt, signal, model = scriptModel) {
+      const content = await output({ model, system_instruction: system, input: prompt, store: false }, signal);
       const script = content.filter(part => part.type === "text").map(part => part.text ?? "").join("");
       if (!script.trim()) throw new ProviderError("empty_script", false);
       return script;

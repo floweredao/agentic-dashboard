@@ -179,14 +179,16 @@ export class Digests {
   }
 
   /**
-   * One part of a digest as a note-shaped record for narration, with its label: the part's sections in order under their
-   * titles, each item as one line. `narrationId` is the part's id (`digestPartId`); null when there is no such digest or part.
+   * One part of a digest, or all of it (the articles, then the messages), as a note-shaped record for narration, with its
+   * label: the sections in order under their titles, each item as one line. `narrationId` is the part's id (`digestPartId`); null when there is no such digest or part.
    */
   narrationSource(narrationId: string): { record: DashboardRecord; label: string } | null {
     const { id, part } = digestOfPartId(narrationId);
     if (!this.exists(id)) return null;
     const digest = this.get(id);
-    const sections = digest.sections.filter(section => section.kind === part);
+    const sections = part === "all"
+      ? DIGEST_PARTS.flatMap(kind => digest.sections.filter(section => section.kind === kind))
+      : digest.sections.filter(section => section.kind === part);
     if (sections.length === 0) return null;
     const lines: string[] = [];
     const message = (item: DigestMessage) => `- [${item.importance}] ${item.from}: ${item.subject}. ${item.summary}${item.action ? ` ${item.action}` : ""}`;
@@ -196,7 +198,7 @@ export class Digests {
       lines.push(`## ${section.title}`, ...(section.kind === "messages" ? section.items.map(message) : section.items.map(article)), "");
     }
     const counts = sections.filter(section => section.items.length).map(section => `${section.title} ${section.items.length}`).join(", ");
-    const label = part === "messages" ? "Digest messages" : "Digest articles";
+    const label = part === "all" ? "Whole digest" : part === "messages" ? "Digest messages" : "Digest articles";
     return { label, record: { id: narrationId, kind: "note", title: `${digest.date} ${digest.slot} ${label.toLowerCase()}`, body: lines.join("\n").trim(),
       status: "new", projectId: null, taskId: null, dueDate: null, tags: [], links: [], fields: { summary: counts },
       source: digest.createdBy, createdBy: digest.createdBy, reviewState: "approved", archivedAt: null,

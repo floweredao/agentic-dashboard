@@ -4,7 +4,7 @@ import { NARRATION_LIMITS } from "../shared/contracts";
 import { systemTimeZone, validTimeZone } from "../shared/time";
 import { commandRunner } from "./ai-fill";
 import { createApp } from "./app";
-import { envKey, GEMINI_PODCAST_VOICE, GEMINI_SCRIPT_MODEL, GEMINI_TTS_MODEL, GEMINI_VOICE, geminiProvider } from "./gemini";
+import { envKey, GEMINI_PODCAST_VOICE, GEMINI_SCRIPT_FALLBACK_MODEL, GEMINI_SCRIPT_MODEL, GEMINI_TTS_MODEL, GEMINI_VOICE, geminiProvider } from "./gemini";
 
 const onOff = z.enum(["on", "off", "true", "false"]).transform(value => value === "on" || value === "true");
 const list = z.string().transform(value => value.split(",").map(item => item.trim()).filter(Boolean));
@@ -34,6 +34,7 @@ const parsed = z.object({
   NARRATION: onOff.default(true),
   NARRATION_TTS_MODEL: z.string().trim().min(1).default(GEMINI_TTS_MODEL),
   NARRATION_SCRIPT_MODEL: z.string().trim().min(1).default(GEMINI_SCRIPT_MODEL),
+  NARRATION_SCRIPT_FALLBACK_MODEL: z.string().trim().min(1).default(GEMINI_SCRIPT_FALLBACK_MODEL),
   NARRATION_VOICE: z.string().trim().min(1).default(GEMINI_VOICE),
   NARRATION_PODCAST_VOICE: z.string().trim().min(1).default(GEMINI_PODCAST_VOICE),
   NARRATION_DAILY_LIMIT: z.coerce.number().int().min(0).max(200).default(NARRATION_LIMITS.dailyRuns),
@@ -77,7 +78,8 @@ const app = createApp({
   ...(config.VAPID_SUBJECT ? { push: { subject: config.VAPID_SUBJECT } } : {}),
   ...(config.AI_FILL_COMMAND ? { aiFill: { run: commandRunner(config.AI_FILL_COMMAND.split(/\s+/)), model: config.AI_FILL_COMMAND, sources: config.AI_FILL_SOURCES } } : {}),
   ...(config.NARRATION && !config.DEMO ? { narration: {
-    provider: geminiProvider({ key: envKey(), ttsModel: config.NARRATION_TTS_MODEL, scriptModel: config.NARRATION_SCRIPT_MODEL, voice: config.NARRATION_VOICE,
+    provider: geminiProvider({ key: envKey(), ttsModel: config.NARRATION_TTS_MODEL, scriptModel: config.NARRATION_SCRIPT_MODEL,
+      fallbackScriptModel: config.NARRATION_SCRIPT_FALLBACK_MODEL, voice: config.NARRATION_VOICE,
       podcastVoice: config.NARRATION_PODCAST_VOICE }),
     dailyLimit: config.NARRATION_DAILY_LIMIT, ...(config.AUDIO_DIR ? { audioDir: config.AUDIO_DIR } : {}),
   } } : {}),
