@@ -18,6 +18,8 @@ bun run build
 
 All three must exit 0. Don't skip, delete or loosen a failing test to get there.
 
+On a machine that provides a shared `heavy` gate (the maintainer's Mac does), run the three commands through it, for example `heavy bun test`. It limits how many heavy jobs run at once across agent sessions; waiting for a slot is expected.
+
 ## Data and secrets
 
 - Use an isolated database for any manual run: `DATA_DIR=$(mktemp -d) bun start`, or `DATABASE_PATH` and `CREDENTIALS_PATH` pointing at a scratch folder. Never touch an existing `data/` folder; it holds someone's real records and keys.
