@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. Bug reports, fixes, translations and new deploy recipes are all welcome. Docker support doesn't exist yet and would be a good first contribution.
+Thanks for helping. Bug reports, fixes, translations and new deploy recipes are all welcome.
 
 ## Set up
 
@@ -25,18 +25,19 @@ Use a throwaway data folder while you work, for example `DATA_DIR=dev-data bun s
 
 ## Before you open a pull request
 
-All three must pass:
+All four must pass:
 
 ```sh
 bun test
 bun run typecheck
 bun run build
+bun scripts/i18n-check.ts
 ```
 
 - Read [CONTRACT.md](CONTRACT.md) before you change an API, a shape or a limit, and update it in the same change.
 - Read [DESIGN.md](DESIGN.md) before you change the UI, and keep it in sync.
 - Add or adjust tests next to the code you change. Tests use their own temporary databases; never point them at real data.
-- Keep user-facing strings translatable in English and Korean.
+- Put every UI string in the component's `strings({ en, ko })` dictionary from `src/i18n.ts`. English is the default; the checker fails on a missing translation or Korean text outside a `ko` dictionary.
 - Keep commits small, with messages like `fix: keep the reader scroll position on back`.
 
 ## Reporting security issues

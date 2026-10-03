@@ -74,7 +74,9 @@ Routes are hash based and the URL owns committed state: `#/inbox`, `#/library`, 
 - **Swipe (touch only):** right archives, left deletes to the trash. The axis locks after 10px; the row commits at 40% of its width or 120px.
 - **Reader:** meta, title, dates, then a sticky action bar (primary action first, then star, edit, share and a menu). Content shows the conclusion and summary on `--raised`, then the Markdown body (rendered to elements, never raw HTML), next actions, links as cards and tags. Max width 68ch.
 - **Menus:** APG menu button pattern with arrow keys, Home, End and Escape returning focus. The button is a ⋯ icon (34px, 44px on phones) everywhere; its name (More) stays in `aria-label` and the tooltip.
-- **Listen:** commands live in the reader menu. A running job is one status line with its stage, real progress only when a done/total exists, and a cancel button that says it's cancelling until the server confirms.
+- **Listen:** commands live in the reader menu. Make audio asks for Read aloud or Podcast (records) or which audio, the whole digest or a part (digests), as radio cards. A running job is a percent bar that eases through its real stages, says when it waits for the provider, and has a cancel button that says it's cancelling until the server confirms. A trash button beside the player, folded or playing, deletes only that audio. A closed error stays closed on this device (`agentic:listen-dismissed`) until the job fails again. Playback starts at 1x and keeps a rate the listener picks.
+- **Digest reader:** the title comes first, mark read sits in the ⋯ More beside the date title, and items read as a list: each summary's first sentence before its context, one update tag. A section bar sticks to the top and marks the section being read. Titles only folds items to their titles, and an end line closes the digest.
+- **Language:** follows the system by default. Settings is the only place to choose Follow the system, English or 한국어, stored per device (`agentic:locale`).
 - **Dialogs:** native `<dialog>`, radius 12, a bottom sheet on phones.
 - **Toasts:** bottom center, ink fill, `role=status`, 4 seconds (6 with Undo).
 - **Empty states:** a 20px muted icon and one factual line.
@@ -92,4 +94,4 @@ Panes sit on the canvas separated by hairlines, without shadows. Only dialogs an
 
 ## Accessibility
 
-Landmarks for navigation, main content, the list pane and the reader article. One visible focus ring everywhere, 44px touch targets on phones, labelled icon buttons. Color is never the only signal: unread is a dot, a weight and words in the accessible name. Every string exists in English and Korean.
+Landmarks for navigation, main content, the list pane and the reader article. One visible focus ring everywhere, 44px touch targets on phones, labelled icon buttons. Color is never the only signal: unread is a dot, a weight and words in the accessible name. Every string exists in English and Korean. Escape closes a dialog from its own keydown handler.

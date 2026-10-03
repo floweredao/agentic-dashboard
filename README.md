@@ -63,13 +63,13 @@ Agentic Dashboard gives each agent its own key and one place to file results:
     <td width="50%"><img src="docs/images/feature-digest.png" alt="A morning digest with mail and news sections"></td>
     <td>
       <h3>Digests</h3>
-      Agents upload news, mail or alert round-ups by date and time slot. Sections are whatever the agent sends: articles or messages with an importance level. Articles and messages are read separately.
+      Agents upload news, mail or alert round-ups by date and time slot. Sections are whatever the agent sends: articles or messages with an importance level. A digest reads as one list: the title first, a section bar that sticks while you scroll and marks the section you are in, a titles-only view and an end line. Its push alert fits a lock screen, one line per item with the most important first.
     </td>
   </tr>
   <tr>
     <td>
       <h3>Agents as channels</h3>
-      Every registered agent gets its own channel with counts and its latest activity. Agents read each other's reports, but only the owner can confirm, archive or delete.
+      Every registered agent gets its own channel with counts, its latest activity and when its key was last used or removed. Agents read each other's reports, but only the owner can confirm, archive or delete.
     </td>
     <td width="50%"><img src="docs/images/feature-channels.png" alt="Channel cards for three agents"></td>
   </tr>
@@ -77,7 +77,7 @@ Agentic Dashboard gives each agent its own key and one place to file results:
 
 ### On your phone, in light or dark
 
-Mobile-first layout with a bottom tab bar, safe-area aware, installable as a home-screen web app with push notifications. The theme follows your system; the language follows your browser and can be switched in Settings.
+Mobile-first layout with a bottom tab bar, safe-area aware, installable as a home-screen web app with push notifications. The theme follows your system. The language does too, and Settings offers Follow the system, English or 한국어, remembered on each device. Every inbox row starts with a tile for its category, and the sidebar can be hidden at any width.
 
 <p align="center">
   <img src="docs/images/phone-light.png" width="240" alt="Phone inbox in light mode">
@@ -94,10 +94,10 @@ Mobile-first layout with a bottom tab bar, safe-area aware, installable as a hom
 ### Also included
 
 - **Share links:** give one record a read-only link and code that an agent can fetch as Markdown or JSON.
-- **Listen (optional):** turn a report into narrated audio with a text-to-speech provider (Gemini example included).
+- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff and a lighter script model, and a trash button beside the player removes only that audio.
 - **Web push (optional):** get notified when a digest arrives or an agent asks for review. VAPID keys are generated for you.
 - **MCP endpoint (optional):** chat apps can save and search records through a loopback MCP server.
-- **English and Korean UI**, with every string in a small dictionary next to the component that uses it.
+- **English and Korean UI**, with every string in a small dictionary next to the component that uses it, and a checker (`bun scripts/i18n-check.ts`) that fails on a missing translation.
 
 ## Quick start
 
@@ -193,7 +193,7 @@ Copy `.env.example` to `.env`; Bun loads it automatically.
 | `APP_NAME` | `Agentic Dashboard` | Name shown in the UI |
 | `DATA_DIR` | `data` | SQLite database, owner key, VAPID keys and audio |
 | `TIME_ZONE` | host zone | IANA zone for Today, digests and daily limits |
-| `LOCALE` | `en` | Language of push notifications (`en` or `ko`) |
+| `LOCALE` | `en` | Default push language (`en` or `ko`); each device sends its own language when it subscribes |
 
 Optional features are off or keyless by default:
 
@@ -201,7 +201,7 @@ Optional features are off or keyless by default:
 |---|---|
 | Web push | `PUSH` (on by default; keys are generated) |
 | Digests | `DIGEST` (on by default) |
-| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts` |
+| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`, and `NARRATION_SCRIPT_FALLBACK_MODEL` for busy hours |
 | AI title fill for saved links | `AI_FILL_COMMAND`, any CLI that reads a prompt on stdin and prints JSON |
 | MCP for chat apps | `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` |
 | Agent-only listener | `ENABLE_AGENT_INGRESS=on` |
@@ -265,13 +265,20 @@ It is developed and verified on macOS with Bun. Linux should work the same way; 
 <details>
 <summary><b>Is there a Docker image?</b></summary>
 
-Not yet. The single binary covers most of the same ground. A Dockerfile is a welcome contribution.
+There's a `Dockerfile` in the repository, but no image is published to a registry yet. Build it yourself:
+
+```sh
+docker build -t agentic-dashboard .
+docker run -p 8080:8080 -v "$PWD/data:/app/data" -e APP_ORIGIN=http://localhost:8080 agentic-dashboard
+```
+
+The image listens on port 8080 and keeps its data in `/app/data`. [docs/deploy.md](docs/deploy.md) covers it, and [docs/demo.md](docs/demo.md) shows the same image running the public demo.
 </details>
 
 <details>
 <summary><b>How do I add a language?</b></summary>
 
-Each component keeps its strings in a colocated `{ en, ko }` dictionary built with `strings()` from `src/i18n.ts`. Add the locale to `src/i18n.ts` and a translation next to each `ko` entry. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Each component keeps its strings in a colocated `{ en, ko }` dictionary built with `strings()` from `src/i18n.ts`. Add the locale to `src/i18n.ts` and a translation next to each `ko` entry, then run `bun scripts/i18n-check.ts`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 </details>
 
 ## Documentation

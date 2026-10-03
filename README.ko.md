@@ -63,13 +63,13 @@ Agentic Dashboard는 에이전트마다 키를 하나씩 주고, 결과를 한�
     <td width="50%"><img src="docs/images/feature-digest.png" alt="메일과 뉴스 섹션이 있는 아침 다이제스트"></td>
     <td>
       <h3>다이제스트</h3>
-      에이전트가 뉴스, 메일, 알림 묶음을 날짜와 시간대별로 올립니다. 섹션 이름과 종류(기사, 또는 중요도가 붙은 메시지)는 에이전트가 정합니다. 기사와 메시지는 따로 읽음 처리됩니다.
+      에이전트가 뉴스, 메일, 알림 묶음을 날짜와 시간대별로 올립니다. 섹션 이름과 종류(기사, 또는 중요도가 붙은 메시지)는 에이전트가 정합니다. 다이제스트는 한 목록으로 읽힙니다. 제목이 먼저 오고, 스크롤해도 붙어 있는 섹션 바가 지금 읽는 섹션을 표시하며, 제목만 보기와 끝 표시가 있습니다. 푸시 알림은 잠금 화면에 맞게 항목마다 한 줄, 중요한 것부터 보여 줍니다.
     </td>
   </tr>
   <tr>
     <td>
       <h3>에이전트별 채널</h3>
-      등록한 에이전트마다 채널이 생겨 기록 수와 최근 활동을 보여 줍니다. 에이전트끼리는 서로의 보고를 읽을 수 있지만, 확인·보관·삭제는 소유자만 할 수 있습니다.
+      등록한 에이전트마다 채널이 생겨 기록 수, 최근 활동, 키를 마지막으로 쓴 때나 제거한 때를 보여 줍니다. 에이전트끼리는 서로의 보고를 읽을 수 있지만, 확인·보관·삭제는 소유자만 할 수 있습니다.
     </td>
     <td width="50%"><img src="docs/images/feature-channels.png" alt="에이전트 세 개의 채널 카드"></td>
   </tr>
@@ -77,7 +77,7 @@ Agentic Dashboard는 에이전트마다 키를 하나씩 주고, 결과를 한�
 
 ### 휴대폰에서도, 라이트와 다크 모두
 
-모바일을 먼저 생각한 화면입니다. 아래 탭 바가 있고, 노치 같은 안전 영역을 피해 그려지며, 홈 화면 앱으로 설치해 푸시 알림을 받을 수 있습니다. 테마는 시스템 설정을 따르고, 언어는 브라우저 언어를 따르되 설정에서 바꿀 수 있습니다.
+모바일을 먼저 생각한 화면입니다. 아래 탭 바가 있고, 노치 같은 안전 영역을 피해 그려지며, 홈 화면 앱으로 설치해 푸시 알림을 받을 수 있습니다. 테마와 언어는 시스템 설정을 따릅니다. 설정에서 시스템 따르기, English, 한국어 중에 고를 수 있고 기기마다 기억합니다. 받은 항목의 각 줄은 분류 타일로 시작하고, 사이드바는 어떤 화면 폭에서든 숨길 수 있습니다.
 
 <p align="center">
   <img src="docs/images/phone-ko.png" width="240" alt="한국어로 본 휴대폰 받은 항목">
@@ -94,10 +94,10 @@ Agentic Dashboard는 에이전트마다 키를 하나씩 주고, 결과를 한�
 ### 그 밖에
 
 - **공유 링크:** 기록 하나에 읽기 전용 링크와 코드를 붙여, 에이전트가 Markdown이나 JSON으로 가져가게 합니다.
-- **듣기(선택):** 음성 합성(TTS) 공급자로 보고서를 읽어 주는 오디오를 만듭니다. Gemini 예시가 들어 있습니다.
+- **듣기(선택):** 음성 합성(TTS) 공급자로 보고서 오디오를 만듭니다. Gemini 예시가 들어 있습니다. 한 목소리로 읽어 주기, 두 진행자가 대화하는 팟캐스트 중에 고릅니다. 다이제스트는 전체 또는 부분별로 들을 수 있습니다. 작업은 진행 막대로 보이고, 바쁜 공급자는 간격을 늘려 다시 시도하며 가벼운 대본 모델로 넘어갑니다. 플레이어 옆 휴지통 버튼은 그 오디오만 지웁니다.
 - **웹 푸시(선택):** 다이제스트가 오거나 에이전트가 확인을 요청하면 알림을 받습니다. VAPID 키는 자동으로 만들어집니다.
 - **MCP 엔드포인트(선택):** 채팅 앱이 로컬 MCP 서버를 통해 기록을 저장하고 검색합니다.
-- **영어·한국어 화면.** 문구는 각 컴포넌트 옆의 작은 사전에 들어 있습니다.
+- **영어·한국어 화면.** 문구는 각 컴포넌트 옆의 작은 사전에 들어 있고, 번역이 빠지면 검사 스크립트(`bun scripts/i18n-check.ts`)가 실패합니다.
 
 ## 빠른 시작
 
@@ -193,7 +193,7 @@ bun run agent --digest digest.json       # { date, slot, sections: [{ key, title
 | `APP_NAME` | `Agentic Dashboard` | 화면에 보이는 이름 |
 | `DATA_DIR` | `data` | SQLite 데이터베이스, 소유자 키, VAPID 키, 오디오 |
 | `TIME_ZONE` | 서버 시간대 | 오늘, 다이제스트, 하루 한도를 계산하는 IANA 시간대 |
-| `LOCALE` | `en` | 푸시 알림 언어(`en` 또는 `ko`) |
+| `LOCALE` | `en` | 기본 푸시 언어(`en` 또는 `ko`). 기기마다 구독할 때 자기 언어를 보냅니다 |
 
 선택 기능은 기본으로 꺼져 있거나 키 없이 동작합니다.
 
@@ -201,7 +201,7 @@ bun run agent --digest digest.json       # { date, slot, sections: [{ key, title
 |---|---|
 | 웹 푸시 | `PUSH` (기본 켜짐, 키 자동 생성) |
 | 다이제스트 | `DIGEST` (기본 켜짐) |
-| 듣기(음성 합성) | `GEMINI_API_KEY`, 또는 `server/narration.ts`의 `NarrationProvider`로 직접 구현 |
+| 듣기(음성 합성) | `GEMINI_API_KEY`, 또는 `server/narration.ts`의 `NarrationProvider`로 직접 구현. 목소리는 설정입니다: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`, 바쁠 때 쓰는 `NARRATION_SCRIPT_FALLBACK_MODEL` |
 | 저장한 링크의 AI 제목 채우기 | `AI_FILL_COMMAND`: 표준 입력으로 프롬프트를 받아 JSON을 출력하는 아무 CLI |
 | 채팅 앱용 MCP | `ENABLE_MCP=on`과 `MCP_AGENT=<등록한 에이전트>` |
 | 에이전트 전용 리스너 | `ENABLE_AGENT_INGRESS=on` |
@@ -265,13 +265,20 @@ macOS와 Bun 환경에서 개발하고 검증했습니다. Linux에서도 같은
 <details>
 <summary><b>Docker 이미지가 있나요?</b></summary>
 
-아직 없습니다. 단일 실행 파일로 대부분 대신할 수 있고, Dockerfile 기여는 환영합니다.
+저장소에 `Dockerfile`이 있지만, 레지스트리에 올린 이미지는 아직 없습니다. 직접 빌드하세요.
+
+```sh
+docker build -t agentic-dashboard .
+docker run -p 8080:8080 -v "$PWD/data:/app/data" -e APP_ORIGIN=http://localhost:8080 agentic-dashboard
+```
+
+이미지는 8080 포트에서 듣고 데이터를 `/app/data`에 둡니다. 자세한 내용은 [docs/deploy.md](docs/deploy.md), 같은 이미지로 공개 데모를 돌리는 방법은 [docs/demo.md](docs/demo.md)에 있습니다.
 </details>
 
 <details>
 <summary><b>다른 언어를 추가하려면요?</b></summary>
 
-컴포넌트마다 `src/i18n.ts`의 `strings()`로 만든 `{ en, ko }` 사전이 옆에 있습니다. `src/i18n.ts`에 언어를 추가하고, 각 `ko` 항목 옆에 번역을 넣으면 됩니다. [CONTRIBUTING.md](CONTRIBUTING.md)(영어)를 참고하세요.
+컴포넌트마다 `src/i18n.ts`의 `strings()`로 만든 `{ en, ko }` 사전이 옆에 있습니다. `src/i18n.ts`에 언어를 추가하고, 각 `ko` 항목 옆에 번역을 넣은 뒤 `bun scripts/i18n-check.ts`를 돌리면 됩니다. [CONTRIBUTING.md](CONTRIBUTING.md)(영어)를 참고하세요.
 </details>
 
 ## 문서

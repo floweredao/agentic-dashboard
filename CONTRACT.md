@@ -152,19 +152,19 @@ A digest has 1 to 12 sections of kind `articles` or `messages`, each with at mos
 
 | Route | Who | Result |
 |---|---|---|
-| `GET`, `POST`, `DELETE /api/v1/records/:id/narration` | owner, agent in read scope (DELETE owner only) | state, start (`{ force? }`, 202 when started), remove |
+| `GET`, `POST`, `DELETE /api/v1/records/:id/narration` | owner, agent in read scope (DELETE owner only) | state, start (`{ force?, style? }`, 202 when started), remove |
 | `POST /api/v1/records/:id/narration/cancel` | owner | stop a running job |
 | `GET /api/v1/records/:id/narration/audio` | owner, agent in read scope | audio with byte ranges |
-| `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part |
+| `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part (`articles`, `messages`) or the whole digest (`all`) |
 
-Only research, work-report, note and social records can be narrated. Limits: 6000-character scripts, 20 queued jobs, `NARRATION_DAILY_LIMIT` runs per day (default 20) and 3 failed attempts per content version.
+Only research, work-report, note and social records can be narrated. Limits: 6000-character scripts, 20 queued jobs, `NARRATION_DAILY_LIMIT` runs per day (default 20) and 3 failed attempts per content version. `style` is `read` (one voice) or `podcast` (two hosts, records only); the state reports the style last chosen, which is the default for the next request. A busy or rate-limited provider is retried with backoff, and the script falls back to `NARRATION_SCRIPT_FALLBACK_MODEL`. Each job reports its stage and `progress`; a failure names its cause.
 
 ### Push (when `PUSH` is on)
 
 | Route | Who | Result |
 |---|---|---|
 | `GET /api/v1/push` | owner | `{ publicKey, device, devices }` |
-| `PUT /api/v1/push/subscription` | owner | `{ subscription, kinds? }`; kinds are `digest`, `review`, `reply` |
+| `PUT /api/v1/push/subscription` | owner | `{ subscription, kinds? }`; kinds are `digest`, `review`, `reply`; `subscription.locale` (`en` or `ko`) sets this device's notification language, `LOCALE` otherwise |
 | `DELETE /api/v1/push/subscription` | owner | `{ endpoint }` |
 | `POST /api/v1/push/test` | owner | send a test notification |
 

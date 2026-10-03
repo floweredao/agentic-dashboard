@@ -56,7 +56,7 @@ Other CLI commands, from `bun run agent --help`:
 | `--reply <comment-id> --text "..." [--resolve]` | Answer an owner comment |
 | `--seen <comment-id>`, `--done <comment-id>` | Mark a comment seen or handled |
 | `--timeline <task-id>` | Show a task's timeline |
-| `--narrate <record-id> [--wait]`, `--narration <record-id>` | Request or check Listen audio |
+| `--narrate <record-id> [--style read\|podcast] [--force] [--wait]`, `--narration <record-id>` | Request or check Listen audio. `--style read` is one voice, `podcast` two hosts; without it the record's last style is used (read at first). Digests are always read aloud. |
 | `--digest digest.json [--quiet]`, `--digests [--from] [--to]` | Upload or list digests |
 
 ### With HTTP
