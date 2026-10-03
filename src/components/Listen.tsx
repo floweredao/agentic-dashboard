@@ -151,10 +151,14 @@ const failedFor = (state: NarrationState | null) => state?.narration?.status ===
  * Folded: a round play button with `Listen · 13 min`. Playing unfolds it in place into one row: play/pause, seek, time, rate, fold.
  * Resumes where the owner stopped this audio (per record and file); the audio element stays mounted across folding.
  */
-function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open, playNonce, onOpen, onFold }: {
+function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open, playNonce, pending, onOpen, onFold, onRemove }: {
   readonly recordId: string; readonly title: string; readonly src: string; readonly durationMs: number; readonly stale: boolean; readonly podcast: boolean;
-  readonly prefix: string; readonly open: boolean; readonly playNonce: number; readonly onOpen: () => void; readonly onFold: () => void;
+  readonly prefix: string; readonly open: boolean; readonly playNonce: number; readonly pending: boolean;
+  readonly onOpen: () => void; readonly onFold: () => void; readonly onRemove: () => void;
 }) {
+  // Delete audio beside the player in both states (the same command as the menu's, with its confirmation).
+  const remove = <button type="button" className="icon-btn listen-icon listen-remove" aria-label={`${prefix}${text().deleteAudio}`} title={text().deleteAudio}
+    disabled={pending} onClick={onRemove}><Trash2 size={15} aria-hidden="true" /></button>;
   const audio = useRef<HTMLAudioElement>(null);
   const playButton = useRef<HTMLButtonElement>(null);
   const openButton = useRef<HTMLButtonElement>(null);
@@ -220,6 +224,7 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
         }} />
       <span className="listen-time" aria-hidden="true">{clock(time)} / {clock(duration)}</span>
       <button type="button" className="btn btn-ghost listen-rate" onClick={nextRate} aria-label={text().speed(rate)}>{rate}×</button>
+      {remove}
       <button type="button" className="icon-btn listen-icon" aria-label={text().fold} onClick={() => { moveFocus.current = true; onFold(); }}>
         <ChevronUp size={16} aria-hidden="true" />
       </button>
@@ -229,6 +234,7 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
       {podcast && <Tag>{text().podcast}</Tag>}
       {stale && <Tag>{text().outdated}</Tag>}
     </button>}
+    {!open && remove}
     <audio ref={audio} src={src} preload="metadata" onLoadedMetadata={restore} onPlay={onPlay}
       onPause={event => { setPlaying(false); save(event.currentTarget.currentTime); }}
       onTimeUpdate={event => {
@@ -334,13 +340,13 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
  * The narration line under a reader's action bar: a running job with its stage and a cancel x, a failure with a retry button,
  * or the (folded) player. Nothing when there is no audio and nothing running.
  */
-export function NarrationBar({ record, state, label, pending, cancelling, dismissed, open, finishing, playNonce, onCancel, onRetry, onDismiss, onOpen, onFold }: {
+export function NarrationBar({ record, state, label, pending, cancelling, dismissed, open, finishing, playNonce, onCancel, onRetry, onDismiss, onOpen, onFold, onRemove }: {
   readonly record: Pick<DashboardRecord, "id" | "title">; readonly state: NarrationState; readonly label?: string | undefined;
   readonly pending: boolean; readonly cancelling: boolean; readonly dismissed: boolean; readonly open: boolean;
   /** The job has just become ready: the bar finishes at 100% before the player takes its place. */
   readonly finishing: boolean; readonly playNonce: number;
   readonly onCancel: () => void; readonly onRetry: (force: boolean) => void; readonly onDismiss: () => void;
-  readonly onOpen: () => void; readonly onFold: () => void;
+  readonly onOpen: () => void; readonly onFold: () => void; readonly onRemove: () => void;
 }): ReactNode {
   const narration = state.narration;
   const prefix = label ? `${label} ` : "";
@@ -365,7 +371,7 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
   const audio = narration?.audio;
   if (!audio) return null;
   return <Player key={audio.url} recordId={record.id} title={record.title} src={audio.url} durationMs={audio.durationMs} stale={narration?.stale ?? false}
-    podcast={audio.style === "podcast"} prefix={prefix} open={open} playNonce={playNonce} onOpen={onOpen} onFold={onFold} />;
+    podcast={audio.style === "podcast"} prefix={prefix} open={open} playNonce={playNonce} pending={pending} onOpen={onOpen} onFold={onFold} onRemove={onRemove} />;
 }
 
 /** The choice behind a record's Make audio: read aloud or podcast, the style last used checked; a remake states that it costs again. */
@@ -497,7 +503,7 @@ export function useNarration({ record, collection = "records", label }: {
         const updatedAt = state.narration?.updatedAt ?? null;
         if (updatedAt) rememberDismissed(forId, updatedAt);
         setDismissed(updatedAt);
-      }} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} />
+      }} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} onRemove={() => { void remove(); }} />
     {script && paragraphs.length > 0 && <Dialog title={`${label ? `${label} ` : ""}${text().script}`} onClose={() => setScript(false)}>
       <div className="listen-script">{paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
     </Dialog>}

@@ -592,6 +592,30 @@ test("audio survives the trash and is removed with the record or on request", as
   expect(audioFiles()).toEqual([]);
 });
 
+test("deleting one narration removes only that record's audio file and row", async () => {
+  const { f, audioFiles, idle } = setup();
+  const owner = await f.login();
+  const kept = await research(f, owner);
+  const deleted = await research(f, owner);
+  await f.call(narration(kept.id), "POST", {}, owner);
+  await idle();
+  await f.call(narration(deleted.id), "POST", {}, owner);
+  await idle();
+  const keptFile = (await read(await f.call(narration(kept.id), "GET", undefined, owner))).narration?.audio?.url ?? "";
+  expect(audioFiles()).toHaveLength(2);
+
+  expect((await f.call(narration(deleted.id), "DELETE", undefined, owner)).status).toBe(204);
+
+  // The other record keeps its ready narration and its one file, which still plays; the deleted one is gone and can be made again.
+  expect(audioFiles()).toHaveLength(1);
+  expect(audioFiles()[0]?.startsWith(kept.id)).toBe(true);
+  const after = await read(await f.call(narration(kept.id), "GET", undefined, owner));
+  expect(after.narration?.status).toBe("ready");
+  expect((await f.call(keptFile, "GET", undefined, owner)).status).toBe(200);
+  expect((await read(await f.call(narration(deleted.id), "GET", undefined, owner))).narration).toBeNull();
+  expect((await f.call(narration(deleted.id), "POST", {}, owner)).status).toBe(202);
+});
+
 test("the listening script drops URLs and Markdown and splits into bounded chunks", () => {
   expect(normalizeScript("## 결론\n- **A** 앱이 [가장 싸다](https://a.example)\n```\ncode\n```\n원문: www.example.com/x")).toBe("결론\nA 앱이 가장 싸다\n\n원문:");
   const long = Array.from({ length: 40 }, (_, index) => `${index + 1}번째 문장은 비교 결과를 설명합니다.`).join(" ");

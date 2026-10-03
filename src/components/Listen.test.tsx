@@ -16,7 +16,7 @@ const parse = (state: NarrationState) => NarrationStateSchema.parse(state);
 const bar = (state: NarrationState, extra: { cancelling?: boolean; open?: boolean; label?: string; finishing?: boolean } = {}) => renderToStaticMarkup(
   <NarrationBar record={record} state={parse(state)} label={extra.label} pending={false} cancelling={extra.cancelling ?? false}
     dismissed={false} open={extra.open ?? false} finishing={extra.finishing ?? false} playNonce={0}
-    onCancel={noop} onRetry={noop} onDismiss={noop} onOpen={noop} onFold={noop} />);
+    onCancel={noop} onRetry={noop} onDismiss={noop} onOpen={noop} onFold={noop} onRemove={noop} />);
 const items = (state: NarrationState, label?: string) => narrationItems(parse(state), {
   pending: false, cancelling: false, label, onRequest: noop, onMake: noop, onCancel: noop, onListen: noop, onScript: noop, onRemove: noop,
 });
@@ -103,6 +103,19 @@ test("finished audio shows a folded player, and the menu offers 듣기, 다시 �
   expect(text(open)).toContain("0:00 / 12:34");
   expect(labels(state)).toEqual(["듣기", "다시 만들기", "원고 보기", "음성 삭제"]);
   expect(items(state).find(item => item.label === "음성 삭제")?.danger).toBe(true);
+});
+
+test("finished audio has a 음성 삭제 button beside the player, folded and unfolded, named for the part it deletes", () => {
+  // Given finished audio
+  const ready = { narration: { ...base, status: "ready" as const, audio }, available: true };
+  // When the player is folded, unfolded, or labelled for the digest 전체 view
+  const deleteButtons = (html: string) => [...html.matchAll(/<button[^>]*aria-label="([^"]*음성 삭제)"[^>]*>/g)].map(match => match[1]);
+  // Then each shows one delete button next to the player
+  expect(deleteButtons(bar(ready))).toEqual(["음성 삭제"]);
+  expect(deleteButtons(bar(ready, { open: true }))).toEqual(["음성 삭제"]);
+  expect(deleteButtons(bar(ready, { label: "전체" }))).toEqual(["전체 음성 삭제"]);
+  // And a running job or a failure has none (there is no audio to delete yet)
+  expect(deleteButtons(bar({ narration: { ...base, status: "speaking" }, available: true }))).toEqual([]);
 });
 
 test("stale audio is tagged 예전 내용 and offers 새로 만들기 instead of 다시 만들기", () => {
