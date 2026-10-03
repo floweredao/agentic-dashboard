@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { MouseEvent } from "react";
 import type { DigestSummary } from "../../shared/contracts";
 import { RecordList } from "../components/RecordList";
-import { Chip, Time } from "../components/primitives";
+import { Chip, Time, SidebarOpen } from "../components/primitives";
 import { SearchField, useSearch } from "../components/SearchField";
 import { useListShortcuts } from "../hooks";
 import { digestCounts, digestMatches, digestUnread, inboxDigestView, inboxStateOf, inboxStates, inboxView, listedDigestsFor, listedFor, matchesQuery, revisitDue, withDigestReads } from "../model";
@@ -80,7 +80,7 @@ export function InboxPane() {
 
   return <>
     <header className="pane-head">
-      <div className="pane-title-row">
+      <div className="pane-title-row"><SidebarOpen />
         <h1 className="pane-title">{t.inbox} <span className="count">{total(state)}</span></h1>
       </div>
       {revisits > 0 && <p className="pane-note">{t.revisits(revisits)}</p>}

@@ -6,7 +6,7 @@ import type { DigestPage } from "./api";
 import { syncPush } from "./push";
 import { Empty, ChannelMark, DialogToast } from "./components/primitives";
 import { ShareDialog } from "./components/ShareDialog";
-import { SPLIT_MIN, WIDE_MIN, layoutOf, readDocked, useSidebarDrag, writeDocked } from "./components/sidebar";
+import { DOCK_MIN, SPLIT_MIN, SidebarContext, WIDE_MIN, layoutOf, readDocked, useSidebarDrag, writeDocked } from "./components/sidebar";
 import { config } from "./config";
 import { isTypingTarget } from "./hooks";
 import { formatClock, strings } from "./i18n";
@@ -122,8 +122,10 @@ export function App() {
   const [offline, setOffline] = useState(() => !navigator.onLine);
   const [narrow, setNarrow] = useState(phone);
   const [layout, setLayout] = useState(() => layoutOf(window.innerWidth));
-  /** Wide windows only: whether the sidebar docks beside the panes (remembered on this device). */
-  const [docked, setDocked] = useState(() => readDocked(localStorage));
+  /** Wide windows only: the owner's choice to unfold the sidebar beside the panes (remembered on this device); null follows the width. */
+  const [dockChoice, setDockChoice] = useState(() => readDocked(localStorage));
+  const [roomy, setRoomy] = useState(() => window.innerWidth >= DOCK_MIN);
+  const docked = dockChoice ?? roomy;
   /** Narrower windows: whether the sidebar lies over the panes. It never survives a resize, a navigation or a dialog. */
   const [drawer, setDrawer] = useState(false);
   /** The hash of the entry the app was on, stamped as `from` on the next entry a link pushes. */
@@ -202,32 +204,37 @@ export function App() {
   }, [refresh]);
 
   useEffect(() => {
-    const queries = [`(min-width: ${SPLIT_MIN}px)`, `(min-width: ${WIDE_MIN}px)`].map(query => window.matchMedia(query));
-    const refit = () => setLayout(layoutOf(window.innerWidth));
+    const queries = [SPLIT_MIN, WIDE_MIN, DOCK_MIN].map(width => window.matchMedia(`(min-width: ${width}px)`));
+    const refit = () => { setLayout(layoutOf(window.innerWidth)); setRoomy(window.innerWidth >= DOCK_MIN); };
     for (const query of queries) query.addEventListener("change", refit);
     return () => { for (const query of queries) query.removeEventListener("change", refit); };
   }, []);
-  const sidebar = layout === "wide" && docked ? "docked" : drawer ? "open" : "hidden";
+  const sidebar: "docked" | "open" | "hidden" = layout === "wide" && docked ? "docked" : drawer ? "open" : "hidden";
   const showSidebar = useCallback(() => {
     if (layout !== "wide") { setDrawer(true); return; }
-    setDocked(true); writeDocked(localStorage, true);
+    setDockChoice(true); writeDocked(localStorage, true);
   }, [layout]);
   const hideSidebar = useCallback(() => {
     setDrawer(false);
-    if (layout === "wide") { setDocked(false); writeDocked(localStorage, false); }
+    if (layout === "wide") { setDockChoice(false); writeDocked(localStorage, false); }
   }, [layout]);
   const toggleSidebar = sidebar === "hidden" ? showSidebar : hideSidebar;
-  useSidebarDrag({ enabled: sidebar !== "docked", open: sidebar === "open", onOpen: showSidebar, onClose: hideSidebar });
-  // Focus follows the control that can act next: into the sidebar when it appears, back to the menu button when it goes.
+  const sidebarState = useMemo(() => ({ state: sidebar, show: showSidebar }), [sidebar, showSidebar]);
+  useSidebarDrag({ enabled: true, open: sidebar !== "hidden", onOpen: showSidebar, onClose: hideSidebar });
+  // Focus follows the control that can act next: into the sidebar when it appears, back to the opener (the list head's,
+  // or the phone app bar's menu button) when it goes.
   const shownBefore = useRef(sidebar);
   useLayoutEffect(() => {
     if (shownBefore.current === sidebar) return;
     shownBefore.current = sidebar;
     const active = document.activeElement;
     const panel = document.getElementById("sidebar");
-    const lost = !active || active === document.body;
-    if (sidebar === "hidden") { if (lost || panel?.contains(active)) document.querySelector<HTMLElement>(".appbar-menu")?.focus(); }
-    else if (sidebar === "open" || lost || active?.classList.contains("appbar-menu")) document.querySelector<HTMLElement>(".sidebar-toggle")?.focus();
+    // WebKit does not focus a clicked button; the click lands focus on the nearest focusable ancestor (main) instead.
+    const lost = !active || active === document.body || active.id === "main";
+    const opener = [...document.querySelectorAll<HTMLElement>(".sidebar-open, .appbar-menu")]
+      .find(element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden");
+    if (sidebar === "hidden") { if (lost || panel?.contains(active)) opener?.focus(); }
+    else if (sidebar === "open" || lost || active?.matches(".appbar-menu, .sidebar-open")) document.querySelector<HTMLElement>(".sidebar-toggle")?.focus();
   }, [sidebar]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -551,7 +558,7 @@ export function App() {
     <button type="button" onClick={() => setToast(null)}>{t.close}</button>
   </div>;
 
-  return <DashboardContext.Provider value={dashboard}>
+  return <DashboardContext.Provider value={dashboard}><SidebarContext.Provider value={sidebarState}>
     <a href="#main" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById("main")?.focus(); }}>{t.skip}</a>
     {loading && <div className="loading-line" role="status" aria-label={t.loading} />}
     <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}`} data-sidebar={sidebar}>
@@ -639,7 +646,7 @@ export function App() {
       {modal?.mode === "share" && <ShareDialog record={modal.record} csrfToken={csrf} onClose={() => setModal(null)} />}
     </DialogToast.Provider>
     {!modal && toastView}
-  </DashboardContext.Provider>;
+  </SidebarContext.Provider></DashboardContext.Provider>;
 }
 
 /** A tab is current on its own screen (page) and on the screens under it (true: archive, trash, channels and settings under More). */

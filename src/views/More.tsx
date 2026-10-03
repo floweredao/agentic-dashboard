@@ -1,7 +1,7 @@
 import { Archive, Bell, ChevronRight, RadioTower, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { TRASH_RETENTION_DAYS } from "../../shared/contracts";
-import { ChannelMark } from "../components/primitives";
+import { ChannelMark, SidebarOpen } from "../components/primitives";
 import { channelKeys, channelOf, channelLabel, isRecord } from "../model";
 import { strings } from "../i18n";
 import { formatRoute } from "../router";
@@ -45,7 +45,7 @@ export function MorePane() {
 
   return <div className="more-page">
     <header className="pane-head">
-      <div className="pane-title-row"><h1 className="pane-title">{t.title}</h1></div>
+      <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{t.title}</h1></div>
     </header>
     <section className="more-group" aria-labelledby="more-keep">
       <h2 id="more-keep" className="more-heading">{t.keep}</h2>

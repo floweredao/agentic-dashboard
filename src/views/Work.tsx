@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Plus } from "lucide-react";
 import { RecordList } from "../components/RecordList";
-import { Chip } from "../components/primitives";
+import { Chip, SidebarOpen } from "../components/primitives";
 import { useListShortcuts } from "../hooks";
 import { blankRecord, lastActivity, projectStatuses, taskStatuses, viewRecords } from "../model";
 import { strings } from "../i18n";
@@ -59,7 +59,7 @@ export function WorkPane() {
 
   return <>
     <header className="pane-head work-head">
-      <div className="pane-title-row">
+      <div className="pane-title-row"><SidebarOpen />
         <h1 className="pane-title">{projects ? t.projects : t.tasks} <span className="count">{items.length}</span></h1>
         <button type="button" className="btn btn-primary work-create" onClick={() => editDraft(blankRecord(projects ? "project" : "task"))}>
           <Plus size={16} aria-hidden="true" />{projects ? t.newProject : t.newTask}

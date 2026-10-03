@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft, Inbox, X } from "lucide-react";
+import { ArrowLeft, Inbox, PanelLeftOpen, X } from "lucide-react";
 import type { DashboardRecord } from "../../shared/contracts";
 import { strings } from "../i18n";
 import { channelClass, channelOf, channelGlyph, dateLabel, relativeTime } from "../model";
@@ -8,8 +8,25 @@ import type { Channel } from "../model";
 import { backLabel } from "../router";
 import type { Back } from "../router";
 import { useDashboard } from "../state";
+import { SidebarContext } from "./sidebar";
 
-const text = strings({ en: { close: "Close" }, ko: { close: "닫기" } });
+const text = strings({
+  en: { close: "Close", showSidebar: "Show sidebar", showSidebarShortcut: "Show sidebar (⌘\\)" },
+  ko: { close: "닫기", showSidebar: "사이드바 보기", showSidebarShortcut: "사이드바 보기 (⌘\\)" },
+});
+
+/**
+ * Unfolds the sidebar from the head of the screen's first pane: place it first inside that pane's `.pane-title-row`.
+ * Shown (from 768px) only while the sidebar is not docked; the sidebar's own Hide sidebar is its counterpart.
+ * A phone uses the app bar's menu button instead.
+ */
+export function SidebarOpen() {
+  const sidebar = useContext(SidebarContext);
+  if (!sidebar) return null;
+  const t = text();
+  return <button type="button" className="icon-btn sidebar-open" onClick={sidebar.show} aria-label={t.showSidebar} title={t.showSidebarShortcut}
+    aria-controls="sidebar" aria-expanded={sidebar.state !== "hidden"}><PanelLeftOpen size={18} aria-hidden="true" /></button>;
+}
 
 /**
  * The desktop copy of the screen's back button, at the top of the pane it belongs to (`place`).

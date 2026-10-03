@@ -66,67 +66,96 @@ const press = async (view: View, selector: string) => {
   await view.click(point.x, point.y);
 };
 
-test("an iPad-wide window shows the list and reader only and slides the sidebar over them on demand", async () => {
-  await withApp(1180, 820, async view => {
-    await until(view, settled);
-    // Given: a 1180pt window (iPad Air 11" landscape). Then: two columns, the sidebar off screen and the menu button in the app bar.
-    const rest = JSON.parse(String(await view.evaluate(boxes)));
-    expect(rest[".sidebar"][0] + rest[".sidebar"][1]).toBeLessThanOrEqual(0);
-    expect(rest[".list-pane"][0]).toBe(0);
-    expect(rest[".reader-pane"][0] + rest[".reader-pane"][1]).toBe(1180);
-    expect(await read(view, state)).toBe("hidden");
-    // When: the menu button opens it.
-    await press(view, ".appbar-menu");
-    await until(view, `() => ${state} === "open"`);
-    await until(view, settled);
-    // Then: it lies over the panes, which keep their place, focus moves into it and the page behind is inert.
-    const open = JSON.parse(String(await view.evaluate(boxes)));
-    expect(open[".sidebar"][0]).toBe(0);
-    expect(open[".list-pane"]).toEqual(rest[".list-pane"]);
-    expect(await read(view, `document.querySelector("#sidebar").contains(document.activeElement)`)).toBe("true");
-    expect(await read(view, `document.querySelector("main").inert`)).toBe("true");
-    // When: Escape closes it. Then: it slides away and focus returns to the menu button.
-    await view.press("Escape");
-    await until(view, `() => ${state} === "hidden"`);
-    await until(view, settled);
-    expect(JSON.parse(String(await view.evaluate(boxes)))).toEqual(rest);
-    expect(await read(view, focused)).toBe("Show sidebar");
-    // When: it opens again and the scrim beside it is tapped. Then: it closes without a new history entry.
-    const entries = await read(view, "history.length");
-    await press(view, ".appbar-menu");
-    await until(view, `() => ${state} === "open"`);
-    await until(view, settled);
-    await view.click(1100, 400);
-    await until(view, `() => ${state} === "hidden"`);
-    expect(await read(view, "history.length")).toBe(entries);
-  });
-}, 30_000);
+/** The opener in the list head, when it can be seen and pressed. */
+const opener = `[...document.querySelectorAll(".sidebar-open")].find(button => button.getClientRects().length && getComputedStyle(button).visibility !== "hidden")`;
 
-test("a wide desktop window docks the sidebar and remembers when it was hidden", async () => {
+test("a wide window folds the sidebar into the layout and moves its button to the list head", async () => {
   await withApp(1440, 900, async view => {
     await until(view, settled);
-    // Given: a 1440px window. Then: three columns, the sidebar docked beside the list.
+    // Given: a 1440px window. Then: three columns with no app bar; the only toggle is in the sidebar head.
     const docked = JSON.parse(String(await view.evaluate(boxes)));
     expect(docked[".sidebar"]).toEqual([0, 248]);
     expect(docked[".list-pane"][0]).toBe(248);
+    expect(docked[".appbar"]).toBeNull();
     expect(await read(view, state)).toBe("docked");
-    // When: its own button hides it.
+    expect(await read(view, `!!${opener}`)).toBe("false");
+    // When: the sidebar's button folds it.
     await press(view, ".sidebar-toggle");
     await until(view, `() => ${state} === "hidden"`);
     await until(view, settled);
-    // Then: the list takes the left edge and the choice is stored on this device.
-    expect(JSON.parse(String(await view.evaluate(boxes)))[".list-pane"][0]).toBe(0);
+    // Then: the list fills its place (no scrim, nothing inert), the opener appears in the list head and takes focus.
+    const folded = JSON.parse(String(await view.evaluate(boxes)));
+    expect(folded[".list-pane"][0]).toBe(0);
+    expect(folded[".sidebar"][0] + folded[".sidebar"][1]).toBeLessThanOrEqual(0);
+    expect(await read(view, `document.querySelector(".list-pane .pane-title-row").contains(${opener})`)).toBe("true");
+    expect(await read(view, focused)).toBe("Show sidebar");
+    expect(await read(view, `document.querySelector("main").inert`)).toBe("false");
     expect(await read(view, `localStorage.getItem("agentic:sidebar")`)).toBe("hidden");
-    // When: the page reloads. Then: it stays hidden.
+    // When: the page reloads. Then: it stays folded.
     await view.navigate(`${await read(view, "location.origin")}/?reloaded=1${await read(view, "location.hash")}`);
     await until(view, `() => document.querySelector(".reader h2") && document.querySelector(".app").dataset.sidebar`);
     expect(await read(view, state)).toBe("hidden");
-    // When: the keyboard shortcut toggles it. Then: it is docked again and that is stored.
+    // When: the keyboard shortcut unfolds it. Then: the list moves back over, the opener goes and the choice is stored.
     await view.evaluate(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "\\\\", code: "Backslash", metaKey: true, bubbles: true }))`);
     await until(view, `() => ${state} === "docked"`);
     await until(view, settled);
     expect(JSON.parse(String(await view.evaluate(boxes)))[".list-pane"][0]).toBe(248);
+    expect(await read(view, `!!${opener}`)).toBe("false");
     expect(await read(view, `localStorage.getItem("agentic:sidebar")`)).toBe("shown");
+  });
+}, 30_000);
+
+test("an iPad landscape window starts with two columns and unfolds the sidebar into the layout from the list head", async () => {
+  await withApp(1180, 820, async view => {
+    await until(view, settled);
+    // Given: a 1180pt window (iPad Air 11" landscape) with no stored choice. Then: list and reader only, the opener in the list head.
+    const rest = JSON.parse(String(await view.evaluate(boxes)));
+    expect(await read(view, state)).toBe("hidden");
+    expect(rest[".list-pane"][0]).toBe(0);
+    expect(rest[".appbar"]).toBeNull();
+    // When: the opener is pressed.
+    await press(view, ".list-pane .sidebar-open");
+    await until(view, `() => ${state} === "docked"`);
+    await until(view, settled);
+    // Then: the sidebar takes its place in the layout and the panes move over; nothing lies over them.
+    const shown = JSON.parse(String(await view.evaluate(boxes)));
+    expect(shown[".sidebar"]).toEqual([0, 248]);
+    expect(shown[".list-pane"][0]).toBe(248);
+    expect(shown[".reader-pane"][0] + shown[".reader-pane"][1]).toBe(1180);
+    expect(await read(view, `document.querySelector("main").inert`)).toBe("false");
+    expect(await read(view, `document.querySelector("#sidebar").contains(document.activeElement)`)).toBe("true");
+  });
+}, 30_000);
+
+test("a window too narrow for three columns slides the sidebar over the panes from the list head", async () => {
+  await withApp(900, 820, async view => {
+    await until(view, settled);
+    // Given: a 900pt window (a 2/3 iPad split). Then: two columns, no app bar.
+    const rest = JSON.parse(String(await view.evaluate(boxes)));
+    expect(rest[".list-pane"][0]).toBe(0);
+    expect(rest[".appbar"]).toBeNull();
+    // When: the opener in the list head is pressed.
+    await press(view, ".list-pane .sidebar-open");
+    await until(view, `() => ${state} === "open"`);
+    await until(view, settled);
+    // Then: the sidebar lies over the panes, which keep their place, and the page behind is inert.
+    const open = JSON.parse(String(await view.evaluate(boxes)));
+    expect(open[".sidebar"][0]).toBe(0);
+    expect(open[".list-pane"]).toEqual(rest[".list-pane"]);
+    expect(await read(view, `document.querySelector("main").inert`)).toBe("true");
+    // When: Escape closes it. Then: focus returns to the opener.
+    await view.press("Escape");
+    await until(view, `() => ${state} === "hidden"`);
+    await until(view, settled);
+    expect(await read(view, focused)).toBe("Show sidebar");
+    // When: it opens again and the scrim is tapped. Then: it closes without a new history entry.
+    const entries = await read(view, "history.length");
+    await press(view, ".list-pane .sidebar-open");
+    await until(view, `() => ${state} === "open"`);
+    await until(view, settled);
+    await view.click(850, 400);
+    await until(view, `() => ${state} === "hidden"`);
+    expect(await read(view, "history.length")).toBe(entries);
   });
 }, 30_000);
 

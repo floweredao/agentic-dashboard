@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { RecordList } from "../components/RecordList";
 import { SearchField, useSearch } from "../components/SearchField";
-import { ChannelMark, Chip } from "../components/primitives";
+import { ChannelMark, Chip, SidebarOpen } from "../components/primitives";
 import { useListShortcuts } from "../hooks";
 import { channelKeys, channelOf, channelLabel, libraryItems } from "../model";
 import { strings } from "../i18n";
@@ -45,7 +45,7 @@ export function LibraryPane() {
 
   return <>
     <header className="pane-head">
-      <div className="pane-title-row">
+      <div className="pane-title-row"><SidebarOpen />
         <h1 className="pane-title">{t.title} <span className="count">{items.length}</span></h1>
       </div>
       <div className="pane-toolbar">

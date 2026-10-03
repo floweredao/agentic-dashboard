@@ -1,23 +1,29 @@
-import { useEffect, useRef } from "react";
+import { createContext, useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { SWIPE_COMMIT_DISTANCE, SWIPE_COMMIT_FRACTION, SWIPE_FLING_DISTANCE, SWIPE_FLING_VELOCITY, SWIPE_VELOCITY_WINDOW, swipeAxis, swipeVelocity } from "./swipe";
 import type { SwipeAxis, SwipeSample } from "./swipe";
 
 /**
- * phone: one column and the tab bar. split: list and reader, the sidebar slides over them. wide: the sidebar docks beside them unless hidden.
- * Every iPad window (at most 1376pt wide) is split or phone; a full-screen desktop browser (1440px and up) is wide.
+ * phone: one column and the tab bar. split: list and reader, the sidebar slides over them (three columns do not fit).
+ * wide: the sidebar folds into the layout beside list and reader. It starts unfolded from DOCK_MIN (a full-screen desktop browser)
+ * and folded below it (every iPad window, at most 1376pt wide), until the owner chooses on this device.
  */
 export type ShellLayout = "phone" | "split" | "wide";
 export const SPLIT_MIN = 768;
-export const WIDE_MIN = 1400;
+export const WIDE_MIN = 1100;
+export const DOCK_MIN = 1400;
 /** A touch that starts this close to the left edge drags a hidden sidebar out; record rows leave that strip to it. */
 export const SIDEBAR_EDGE = 20;
 export const SIDEBAR_KEY = "agentic:sidebar";
 
 export const layoutOf = (width: number): ShellLayout => width < SPLIT_MIN ? "phone" : width < WIDE_MIN ? "split" : "wide";
 
-export function readDocked(storage: Pick<Storage, "getItem">): boolean {
-  try { return storage.getItem(SIDEBAR_KEY) !== "hidden"; } catch { return true; }
+/** The owner's stored choice on this device, or null when there is none yet. */
+export function readDocked(storage: Pick<Storage, "getItem">): boolean | null {
+  try {
+    const value = storage.getItem(SIDEBAR_KEY);
+    return value === "shown" ? true : value === "hidden" ? false : null;
+  } catch { return null; }
 }
 export function writeDocked(storage: Pick<Storage, "setItem">, docked: boolean) {
   try { storage.setItem(SIDEBAR_KEY, docked ? "shown" : "hidden"); } catch { /* Private mode without storage: the choice lasts for this page. */ }
@@ -28,6 +34,9 @@ export function drawerCommits({ distance, width, velocity }: { readonly distance
   return distance >= Math.min(SWIPE_COMMIT_DISTANCE, width * SWIPE_COMMIT_FRACTION)
     || (velocity >= SWIPE_FLING_VELOCITY && distance >= SWIPE_FLING_DISTANCE);
 }
+
+/** The list head's opener reads the sidebar from here: it shows while the sidebar is not docked. */
+export const SidebarContext = createContext<{ readonly state: "docked" | "open" | "hidden"; readonly show: () => void } | null>(null);
 
 type Drag = { readonly opening: boolean; readonly x: number; readonly y: number; readonly width: number; axis: SwipeAxis | null; dx: number; samples: SwipeSample[] };
 
@@ -44,13 +53,18 @@ export function useSidebarDrag({ enabled, open, onOpen, onClose }: { readonly en
     let drag: Drag | null = null;
     const panel = () => document.getElementById("sidebar");
     const scrim = () => document.querySelector<HTMLElement>(".sidebar-scrim");
+    // A docked sidebar is in the layout, so the panes follow its margin; a sliding one moves over them.
     const paint = (offset: number, width: number) => {
       const [side, shade] = [panel(), scrim()];
-      if (side) { side.style.transition = "none"; side.style.transform = `translateX(${offset}px)`; }
+      if (side) {
+        side.style.transition = "none";
+        if (getComputedStyle(side).position === "fixed") side.style.transform = `translateX(${offset}px)`;
+        else side.style.marginLeft = `${offset}px`;
+      }
       if (shade) { shade.style.transition = "none"; shade.style.opacity = String(1 + offset / width); }
     };
     const clear = () => {
-      for (const element of [panel(), scrim()]) if (element) { element.style.transition = ""; element.style.transform = ""; element.style.opacity = ""; }
+      for (const element of [panel(), scrim()]) if (element) { element.style.transition = ""; element.style.transform = ""; element.style.marginLeft = ""; element.style.opacity = ""; }
     };
     const start = (event: TouchEvent) => {
       drag = null;

@@ -7,13 +7,13 @@
   width: min(calc(var(--sidebar) + var(--safe-left)), 86vw);
   padding: calc(14px + var(--safe-top)) 12px calc(14px + var(--safe-bottom)) calc(12px + var(--safe-left));
   overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); background: var(--canvas);
-  transform: translateX(-100%); transition: transform 240ms var(--ease), box-shadow 240ms var(--ease);
+  transform: translateX(-100%); transition: transform var(--slide-ms) var(--slide), box-shadow var(--slide-ms) var(--slide);
 }
 .app[data-sidebar="docked"] .sidebar, .app[data-sidebar="open"] .sidebar { transform: none; }
 .app[data-sidebar="open"] .sidebar { box-shadow: var(--shadow-float); }
 .sidebar-scrim {
   position: fixed; inset: 0; z-index: 39; background: var(--scrim); opacity: 0; pointer-events: none;
-  transition: opacity 240ms var(--ease); touch-action: none;
+  transition: opacity var(--slide-ms) var(--slide); touch-action: none;
 }
 .app[data-sidebar="open"] .sidebar-scrim { opacity: 1; pointer-events: auto; }
 .sidebar-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
@@ -173,23 +173,43 @@
 }
 
 @media (min-width: 768px) {
-  .tabbar { display: none; }
-  /* Two rows, the app bar and the panes. Docked, the app bar folds away (the sidebar carries its commands) and the panes move over
-     by the sidebar's width; both animate with the sidebar's slide. */
-  .app {
-    display: grid; grid-template-rows: calc(var(--appbar) + var(--safe-top)) minmax(0, 1fr); height: 100dvh; overflow: hidden;
-    transition: padding-left 240ms var(--ease), grid-template-rows 240ms var(--ease);
-  }
-  .app[data-sidebar="docked"] { grid-template-rows: 0px minmax(0, 1fr); padding-left: calc(var(--sidebar) + var(--safe-left)); }
-  .appbar { position: static; height: auto; min-height: 0; overflow: hidden; }
-  .app[data-sidebar="docked"] .appbar { border-bottom-color: transparent; }
+  /* No app bar or tab bar: the sidebar carries the commands and the list head carries its opener. */
+  .appbar, .tabbar { display: none; }
+  .app { display: flex; height: 100dvh; overflow: hidden; }
   .toast { bottom: calc(24px + var(--safe-bottom)); }
   /* The list narrows with the window (300px at a 2/3 iPad split, 400px from 1334px) and the reader takes the rest. */
-  .workspace { display: grid; grid-template-columns: clamp(300px, 30vw, var(--list)) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; }
+  .workspace {
+    flex: 1; min-width: 0; display: grid; grid-template-columns: clamp(300px, 30vw, var(--list)) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr); min-height: 0;
+  }
   .workspace.single { grid-template-columns: minmax(0, 1fr); }
   .pane { min-height: 0; padding-bottom: var(--safe-bottom); overflow-y: auto; overscroll-behavior: contain; }
   .pane:last-child { padding-right: var(--safe-right); }
   .list-pane { border-right: 1px solid var(--line); }
+  /* The opener sits before the title while the sidebar is not docked. It eases in once the sidebar is mostly gone
+     (delay 60ms) and leaves at once when the sidebar comes back, so the two buttons never show together. */
+  .pane-title-row:has(> .sidebar-open) { position: relative; padding-left: 40px; transition: padding-left var(--slide-ms) var(--slide); }
+  .sidebar-open {
+    position: absolute; left: -6px; top: 50%; transform: translate(0, -50%); color: var(--faint);
+    transition: opacity 180ms var(--ease) 60ms, transform var(--slide-ms) var(--slide), visibility 0s;
+  }
+  .sidebar-open:hover { color: var(--ink); }
+  .app[data-sidebar="docked"] .pane-title-row:has(> .sidebar-open) { padding-left: 0; }
+  .app[data-sidebar="docked"] .sidebar-open {
+    opacity: 0; transform: translate(-12px, -50%); visibility: hidden; pointer-events: none;
+    transition: opacity 100ms var(--ease), transform var(--slide-ms) var(--slide), visibility 0s linear 100ms;
+  }
+}
+@media (max-width: 767px) { .sidebar-open { display: none; } }
+/* Wide enough for three columns: the sidebar is part of the layout. Folding pulls it left by its own width (one property,
+   so its edge and the list's edge move in the same frame) and the list and reader fill the room; its content never reflows. */
+@media (min-width: 1100px) {
+  .sidebar {
+    position: relative; inset: auto; z-index: 1; flex: none; height: 100%; transform: none; box-shadow: none;
+    transition: margin-left var(--slide-ms) var(--slide);
+  }
+  .app[data-sidebar="hidden"] .sidebar { margin-left: calc(-1 * (var(--sidebar) + var(--safe-left))); }
+  .sidebar-scrim { display: none; }
 }
 @media (pointer: coarse) {
   .sidebar .nav-item, .compose-btn { min-height: 44px; }

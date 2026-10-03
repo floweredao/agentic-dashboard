@@ -1,6 +1,6 @@
 import { ArchiveRestore, Trash2 } from "lucide-react";
 import { TRASH_RETENTION_DAYS } from "../../shared/contracts";
-import { BackButton, Empty } from "../components/primitives";
+import { BackButton, Empty, SidebarOpen } from "../components/primitives";
 import { channelOf, channelLabel, kindLabels } from "../model";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
@@ -38,7 +38,7 @@ export function TrashPane({ now = Date.now() }: { readonly now?: number }) {
   return <div className="trash-page">
     <header className="trash-head">
       <BackButton place="list" />
-      <div className="pane-title-row">
+      <div className="pane-title-row"><SidebarOpen />
         <h1 className="pane-title">{t.title} <span className="count">{items.length}</span></h1>
         <button type="button" className="btn btn-quiet btn-danger trash-empty" onClick={() => { void emptyTrash(); }} disabled={busy || items.length === 0}>
           {t.emptyTrash}

@@ -56,9 +56,10 @@ Numbers use tabular figures.
 A 4px base: 2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 56. Radii: 6 (chips, small buttons), 8 (buttons, inputs, rows), 12 (panes, dialogs, cards), 999 (dots, counts).
 
 - **Sidebar (every width):** one 248px panel (at most 86vw) whose head holds the app name and Hide sidebar. Breakpoints follow available space, not device: iPad windows top out at 1376pt and a full-screen desktop browser starts around 1440px.
-- **1400px and wider:** the sidebar docks beside the list and reader by default. Hide sidebar folds it away and the 52px app bar (Show sidebar, app name, new item, refresh) folds in; the choice is stored per device (`localStorage agentic:sidebar` = shown | hidden).
-- **768 to 1399px:** list and reader only, with the app bar. Show sidebar slides the panel over the panes with a scrim; nothing is stored.
-- **Over the panes (split and phone):** opens from Show sidebar, `⌘\` / `Ctrl+\` (on wide windows it docks and undocks) or a touch drag from the left 20px edge (record rows leave that strip to it); closes with Hide sidebar, Escape, a tap on the scrim, a leftward drag, choosing a destination, opening a dialog or a resize that changes layout. While it is open the app bar, main and tab bar are inert and focus moves into it; on close focus returns to Show sidebar. Opening or closing never adds a history entry.
+- **1100px and wider:** the sidebar is a column of the layout. Folding pulls it left by its own width (`margin-left`) while the list and reader fill the room; unfolding pushes them back. It starts unfolded from 1400px and folded below (iPad landscape: two columns) until the owner chooses; the choice is stored per device (`localStorage agentic:sidebar` = shown | hidden).
+- **768 to 1099px:** three columns don't fit, so Show sidebar slides the panel over list and reader with a scrim; nothing is stored.
+- **From 768px there is no app bar:** while the sidebar is not docked, its opener Show sidebar (`SidebarOpen`, `.sidebar-open`) sits before the title of the screen's first pane (every `.pane-title-row`), and Hide sidebar in the sidebar head is its counterpart, so only one of the two shows. Phones keep the app bar's menu button.
+- **Opening and closing:** Show sidebar, Hide sidebar, `⌘\` / `Ctrl+\`, a touch drag from the left 20px edge (record rows leave that strip to it) and a leftward drag on the panel. Over the panes (split and phone) it also closes with Escape, a tap on the scrim, choosing a destination, opening a dialog or a resize that changes layout, and the app bar, main and tab bar are inert while it is open. Focus moves to Hide sidebar when the sidebar appears from its opener and back to the opener when it goes. Opening or closing never adds a history entry.
 - Views with a detail split into a list pane (`clamp(300px, 30vw, 400px)`) and a reader pane, each its own labelled scroll container.
 - **Below 768px:** one column with document scroll, a 52px app bar and a 60px bottom tab bar plus safe area. Five tabs: Inbox, Library, Digest, Tasks, More. Selecting a record replaces the list with the reader; back returns to the same list, filters and scroll position.
 - Nothing overflows horizontally at 320px. Chip groups wrap.
@@ -81,7 +82,7 @@ Routes are hash based and the URL owns committed state: `#/inbox`, `#/library`, 
 
 ## Motion
 
-Motion only marks state change: the sidebar slides in 240ms (docking also moves the panes over and folds the app bar on the same curve; a touch drag follows the finger and commits like a row swipe), 120ms hover and selection washes, 180ms swipe settle, 160ms toast and dialog entry. `prefers-reduced-motion: reduce` removes all transitions.
+Motion only marks state change: the sidebar moves in 300ms on `--slide` (`cubic-bezier(.32,.72,0,1)`, a fast start that settles softly): docked layouts animate the one `margin-left` so the sidebar's edge and the list's edge move in the same frame, the overlay animates `transform` with the scrim; the list-head opener leaves at once and fades in after 60ms; a touch drag follows the finger and commits like a row swipe, 120ms hover and selection washes, 180ms swipe settle, 160ms toast and dialog entry. `prefers-reduced-motion: reduce` removes all transitions.
 
 Keyboard: `j` and `k` move through lists, `Enter` opens, `e` confirms, `s` stars, `c` or `n` opens a new save, `/` focuses search. Shortcuts ignore text fields and modifier keys.
 
