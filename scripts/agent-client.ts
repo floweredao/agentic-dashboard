@@ -98,12 +98,15 @@ export async function markComment(connection: AgentConnection, id: string, mark:
     .json<unknown>();
 }
 
-/** POST /api/v1/records/:id/narration: 202 starts a narration, 200 returns the current one unchanged. */
-export async function requestNarration(connection: AgentConnection, id: string, force: boolean): Promise<unknown> {
+/**
+ * POST /api/v1/records/:id/narration: 202 starts a narration, 200 returns the current one unchanged.
+ * `style`: read (read aloud) or podcast (two hosts); without it the server uses the style last chosen for the record.
+ */
+export async function requestNarration(connection: AgentConnection, id: string, force: boolean, style?: "read" | "podcast"): Promise<unknown> {
   return ky
     .post(new URL(`/api/v1/records/${encodeURIComponent(id)}/narration`, connection.url), {
       headers: { authorization: `Bearer ${connection.token}` },
-      json: force ? { force: true } : {},
+      json: { ...(force ? { force: true } : {}), ...(style ? { style } : {}) },
       timeout: 15_000,
       retry: 0,
     })

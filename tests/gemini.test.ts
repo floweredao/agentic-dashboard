@@ -31,6 +31,30 @@ test("speech requests raw PCM with the voice and style as metadata, and returns 
   });
 });
 
+test("a dialogue is one conversational request with each turn tagged by speaker and the two hosts' voices", async () => {
+  const pcm = new Uint8Array([5, 6]);
+  const { gemini, sent } = provider(() => steps([{ type: "audio", data: Buffer.from(pcm).toString("base64") }]));
+  expect(gemini.hosts).toEqual(["Kore", "Puck"]);
+  expect(await gemini.converse([{ speaker: "A", text: "Hello." }, { speaker: "B", text: "Hi there." }], "relaxed", signal())).toEqual(pcm);
+  expect(sent[0]?.body).toEqual({
+    model: "gemini-3.8-flash-tts",
+    input: [{ type: "user_input", content: [
+      { type: "text", text: "Hello.", annotations: [{ type: "speech_metadata", speaker: "A", style: "relaxed" }] },
+      { type: "text", text: "Hi there.", annotations: [{ type: "speech_metadata", speaker: "B", style: "relaxed" }] },
+    ] }],
+    response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
+    generation_config: { speech_config: { mode: "conversational", speakers: [
+      { speaker: "A", voice: "Kore" }, { speaker: "B", voice: "Puck" },
+    ] } },
+    store: false,
+  });
+});
+
+test("the podcast host voices are configuration", () => {
+  const custom = geminiProvider({ key: async () => KEY, voice: "Charon", podcastVoice: "Aoede" });
+  expect(custom.hosts).toEqual(["Charon", "Aoede"]);
+});
+
 test("the script call sends the system instruction and joins the model's text output", async () => {
   const { gemini, sent } = provider(() => steps([{ type: "thought", text: "x" }, { type: "text", text: "첫 문장. " }, { type: "text", text: "둘째 문장." }]));
   expect(await gemini.script("규칙", "[기록]", signal())).toBe("첫 문장. 둘째 문장.");

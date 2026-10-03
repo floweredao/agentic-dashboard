@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import type { Context } from "hono";
-import { CommentInputSchema, DIGEST_LIMITS, DigestInputSchema, DigestPartSchema, PushKindsSchema, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
+import { CommentInputSchema, DIGEST_LIMITS, DigestInputSchema, DigestPartSchema, NarrationStyleSchema, PushKindsSchema, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
 import type { Comment, DashboardRecord, PushPayload } from "../shared/contracts";
 import { createAiFill, type AiFillOptions } from "./ai-fill";
 import { systemTimeZone } from "../shared/time";
@@ -324,8 +324,8 @@ export function createApp(options: AppOptions = {}) {
       app.post("/api/v1/records/:id/narration", async c => {
         const { principal, record } = narratable(c.req.raw, c.req.param("id"));
         if (principal.source === "manual") auth.csrf(c.req.raw, origins);
-        const input = z.object({ force: z.boolean().optional() }).strict().parse(await json(c.req.raw));
-        const result = await narration.request(principal, record, input.force === true);
+        const input = z.object({ force: z.boolean().optional(), style: NarrationStyleSchema.optional() }).strict().parse(await json(c.req.raw));
+        const result = await narration.request(principal, record, input.force === true, input.style);
         return c.json(result.state, result.started ? 202 : 200);
       });
       app.delete("/api/v1/records/:id/narration", c => {
@@ -376,8 +376,9 @@ export function createApp(options: AppOptions = {}) {
       app.get("/api/v1/digests/:id/narration", async c => c.json(await narration.state(digestSource(c.req.raw, c.req.param("id"), false))));
       app.post("/api/v1/digests/:id/narration", async c => {
         const record = digestSource(c.req.raw, c.req.param("id"), true);
-        const input = z.object({ force: z.boolean().optional() }).strict().parse(await json(c.req.raw));
-        const result = await narration.request({ id: "owner", source: "manual" }, record, input.force === true);
+        const input = z.object({ force: z.boolean().optional(), style: NarrationStyleSchema.optional() }).strict().parse(await json(c.req.raw));
+        if (input.style === "podcast") throw new ApiError(400, "narration_style_unsupported", "Digests are read aloud; the podcast style is for records");
+        const result = await narration.request({ id: "owner", source: "manual" }, record, input.force === true, "read");
         return c.json(result.state, result.started ? 202 : 200);
       });
       app.delete("/api/v1/digests/:id/narration", c => { narration.remove(digestSource(c.req.raw, c.req.param("id"), true).id); return c.body(null, 204); });

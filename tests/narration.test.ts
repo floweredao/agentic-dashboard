@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
-import { normalizeScript, ProviderError, splitChunks } from "../server/narration";
-import type { NarrationProvider } from "../server/narration";
+import { dialogueChunks, normalizeScript, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
+import type { NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
 const SCRIPT = "# 조사 제목\n첫 문단입니다. 자세한 내용은 https://example.com/a?b=1 에 있어요.\n\n**둘째** 문단입니다.";
@@ -16,17 +16,29 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 type Fake = {
-  provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[] }; available: boolean;
+  provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[]; systems: string[]; converse: SpeechTurn[][] }; available: boolean;
   failSpeak: number | "always"; error: Error | null; scriptText: string; hold: Hold | null;
 };
 
 /** A TTS provider that returns one second of silence per chunk and records what it was asked. */
 function fake(): Fake {
-  const state: Fake = { calls: { script: 0, speak: [], prompts: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT, hold: null, provider: null as never };
+  const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT, hold: null, provider: null as never };
   state.provider = {
-    ttsModel: "fake-tts", scriptModel: "fake-script", voice: "Kore",
+    ttsModel: "fake-tts", scriptModel: "fake-script", voice: "Kore", hosts: ["Kore", "Puck"],
     available: async () => state.available,
-    script: async (_system, prompt) => { state.calls.script += 1; state.calls.prompts.push(prompt); return state.scriptText; },
+    script: async (system, prompt) => { state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system); return state.scriptText; },
+    converse: async (turns, _style, signal) => {
+      state.calls.converse.push([...turns]);
+      const hold = state.hold;
+      if (hold) {
+        hold.entered.resolve(signal);
+        await new Promise<void>((resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          void hold.release.promise.then(resolve);
+        });
+      }
+      return new Uint8Array(48000);
+    },
     speak: async (text, _style, signal) => {
       state.calls.speak.push(text);
       const hold = state.hold;
@@ -466,4 +478,102 @@ test("the owner narrates a digest's messages on their own: the messages part has
     { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "e", title: "저녁 소식", source: "", summary: "", url: "https://news.example.com/e" }] }] }, bearer("omo"));
   const eveningId = (await evening.json() as { digest: { id: string } }).digest.id;
   expect((await f.call(`/api/v1/digests/${digestPartId(eveningId, "messages")}/narration`, "GET", undefined, owner)).status).toBe(404);
+});
+
+const DIALOGUE = "A: Today we look at the app price comparison.\n\nB: Shall we start with the conclusion?\n\nA: The cheapest is app A.\nIt costs five dollars a month.";
+
+test("a podcast narration writes a two-host script, speaks it as dialogue turns and becomes the default for the next request", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  tts.scriptText = DIALOGUE;
+
+  // When: the owner picks Podcast.
+  const queued = await f.call(narration(record.id), "POST", { style: "podcast" }, owner);
+  expect(queued.status).toBe(202);
+  expect((await read(queued)).narration?.style).toBe("podcast");
+  await idle();
+
+  // Then: the script was asked for as a dialogue and reached the provider as A/B turns with both hosts, not read by one voice.
+  expect(tts.calls.systems).toEqual([PODCAST_SCRIPT_SYSTEM]);
+  expect(tts.calls.speak).toEqual([]);
+  expect(tts.calls.converse).toEqual([[
+    { speaker: "A", text: "Today we look at the app price comparison." },
+    { speaker: "B", text: "Shall we start with the conclusion?" },
+    { speaker: "A", text: "The cheapest is app A.\nIt costs five dollars a month." },
+  ]]);
+  const ready = await read(await f.call(narration(record.id), "GET", undefined, owner));
+  expect(ready.narration).toMatchObject({ status: "ready", style: "podcast", stale: false });
+  expect(ready.narration?.audio).toMatchObject({ style: "podcast", voice: "Kore, Puck" });
+
+  // And: a request without a style keeps Podcast and, for unchanged content, makes nothing new.
+  const again = await f.call(narration(record.id), "POST", {}, owner);
+  expect(again.status).toBe(200);
+  expect((await read(again)).narration?.style).toBe("podcast");
+  expect(tts.calls.script).toBe(1);
+
+  // And: switching to Read aloud makes a new read script and audio, which then becomes the default.
+  tts.scriptText = SCRIPT;
+  expect((await f.call(narration(record.id), "POST", { style: "read" }, owner)).status).toBe(202);
+  await idle();
+  expect(tts.calls.systems).toEqual([PODCAST_SCRIPT_SYSTEM, SCRIPT_SYSTEM]);
+  expect(tts.calls.speak).toHaveLength(1);
+  const read2 = await read(await f.call(narration(record.id), "GET", undefined, owner));
+  expect(read2.narration).toMatchObject({ status: "ready", style: "read" });
+  expect(read2.narration?.audio).toMatchObject({ style: "read", voice: "Kore" });
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(200);
+});
+
+test("cancelling a podcast over earlier read audio keeps Read aloud as the default", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  tts.scriptText = DIALOGUE;
+  // Given: a podcast is being spoken over the earlier read audio.
+  const gate = hold(tts);
+  const started = await read(await f.call(narration(record.id), "POST", { style: "podcast" }, owner));
+  expect(started.narration?.style).toBe("podcast");
+  await gate.entered.promise;
+  // When: the owner cancels it.
+  const cancelled = await read(await f.call(`${narration(record.id)}/cancel`, "POST", {}, owner));
+  await idle();
+  // Then: the earlier read audio is ready and Read aloud stays the default.
+  expect(tts.calls.converse).toHaveLength(1);
+  expect(cancelled.narration).toMatchObject({ status: "ready", style: "read" });
+  expect(cancelled.narration?.audio?.style).toBe("read");
+});
+
+test("digests are always read aloud: a podcast request is refused, and an unknown style is invalid", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const created = await f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections: [
+    { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "a", title: "Local news", source: "Wire", summary: "Summary", url: "https://news.example.com/a" }] }] }, bearer("omo"));
+  const id = (await created.json() as { digest: { id: string } }).digest.id;
+  const path = `/api/v1/digests/${id}/narration`;
+  const refused = await f.call(path, "POST", { style: "podcast" }, owner);
+  expect(refused.status).toBe(400);
+  expect(await refused.text()).toContain("narration_style_unsupported");
+  expect(tts.calls.script).toBe(0);
+  expect((await f.call(path, "POST", { style: "read" }, owner)).status).toBe(202);
+  await idle();
+  expect((await read(await f.call(path, "GET", undefined, owner))).narration).toMatchObject({ status: "ready", style: "read" });
+  expect(tts.calls.converse).toEqual([]);
+  const record = await research(f, owner);
+  expect((await f.call(narration(record.id), "POST", { style: "radio" }, owner)).status).toBe(400);
+  // An agent may choose the style too.
+  expect((await f.call(narration(record.id), "POST", { style: "podcast" }, bearer("omo"))).status).toBe(202);
+});
+
+test("a dialogue script becomes speaker turns packed into bounded chunks", () => {
+  // Unlabelled lines continue the previous speaker (A at the start); full-width colons and spaces are accepted.
+  expect(dialogueChunks("Opening\n\nB： A question?\n\nA line that carries on\n\nA:An answer.")).toEqual([[
+    { speaker: "A", text: "Opening" }, { speaker: "B", text: "A question?\n\nA line that carries on" }, { speaker: "A", text: "An answer." },
+  ]]);
+  const long = Array.from({ length: 12 }, (_, index) => `${index % 2 ? "B" : "A"}: ${"This is a sentence. ".repeat(25)}`).join("\n\n");
+  const chunks = dialogueChunks(normalizeScript(long));
+  expect(chunks.length).toBeGreaterThan(1);
+  for (const chunk of chunks) expect(chunk.reduce((sum, turn) => sum + turn.text.length, 0)).toBeLessThanOrEqual(NARRATION_LIMITS.chunkChars);
+  expect(chunks.flat().every(turn => turn.text.length > 0 && !/^[AB]\s*[:：]/.test(turn.text))).toBe(true);
 });

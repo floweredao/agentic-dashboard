@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ChevronUp, FileText, Headphones, Pause, Play, RefreshCw, Trash2, X } from "lucide-react";
-import type { DashboardRecord, NarrationState, NarrationStatus } from "../../shared/contracts";
+import type { DashboardRecord, NarrationState, NarrationStatus, NarrationStyle } from "../../shared/contracts";
 import { NARRATION_LIMITS } from "../../shared/contracts";
 import { cancelNarration, deleteNarration, errorCode, errorMessage, loadNarration, requestNarration } from "../api";
 import type { NarrationCollection } from "../api";
@@ -42,6 +42,7 @@ const text = strings({
       narration_queue_full: "Many audio jobs are waiting. Please try again in a moment.",
       narration_attempts_exhausted: "This content has failed several times.",
       narration_busy: "Audio is being made, so it can't be deleted right now.",
+      narration_style_unsupported: "Digests can only be read aloud.",
     },
     spoken: (minutes: number, seconds: number) => `${minutes} min ${seconds} sec`,
     seconds: (value: number) => `${value} sec`, minutes: (value: number) => `${value} min`,
@@ -54,6 +55,10 @@ const text = strings({
     confirmRemake: "Making the audio again costs another Gemini charge. Make it again?",
     confirmDelete: "Delete the audio file and script? You'll need to make it again to listen.",
     cancelled: "Audio cancelled.", deleted: "Audio deleted.", script: "Script",
+    read: "Read aloud", readHint: "One voice reads the record clearly.",
+    podcast: "Podcast", podcastHint: "Two hosts talk it through like a conversation.",
+    styleLegend: "Audio style", remakeCost: "Making it again costs another Gemini charge.",
+    cancel: "Cancel", create: "Make", makeTitle: "Make audio", remakeTitle: "Make audio again",
   },
   ko: {
     failures: {
@@ -74,6 +79,7 @@ const text = strings({
       narration_queue_full: "기다리는 음성이 많아요. 잠시 뒤 다시 시도해 주세요.",
       narration_attempts_exhausted: "이 내용으로 여러 번 실패했어요.",
       narration_busy: "음성을 만드는 중이라 지금은 삭제할 수 없어요.",
+      narration_style_unsupported: "다이제스트는 낭독으로만 만들 수 있어요.",
     },
     spoken: (minutes: number, seconds: number) => `${minutes}분 ${seconds}초`,
     seconds: (value: number) => `${value}초`, minutes: (value: number) => `${value}분`,
@@ -86,6 +92,10 @@ const text = strings({
     confirmRemake: "음성을 다시 만들면 Gemini 요금이 한 번 더 들어요. 다시 만들까요?",
     confirmDelete: "음성 파일과 원고를 삭제할까요? 다시 들으려면 새로 만들어야 해요.",
     cancelled: "음성 만들기를 취소했어요.", deleted: "음성을 삭제했어요.", script: "원고",
+    read: "낭독", readHint: "한 목소리가 기록을 또렷하게 읽어 줘요.",
+    podcast: "팟캐스트", podcastHint: "두 진행자가 대화하듯 풀어 설명해 줘요.",
+    styleLegend: "음성 스타일", remakeCost: "다시 만들면 Gemini 요금이 한 번 더 들어요.",
+    cancel: "취소", create: "만들기", makeTitle: "음성 만들기", remakeTitle: "음성 다시 만들기",
   },
 } satisfies { readonly en: Text; readonly ko: Text });
 
@@ -124,8 +134,8 @@ const failedFor = (state: NarrationState | null) => state?.narration?.status ===
  * Folded: a round play button with `Listen · 13 min`. Playing unfolds it in place into one row: play/pause, seek, time, rate, fold.
  * Resumes where the owner stopped this audio (per record and file); the audio element stays mounted across folding.
  */
-function Player({ recordId, title, src, durationMs, stale, prefix, open, playNonce, onOpen, onFold }: {
-  readonly recordId: string; readonly title: string; readonly src: string; readonly durationMs: number; readonly stale: boolean;
+function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open, playNonce, onOpen, onFold }: {
+  readonly recordId: string; readonly title: string; readonly src: string; readonly durationMs: number; readonly stale: boolean; readonly podcast: boolean;
   readonly prefix: string; readonly open: boolean; readonly playNonce: number; readonly onOpen: () => void; readonly onFold: () => void;
 }) {
   const audio = useRef<HTMLAudioElement>(null);
@@ -199,6 +209,7 @@ function Player({ recordId, title, src, durationMs, stale, prefix, open, playNon
     </> : <button ref={openButton} type="button" className="listen-open" onClick={() => { moveFocus.current = true; onOpen(); toggle(); }}>
       <span className="listen-play" aria-hidden="true">{playing ? <Pause size={15} /> : <Play size={15} />}</span>
       <span>{prefix}{text().listen} · {minutesLabel(durationMs)}</span>
+      {podcast && <Tag>{text().podcast}</Tag>}
       {stale && <Tag>{text().outdated}</Tag>}
     </button>}
     <audio ref={audio} src={src} preload="metadata" onLoadedMetadata={restore} onPlay={onPlay}
@@ -219,10 +230,13 @@ const stageText = (state: NarrationState) => {
   return text().waiting;
 };
 
-/** The narration commands for a reader's More menu; `label` (e.g. Mail, News) prefixes each when one screen holds several. */
-export function narrationItems(state: NarrationState | null, { pending, cancelling, label, onRequest, onCancel, onListen, onScript, onRemove }: {
+/**
+ * The narration commands for a reader's More menu; `label` (e.g. Mail, News) prefixes each when one screen holds several.
+ * Make audio, Make again and Make new go through `onMake` (where a record's style is chosen); Try again repeats the failed job with `onRequest`.
+ */
+export function narrationItems(state: NarrationState | null, { pending, cancelling, label, onRequest, onMake, onCancel, onListen, onScript, onRemove }: {
   readonly pending: boolean; readonly cancelling: boolean; readonly label?: string | undefined;
-  readonly onRequest: (force: boolean) => void; readonly onCancel: () => void; readonly onListen: () => void;
+  readonly onRequest: (force: boolean) => void; readonly onMake: (force: boolean) => void; readonly onCancel: () => void; readonly onListen: () => void;
   readonly onScript: () => void; readonly onRemove: () => void;
 }): MenuItem[] {
   if (!state) return [];
@@ -238,13 +252,13 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
   }
   const audio = narration?.audio ?? null;
   if (!audio) {
-    if (items.length === 0) items.push({ label: `${prefix}${text().make}${state.available ? "" : text().keyNeeded}`, icon: icon(Headphones), disabled: blocked, onSelect: () => onRequest(false) });
+    if (items.length === 0) items.push({ label: `${prefix}${text().make}${state.available ? "" : text().keyNeeded}`, icon: icon(Headphones), disabled: blocked, onSelect: () => onMake(false) });
     return items;
   }
   items.push({ label: `${prefix}${text().listen}`, icon: icon(Play), onSelect: onListen });
   if (!failedFor(state)) items.push(narration?.stale
-    ? { label: `${prefix}${text().makeNew}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(false) }
-    : { label: `${prefix}${text().makeAgain}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(true) });
+    ? { label: `${prefix}${text().makeNew}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onMake(false) }
+    : { label: `${prefix}${text().makeAgain}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onMake(true) });
   if (narration?.script) items.push({ label: `${prefix}${text().viewScript}`, icon: icon(FileText), onSelect: onScript });
   items.push({ label: `${prefix}${text().deleteAudio}`, icon: icon(Trash2), danger: true, disabled: pending, onSelect: onRemove });
   return items;
@@ -286,7 +300,34 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
   const audio = narration?.audio;
   if (!audio) return null;
   return <Player key={audio.url} recordId={record.id} title={record.title} src={audio.url} durationMs={audio.durationMs} stale={narration?.stale ?? false}
-    prefix={prefix} open={open} playNonce={playNonce} onOpen={onOpen} onFold={onFold} />;
+    podcast={audio.style === "podcast"} prefix={prefix} open={open} playNonce={playNonce} onOpen={onOpen} onFold={onFold} />;
+}
+
+/** The choice behind a record's Make audio: read aloud or podcast, the style last used checked; a remake states that it costs again. */
+export function StyleChoice({ initial, force, pending, onSubmit, onClose }: {
+  readonly initial: NarrationStyle; readonly force: boolean; readonly pending: boolean;
+  readonly onSubmit: (style: NarrationStyle) => void; readonly onClose: () => void;
+}) {
+  const [style, setStyle] = useState<NarrationStyle>(initial);
+  const styles: readonly { readonly value: NarrationStyle; readonly label: string; readonly hint: string }[] = [
+    { value: "read", label: text().read, hint: text().readHint },
+    { value: "podcast", label: text().podcast, hint: text().podcastHint },
+  ];
+  return <form onSubmit={event => { event.preventDefault(); onSubmit(style); }}>
+    <fieldset className="listen-styles" disabled={pending}>
+      <legend className="visually-hidden">{text().styleLegend}</legend>
+      {styles.map(option => <label key={option.value} className="listen-style">
+        <input type="radio" name="narration-style" value={option.value} checked={style === option.value}
+          onChange={() => setStyle(option.value)} />
+        <span className="listen-style-text"><strong>{option.label}</strong><span>{option.hint}</span></span>
+      </label>)}
+    </fieldset>
+    {force && <p className="form-note">{text().remakeCost}</p>}
+    <div className="dialog-actions">
+      <button type="button" className="btn btn-outline" onClick={onClose}>{text().cancel}</button>
+      <button type="submit" className="btn btn-primary" disabled={pending}>{text().create}</button>
+    </div>
+  </form>;
 }
 
 /**
@@ -305,9 +346,10 @@ export function useNarration({ record, collection = "records", label }: {
   const [open, setOpen] = useState(false);
   const [playNonce, setPlayNonce] = useState(0);
   const [script, setScript] = useState(false);
+  const [choosing, setChoosing] = useState<{ force: boolean } | null>(null);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => { setOpen(false); setPlayNonce(0); setScript(false); setDismissed(null); }, [id]);
+  useEffect(() => { setOpen(false); setPlayNonce(0); setScript(false); setDismissed(null); setChoosing(null); }, [id]);
   const state = id && loaded?.id === id ? loaded.state : null;
   const put = (forId: string, next: NarrationState) => { if (alive.current) setLoaded({ id: forId, state: next }); };
   const show = async (error: unknown) => {
@@ -326,10 +368,11 @@ export function useNarration({ record, collection = "records", label }: {
   }, [state]);
   if (!record || !state) return { items: [], bar: null };
   const forId = record.id;
-  const request = async (force: boolean) => {
-    if (force && !window.confirm(text().confirmRemake)) return;
+  /** `style` comes from the choice, which already said what a remake costs; digests have no choice and confirm here. */
+  const request = async (force: boolean, style?: NarrationStyle) => {
+    if (force && !style && !window.confirm(text().confirmRemake)) return;
     setPending(true);
-    try { put(forId, await requestNarration(forId, force, d.csrfToken, collection)); }
+    try { put(forId, await requestNarration(forId, force, d.csrfToken, collection, style)); }
     catch (error) { await show(error); }
     finally { if (alive.current) setPending(false); }
   };
@@ -357,6 +400,8 @@ export function useNarration({ record, collection = "records", label }: {
   const items = narrationItems(state, {
     pending, cancelling, label,
     onRequest: force => { void request(force); },
+    // Digests are always read aloud; a record asks for its style first.
+    onMake: force => { if (collection === "digests") void request(force); else setChoosing({ force }); },
     onCancel: () => { void cancel(); },
     onListen: () => { setDismissed(state.narration?.updatedAt ?? null); setOpen(true); setPlayNonce(nonce => nonce + 1); },
     onScript: () => setScript(true),
@@ -370,6 +415,10 @@ export function useNarration({ record, collection = "records", label }: {
       onDismiss={() => setDismissed(state.narration?.updatedAt ?? null)} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} />
     {script && paragraphs.length > 0 && <Dialog title={`${label ? `${label} ` : ""}${text().script}`} onClose={() => setScript(false)}>
       <div className="listen-script">{paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
+    </Dialog>}
+    {choosing && <Dialog title={choosing.force ? text().remakeTitle : text().makeTitle} onClose={() => setChoosing(null)}>
+      <StyleChoice initial={state.narration?.style ?? "read"} force={choosing.force} pending={pending} onClose={() => setChoosing(null)}
+        onSubmit={style => { setChoosing(null); void request(choosing.force, style); }} />
     </Dialog>}
   </>;
   return { items, bar };

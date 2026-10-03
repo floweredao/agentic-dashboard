@@ -6,6 +6,8 @@ import type { NarrationProvider } from "./narration";
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
 export const GEMINI_SCRIPT_MODEL = "gemini-3.8-flash";
 export const GEMINI_VOICE = "Kore";
+/** Podcast host B, a prebuilt voice that is easy to tell apart from host A; multi-speaker requests take at most two prebuilt voices. */
+export const GEMINI_PODCAST_VOICE = "Puck";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
 export type KeySource = () => Promise<string | null>;
 
@@ -35,13 +37,14 @@ export function pcmOf(bytes: Uint8Array): Uint8Array {
 
 /** Interactions API with `store: false`; the key goes only in the x-goog-api-key header and never into errors. */
 export function geminiProvider(options: {
-  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly voice?: string;
+  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly voice?: string; readonly podcastVoice?: string;
   readonly fetch?: (input: string, init: RequestInit) => Promise<Response>;
 }): NarrationProvider {
   const send = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   const ttsModel = options.ttsModel ?? GEMINI_TTS_MODEL;
   const scriptModel = options.scriptModel ?? GEMINI_SCRIPT_MODEL;
   const voice = options.voice ?? GEMINI_VOICE;
+  const hosts = [voice, options.podcastVoice ?? GEMINI_PODCAST_VOICE] as const;
   async function output(body: unknown, signal: AbortSignal) {
     const key = await options.key();
     if (!key) throw new ProviderError("no_key", false);
@@ -68,8 +71,19 @@ export function geminiProvider(options: {
     if (!parsed.success) throw new ProviderError("invalid_response", false);
     return parsed.data.steps.filter(step => step.type === "model_output").flatMap(step => step.content ?? []);
   }
+  async function audioOf(input: unknown, speechConfig: unknown, signal: AbortSignal) {
+    const content = await output({
+      model: ttsModel, input,
+      response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
+      generation_config: { speech_config: speechConfig },
+      store: false,
+    }, signal);
+    const audio = content.filter(part => part.type === "audio" && part.data).at(-1)?.data;
+    if (!audio) throw new ProviderError("no_audio", false);
+    return pcmOf(Buffer.from(audio, "base64"));
+  }
   return {
-    ttsModel, scriptModel, voice,
+    ttsModel, scriptModel, voice, hosts,
     available: async () => await options.key() !== null,
     async script(system, prompt, signal) {
       const content = await output({ model: scriptModel, system_instruction: system, input: prompt, store: false }, signal);
@@ -77,17 +91,13 @@ export function geminiProvider(options: {
       if (!script.trim()) throw new ProviderError("empty_script", false);
       return script;
     },
-    async speak(text, style, signal) {
-      const content = await output({
-        model: ttsModel,
-        input: [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style }] }] }],
-        response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
-        generation_config: { speech_config: [{ voice }] },
-        store: false,
-      }, signal);
-      const audio = content.filter(part => part.type === "audio" && part.data).at(-1)?.data;
-      if (!audio) throw new ProviderError("no_audio", false);
-      return pcmOf(Buffer.from(audio, "base64"));
-    },
+    speak: (text, style, signal) => audioOf(
+      [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style }] }] }],
+      [{ voice }], signal),
+    // https://ai.google.dev/gemini-api/docs/speech-generation#multi-speaker: speakers as an object, every turn names its speaker.
+    converse: (turns, style, signal) => audioOf(
+      [{ type: "user_input", content: turns.map(turn => ({ type: "text", text: turn.text,
+        annotations: [{ type: "speech_metadata", speaker: turn.speaker, style }] })) }],
+      { mode: "conversational", speakers: [{ speaker: "A", voice: hosts[0] }, { speaker: "B", voice: hosts[1] }] }, signal),
   };
 }

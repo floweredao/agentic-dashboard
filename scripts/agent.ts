@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { HTTPError } from "ky";
 import { z } from "zod";
-import { NarrationStateSchema } from "../shared/contracts";
+import { NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { NarrationState } from "../shared/contracts";
 import { getNarration, getRecord, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, updateRecord } from "./agent-client";
 
@@ -17,7 +17,7 @@ const labels: Record<Action, string> = {
 const narrationSummary = (state: NarrationState, base: string) => {
   const narration = state.narration;
   return {
-    available: state.available, status: narration?.status ?? "none", stale: narration?.stale ?? false,
+    available: state.available, status: narration?.status ?? "none", style: narration?.style ?? null, stale: narration?.stale ?? false,
     progress: narration?.progress ?? null, attempts: narration?.attempts ?? 0, error: narration?.error ?? null,
     durationMs: narration?.audio?.durationMs ?? null, audioUrl: narration?.audio ? new URL(narration.audio.url, base).href : null,
   };
@@ -76,6 +76,7 @@ try {
       narrate: { type: "string" },
       narration: { type: "string" },
       force: { type: "boolean" },
+      style: { type: "string" },
       digest: { type: "string" },
       quiet: { type: "boolean" },
       digests: { type: "boolean" },
@@ -104,7 +105,7 @@ try {
         "Reply:       bun run agent --reply <comment-id> --text \"Answer\" [--resolve] [--status review]\n" +
         "Mark:        bun run agent --seen <comment-id> | --done <comment-id>\n" +
         "Timeline:    bun run agent --timeline <task-id>\n" +
-        "Narrate:     bun run agent --narrate <record-id> [--force] [--wait] [--interval 5] [--timeout 900]   (done 0, failed 1, timeout 2)\n" +
+        "Narrate:     bun run agent --narrate <record-id> [--style read|podcast] [--force] [--wait] [--interval 5] [--timeout 900]   (done 0, failed 1, timeout 2; without --style the last style, read at first)\n" +
         "Narration:   bun run agent --narration <record-id>\n" +
         "Digest:      bun run agent --digest digest.json [--quiet]   (the POST /api/v1/digests body)\n" +
         "Digests:     bun run agent --digests [--from YYYY-MM-DD] [--to YYYY-MM-DD]",
@@ -211,9 +212,10 @@ try {
     const id = z.string().trim().min(1).parse(values.narrate ?? values.narration);
     const interval = z.coerce.number().min(2).max(300).parse(values.interval ?? "5");
     const timeout = z.coerce.number().min(0).parse(values.timeout ?? "900");
+    const style = values.style === undefined ? undefined : NarrationStyleSchema.parse(values.style);
     const started = Date.now();
     let state = NarrationStateSchema.parse(values.narrate !== undefined
-      ? await requestNarration(connection, id, values.force === true) : await getNarration(connection, id));
+      ? await requestNarration(connection, id, values.force === true, style) : await getNarration(connection, id));
     // --wait follows the job until it settles, so an agent can save, narrate and report the audio in one step.
     while (values.wait && state.narration && ["queued", "scripting", "speaking"].includes(state.narration.status)) {
       if (timeout > 0 && Date.now() - started >= timeout * 1000) {
@@ -259,7 +261,7 @@ try {
       digest: "the digest JSON file, --quiet",
       digests: "--from/--to (YYYY-MM-DD)",
       comments: "--state (new|open|all), --interval (2-300 s), --timeout (s)",
-      narrate: "the record id, --interval (2-300 s), --timeout (s)",
+      narrate: "the record id, --style (read|podcast), --interval (2-300 s), --timeout (s)",
     };
     console.error(`Invalid input: check ${hint[action] ?? "--file and --request-id"} and DASHBOARD_TOKEN. ${error.issues.map(issue => issue.message).join("; ")}`);
   } else if (error instanceof Error) {

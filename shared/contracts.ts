@@ -194,16 +194,20 @@ export const NARRATION_LIMITS = { scriptChars: 6000, chunkChars: 1500, sourceCha
 /** queued -> scripting (listening script) -> speaking (TTS chunks) -> ready | failed. */
 export const NarrationStatusSchema = z.enum(["queued", "scripting", "speaking", "ready", "failed"]);
 export type NarrationStatus = z.infer<typeof NarrationStatusSchema>;
+/** read: one voice reads a listening script. podcast: two hosts talk the record through; records only, digests are always read aloud. */
+export const NarrationStyleSchema = z.enum(["read", "podcast"]);
+export type NarrationStyle = z.infer<typeof NarrationStyleSchema>;
 export const NarrationAudioSchema = z.object({
   url: z.string(), mime: z.string(), bytes: z.number().int().nonnegative(), durationMs: z.number().int().nonnegative(),
-  model: z.string(), voice: z.string(), createdAt: z.iso.datetime(),
+  model: z.string(), voice: z.string(), style: NarrationStyleSchema, createdAt: z.iso.datetime(),
 }).strict();
 /**
  * A record's narration: the job state and the last finished audio, which stays playable while a new one is made.
  * `stale`: the audio was made from content (title, summary, conclusion, body, next actions) that has since changed.
+ * `style`: the style last chosen for this record, the default for the next request.
  */
 export const NarrationSchema = z.object({
-  recordId: z.string().uuid(), status: NarrationStatusSchema, stale: z.boolean(),
+  recordId: z.string().uuid(), status: NarrationStatusSchema, style: NarrationStyleSchema, stale: z.boolean(),
   progress: z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict().nullable(),
   attempts: z.number().int().nonnegative(), error: z.string().nullable(),
   requestedBy: z.string(), requestedAt: z.iso.datetime(), updatedAt: z.iso.datetime(),

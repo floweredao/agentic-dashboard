@@ -2,15 +2,15 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NarrationStateSchema } from "../../shared/contracts";
 import type { NarrationState } from "../../shared/contracts";
-import { clock, initialRate, NarrationBar, narrationItems } from "./Listen";
+import { clock, initialRate, NarrationBar, narrationItems, StyleChoice } from "./Listen";
 
 const record = { id: "00000000-0000-4000-8000-000000000201", title: "조사" };
 const base = {
-  recordId: record.id, stale: false, progress: null, attempts: 0, error: null, requestedBy: "owner",
+  recordId: record.id, style: "read" as const, stale: false, progress: null, attempts: 0, error: null, requestedBy: "owner",
   requestedAt: "2026-10-01T12:00:00Z", updatedAt: "2026-10-01T12:00:00Z", audio: null, script: null,
 };
 const audio = { url: `/api/v1/records/${record.id}/narration/audio?v=abcd1234`, mime: "audio/mp4", bytes: 1000, durationMs: 754_000,
-  model: "gemini-3.8-flash-tts", voice: "Kore", createdAt: "2026-10-01T12:01:00Z" };
+  model: "gemini-3.8-flash-tts", voice: "Kore", style: "read" as const, createdAt: "2026-10-01T12:01:00Z" };
 const noop = () => {};
 const parse = (state: NarrationState) => NarrationStateSchema.parse(state);
 const bar = (state: NarrationState, extra: { cancelling?: boolean; open?: boolean; label?: string } = {}) => renderToStaticMarkup(
@@ -18,7 +18,7 @@ const bar = (state: NarrationState, extra: { cancelling?: boolean; open?: boolea
     dismissed={false} open={extra.open ?? false} playNonce={0}
     onCancel={noop} onRetry={noop} onDismiss={noop} onOpen={noop} onFold={noop} />);
 const items = (state: NarrationState, label?: string) => narrationItems(parse(state), {
-  pending: false, cancelling: false, label, onRequest: noop, onCancel: noop, onListen: noop, onScript: noop, onRemove: noop,
+  pending: false, cancelling: false, label, onRequest: noop, onMake: noop, onCancel: noop, onListen: noop, onScript: noop, onRemove: noop,
 });
 const labels = (state: NarrationState, label?: string) => items(state, label).map(item => item.label);
 const text = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -115,6 +115,45 @@ test("the player starts at 1x unless the owner chose a rate, and a rate the owne
   // And the open player shows the default on its rate button
   const html = bar({ narration: { ...base, status: "ready", audio }, available: true }, { open: true });
   expect(html).toContain('aria-label="재생 속도 1배"');
+});
+
+test("making, remaking and renewing go through the style choice; 다시 시도 retries with the saved style", () => {
+  // Given a recorder for the two kinds of request
+  const calls: string[] = [];
+  const recorded = (state: NarrationState) => narrationItems(parse(state), {
+    pending: false, cancelling: false, onCancel: noop, onListen: noop, onScript: noop, onRemove: noop,
+    onRequest: force => calls.push(`request:${force}`), onMake: force => calls.push(`make:${force}`),
+  });
+  const pick = (state: NarrationState, label: string) => recorded(state).find(item => item.label === label)?.onSelect();
+  // When each command is chosen
+  pick({ narration: null, available: true }, "음성 만들기");
+  pick({ narration: { ...base, status: "ready", audio }, available: true }, "다시 만들기");
+  pick({ narration: { ...base, status: "ready", stale: true, audio }, available: true }, "새로 만들기");
+  pick({ narration: { ...base, status: "failed", attempts: 1, error: "http_500" }, available: true }, "다시 시도");
+  // Then only 다시 시도 skips the choice
+  expect(calls).toEqual(["make:false", "make:true", "make:false", "request:false"]);
+});
+
+test("the style choice offers 낭독 and 팟캐스트 with the saved style checked, and warns about the cost when remaking", () => {
+  // Given the choice for a record last made as a podcast, once fresh and once as a remake
+  const fresh = renderToStaticMarkup(<StyleChoice initial="podcast" force={false} pending={false} onSubmit={noop} onClose={noop} />);
+  const remake = renderToStaticMarkup(<StyleChoice initial="read" force pending={false} onSubmit={noop} onClose={noop} />);
+  // Then both options are radios in one group, the saved one checked
+  const checked = (html: string) => [...html.matchAll(/<input[^>]*>/g)].filter(tag => tag[0].includes('checked=""'))
+    .map(tag => /value="(\w+)"/.exec(tag[0])?.[1]);
+  expect([...fresh.matchAll(/<input[^>]*>/g)].filter(tag => tag[0].includes('type="radio"') && tag[0].includes('name="narration-style"'))).toHaveLength(2);
+  expect(checked(fresh)).toEqual(["podcast"]);
+  expect(text(fresh)).toContain("낭독");
+  expect(text(fresh)).toContain("팟캐스트");
+  expect(text(fresh)).not.toContain("요금");
+  expect(checked(remake)).toEqual(["read"]);
+  expect(text(remake)).toContain("요금이 한 번 더 들어요");
+});
+
+test("podcast audio is tagged 팟캐스트 on the folded player", () => {
+  const state = { narration: { ...base, status: "ready" as const, style: "podcast" as const, audio: { ...audio, style: "podcast" as const } }, available: true };
+  expect(text(bar(state))).toContain("듣기 · 13분 팟캐스트");
+  expect(text(bar({ narration: { ...base, status: "ready", audio }, available: true }))).not.toContain("팟캐스트");
 });
 
 test("clock formats seconds as m:ss and h:mm:ss", () => {

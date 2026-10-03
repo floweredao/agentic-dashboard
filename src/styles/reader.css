@@ -77,6 +77,24 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .listen-player .icon-btn { margin-left: 0; }
 .listen-script p { color: var(--text); font-size: 14.5px; line-height: 1.7; white-space: pre-line; word-break: keep-all; }
 .listen-script p + p { margin-top: 10px; }
+/* Make audio choice: two stacked options, the whole row is the radio's label. */
+.listen-styles { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.listen-style {
+  display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 12px 14px;
+  border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); cursor: pointer;
+  transition: border-color 120ms var(--ease), background-color 120ms var(--ease);
+}
+.listen-style:hover { background: var(--wash); }
+.listen-style:has(input:checked) { border-color: var(--ink); background: var(--raised); }
+.listen-style:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.listen-style input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--ink); }
+.listen-style input:focus-visible { outline: none; }
+.listen-style-text { display: grid; gap: 2px; min-width: 0; }
+.listen-style-text strong { color: var(--ink); font-size: 14.5px; font-weight: 600; }
+.listen-style-text span { color: var(--muted); font-size: 13px; line-height: 1.5; word-break: keep-all; }
+.listen-styles + .form-note { margin-top: 12px; }
+.listen-styles:disabled .listen-style { cursor: default; opacity: .6; }
+@media (prefers-reduced-motion: reduce) { .listen-style { transition: none; } }
 @media (max-width: 767px) {
   .listen-bar .icon-btn, .listen-bar .btn, button.listen-play { position: relative; }
   .listen-bar .icon-btn::after, .listen-bar .btn::after, button.listen-play::after { content: ""; position: absolute; inset: -6px; }

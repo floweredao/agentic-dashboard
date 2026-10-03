@@ -20,6 +20,7 @@ import {
   type Comment,
   type DashboardRecord,
   type NarrationState,
+  type NarrationStyle,
   type RecordInput,
   type RecordPatch,
   type TrashItem,
@@ -150,10 +151,14 @@ export async function loadNarration(recordId: string, collection: NarrationColle
   return narrationStateSchema.parse(await http.get(`${collection}/${recordId}/narration`).json());
 }
 
-/** Starts a narration (202) or returns the current one (200); `force` makes a new one even for unchanged content. */
-export async function requestNarration(recordId: string, force: boolean, csrfToken: string, collection: NarrationCollection = "records"): Promise<NarrationState> {
+/**
+ * Starts a narration (202) or returns the current one (200); `force` makes a new one even for unchanged content.
+ * `style` (read aloud or podcast, records only) defaults on the server to the style last chosen.
+ */
+export async function requestNarration(recordId: string, force: boolean, csrfToken: string, collection: NarrationCollection = "records",
+  style?: NarrationStyle): Promise<NarrationState> {
   return narrationStateSchema.parse(await http.post(`${collection}/${recordId}/narration`, {
-    json: force ? { force: true } : {},
+    json: { ...(force ? { force: true } : {}), ...(style ? { style } : {}) },
     headers: { "X-CSRF-Token": csrfToken },
   }).json());
 }
