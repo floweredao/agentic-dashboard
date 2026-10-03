@@ -117,7 +117,9 @@ export function Dialog({ title, onClose, children, size = "normal" }: {
     };
   }, []);
   return <dialog ref={dialog} className={`dialog ${size}`} aria-labelledby="dialog-title"
-    onCancel={event => { event.preventDefault(); closeRef.current(); }}>
+    onCancel={event => { event.preventDefault(); closeRef.current(); }}
+    // Escape is handled here too: a keydown left unhandled reaches the macOS window, which beeps, even though the dialog closes.
+    onKeyDown={event => { if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing) { event.preventDefault(); closeRef.current(); } }}>
     <header className="dialog-head">
       <h2 id="dialog-title">{title}</h2>
       <button type="button" className="icon-btn" aria-label={text().close} onClick={onClose}><X size={18} aria-hidden="true" /></button>

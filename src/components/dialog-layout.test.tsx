@@ -56,9 +56,12 @@ for (const [label, width, height, scrollY] of [["desktop", 1312, 800, 0], ["phon
       await until(view, `() => document.querySelector("dialog[open] input")`);
       // Then: the bars, panes and text keep their position and width, so nothing behind the dialog reflows.
       expect(String(await view.evaluate(layout))).toBe(before);
-      // When: the dialog closes.
+      // When: Escape closes the dialog.
+      await view.evaluate(`addEventListener("keydown", event => { window.escape = event; }, { capture: true, once: true })`);
       await view.press("Escape");
       await until(view, `() => !document.querySelector("dialog[open]")`);
+      // Then: the page handled the key, so it never reaches the macOS window, which beeps at a key nobody handled.
+      expect(await view.evaluate<boolean>("window.escape.defaultPrevented")).toBe(true);
       // Then: the page is laid out exactly as before and back at its scroll offset.
       expect(String(await view.evaluate(layout))).toBe(before);
       expect(Number(await view.evaluate("window.scrollY"))).toBe(scrollY);
