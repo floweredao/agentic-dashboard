@@ -41,3 +41,8 @@
   /* Pull the label out by the .btn padding so its text edge meets the 16px column. */
   .trash-empty { margin-right: -12px; }
 }
+
+/* The More menu button is a ⋯ icon everywhere; its name stays in aria-label and the tooltip. */
+.menu-wrap { position: relative; }
+.menu-wrap > .menu-button { width: 34px; padding: 0; justify-content: center; }
+@media (max-width: 767px) { .menu-wrap > .menu-button { width: 44px; } }

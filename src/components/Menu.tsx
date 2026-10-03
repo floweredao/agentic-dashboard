@@ -18,7 +18,7 @@ function clipRight(element: HTMLElement) {
   return document.documentElement.clientWidth;
 }
 
-/** APG menu button: arrows move, Escape closes and returns focus, Tab or an outside click closes. */
+/** APG menu button (a ⋯ icon whose accessible name is `label`, also its tooltip): arrows move, Escape closes and returns focus, Tab or an outside click closes. */
 export function Menu({ label, items, disabled = false }: {
   readonly label: string; readonly items: readonly MenuItem[]; readonly disabled?: boolean;
 }) {
@@ -68,10 +68,10 @@ export function Menu({ label, items, disabled = false }: {
   }
 
   return <div className="menu-wrap" ref={wrap}>
-    <button ref={button} type="button" className="btn btn-outline" aria-label={label} aria-haspopup="menu" aria-expanded={open !== false}
+    <button ref={button} type="button" className="btn btn-outline menu-button" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open !== false}
       aria-controls={open ? id : undefined} disabled={disabled} onKeyDown={onButtonKey}
       onClick={() => setOpen(current => current ? false : "first")}>
-      <MoreHorizontal size={16} aria-hidden="true" /><span className="menu-label">{label}</span>
+      <MoreHorizontal size={18} aria-hidden="true" />
     </button>
     {open && <div ref={menu} id={id} role="menu" aria-label={label} className={alignEnd ? "menu menu-end" : "menu"} onKeyDown={onMenuKey}>
       {items.map(item => <button key={item.label} type="button" role="menuitem" tabIndex={-1} className={item.danger ? "menu-item danger" : "menu-item"}
