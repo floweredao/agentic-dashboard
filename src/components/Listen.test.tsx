@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NarrationStateSchema } from "../../shared/contracts";
 import type { NarrationState } from "../../shared/contracts";
-import { clock, NarrationBar, narrationItems } from "./Listen";
+import { clock, initialRate, NarrationBar, narrationItems } from "./Listen";
 
 const record = { id: "00000000-0000-4000-8000-000000000201", title: "조사" };
 const base = {
@@ -100,6 +100,21 @@ test("a label prefixes the commands and the row text for the digest 전체 view"
   const html = bar({ narration: { ...base, status: "queued" }, available: true }, { label: "뉴스" });
   expect(text(html)).toContain("뉴스 만들 차례를 기다리는 중");
   expect(html).toContain('aria-label="뉴스 음성 만들기 취소"');
+});
+
+test("the player starts at 1x unless the owner chose a rate, and a rate the owner chose is kept", () => {
+  // Given nothing stored, a rate the owner picked, the old key's value, and junk
+  const from = (values: Record<string, string>) => initialRate(key => values[key] ?? null);
+  // Then the default is 1x, a picked rate wins over the old key, and junk falls back to 1x
+  expect(from({})).toBe(1);
+  expect(from({ "agentic:listen-rate-v2": "1.25" })).toBe(1.25);
+  expect(from({ "agentic:listen-rate-v2": "2", "agentic:listen-rate": "1.5" })).toBe(2);
+  expect(from({ "agentic:listen-rate": "1" })).toBe(1);
+  expect(from({ "agentic:listen-rate": "1.5" })).toBe(1.5);
+  expect(from({ "agentic:listen-rate-v2": "3" })).toBe(1);
+  // And the open player shows the default on its rate button
+  const html = bar({ narration: { ...base, status: "ready", audio }, available: true }, { open: true });
+  expect(html).toContain('aria-label="재생 속도 1배"');
 });
 
 test("clock formats seconds as m:ss and h:mm:ss", () => {

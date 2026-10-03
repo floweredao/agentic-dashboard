@@ -13,7 +13,10 @@ import { Dialog, Tag } from "./primitives";
 
 const WORKING: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
 const RATES = [1, 1.25, 1.5, 2, 0.8] as const;
-const RATE_KEY = "agentic:listen-rate";
+const DEFAULT_RATE = 1;
+const RATE_KEY = "agentic:listen-rate-v2";
+/** The first player's key, written on every mount; a rate stored there was still the owner's last choice. */
+const OLD_RATE_KEY = "agentic:listen-rate";
 const positionKey = (recordId: string) => `agentic:listen:${recordId}`;
 const POLL_MS = 3000;
 
@@ -107,6 +110,12 @@ const spoken = (seconds: number) => {
 };
 const minutesLabel = (ms: number) => ms < 60_000 ? text().seconds(Math.max(1, Math.round(ms / 1000))) : text().minutes(Math.round(ms / 60_000));
 const stored = (key: string) => typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+const knownRate = (value: string | null) => RATES.find(item => value !== null && item === Number(value)) ?? null;
+
+/** The rate the owner last picked, else 1x. */
+export function initialRate(read: (key: string) => string | null = stored): number {
+  return knownRate(read(RATE_KEY)) ?? knownRate(read(OLD_RATE_KEY)) ?? DEFAULT_RATE;
+}
 
 const working = (state: NarrationState | null) => state?.narration ? WORKING.has(state.narration.status) : false;
 const failedFor = (state: NarrationState | null) => state?.narration?.status === "failed" && state.narration.error !== "cancelled";
@@ -127,13 +136,9 @@ function Player({ recordId, title, src, durationMs, stale, prefix, open, playNon
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(durationMs / 1000);
-  const [rate, setRate] = useState<number>(() => {
-    const value = Number(stored(RATE_KEY));
-    return RATES.some(item => item === value) ? value : 1;
-  });
+  const [rate, setRate] = useState<number>(() => initialRate());
   useEffect(() => {
     if (audio.current) audio.current.playbackRate = rate;
-    localStorage.setItem(RATE_KEY, String(rate));
   }, [rate]);
   useEffect(() => { if (playNonce > 0) void audio.current?.play(); }, [playNonce]);
   // The button pressed to unfold or fold disappears; focus moves to its counterpart.
@@ -168,7 +173,11 @@ function Player({ recordId, title, src, durationMs, stale, prefix, open, playNon
     setPlaying(true);
     if ("mediaSession" in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: config.appName });
   };
-  const nextRate = () => setRate(RATES[(RATES.findIndex(item => item === rate) + 1) % RATES.length] ?? 1);
+  const nextRate = () => {
+    const next = RATES[(RATES.findIndex(item => item === rate) + 1) % RATES.length] ?? DEFAULT_RATE;
+    localStorage.setItem(RATE_KEY, String(next));
+    setRate(next);
+  };
   const max = Math.max(1, Math.round(duration));
   return <div className={open ? "listen-bar listen-player" : "listen-folded"}>
     {open ? <>
