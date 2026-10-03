@@ -49,6 +49,7 @@
   position: sticky; bottom: calc(-1 * var(--foot-pad)); z-index: 1; margin: auto 0 calc(-1 * var(--foot-pad)); display: flex; align-items: center; gap: 4px;
   padding: 12px 0 var(--foot-pad); border-top: 1px solid var(--line); background: var(--canvas);
 }
+.sidebar-foot .demo-badge { margin-right: 4px; }
 .sidebar-foot .status { flex: 1; min-width: 0; color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-foot .status.offline { color: var(--danger); font-weight: 600; }
 /* Before the owner connects there is nothing to navigate to; the gate carries the only action. */

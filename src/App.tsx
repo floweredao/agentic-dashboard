@@ -564,7 +564,7 @@ export function App() {
     <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}`} data-sidebar={sidebar}>
       <nav id="sidebar" className="sidebar" aria-label={t.mainMenu} inert={sidebar === "hidden"}>
         <div className="sidebar-head">
-          <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
+          <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
           <button type="button" className="icon-btn sidebar-toggle" onClick={hideSidebar} aria-label={t.hideSidebar} title={t.hideSidebarShortcut}
             aria-controls="sidebar" aria-expanded={sidebar !== "hidden"}><PanelLeftClose size={18} aria-hidden="true" /></button>
         </div>
@@ -586,6 +586,7 @@ export function App() {
           })}</ul>
         </>}
         <div className="sidebar-foot">
+          {demoBadge}
           <span className={`status${offline ? " offline" : ""}`} role="status">{offline ? t.offline : connected ? syncLabel(syncedAt) : t.disconnected}</span>
           {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh} title={t.refresh}><RefreshCw size={16} aria-hidden="true" /></button>}
         </div>
