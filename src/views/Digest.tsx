@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { ArrowRight, CalendarDays, ChevronRight, Clock3, ExternalLink, Layers, Mail, Moon, Newspaper, Sun } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronRight, CircleCheck, CircleDot, Clock3, ExternalLink, Headphones, Layers, Mail, Moon, Newspaper, Sun } from "lucide-react";
 import { DigestSectionKeySchema, digestPartId, MESSAGE_IMPORTANCE } from "../../shared/contracts";
-import type { Digest, DigestArticle, DigestHit, DigestMessage, DigestPart, DigestSummary, MessageImportance } from "../../shared/contracts";
+import type { Digest, DigestArticle, DigestHit, DigestMessage, DigestNarration, DigestPart, DigestSummary, MessageImportance } from "../../shared/contracts";
 import { errorMessage, loadDigest, loadDigests, searchDigests } from "../api";
 import { useNarration } from "../components/Listen";
 import { Menu } from "../components/Menu";
-import { BackButton, Chip, Empty } from "../components/primitives";
+import type { MenuItem } from "../components/Menu";
+import { BackButton, Chip, Dialog, Empty, SidebarOpen } from "../components/primitives";
 import { SearchField, useSearch } from "../components/SearchField";
 import { formatDateTime, strings } from "../i18n";
 import { addDays, digestHasPart, digestPartItems, partReadAt, localDate } from "../model";
@@ -33,6 +34,10 @@ const text = strings({
     noneOnDate: { all: "No digests on this date", articles: "No article digests on this date", messages: "No message digests on this date" },
     noneYet: { all: "No digests yet", articles: "No article digests yet", messages: "No message digests yet" },
     earlier2Weeks: "Show earlier 2 weeks",
+    wholeDigest: "Whole digest", makeAudio: "Make audio", voiceLegend: "Audio to make", cancel: "Cancel", create: "Make",
+    voiceHints: { all: "Reads the articles, then the messages, in one audio.", messages: "Reads only the messages.", articles: "Reads only the articles." },
+    voiceNotes: { cannotNow: "Can't be made right now", keyNeeded: "Needs a Gemini key", ready: "Audio is ready · listen from More",
+      failed: "Couldn't make it · try again from More", making: "Being made" },
     updateTag: "Update", titlesOnly: "Titles only", end: (n: number) => `End of digest · ${n} ${n === 1 ? "item" : "items"}`,
   },
   ko: {
@@ -52,6 +57,10 @@ const text = strings({
     noneOnDate: { all: "이 날짜의 다이제스트 없음", articles: "이 날짜의 기사 다이제스트 없음", messages: "이 날짜의 메시지 다이제스트 없음" },
     noneYet: { all: "아직 다이제스트 없음", articles: "아직 기사 다이제스트 없음", messages: "아직 메시지 다이제스트 없음" },
     earlier2Weeks: "이전 2주 보기",
+    wholeDigest: "전체", makeAudio: "음성 만들기", voiceLegend: "만들 음성", cancel: "취소", create: "만들기",
+    voiceHints: { all: "기사와 메시지를 한 번에 이어서 읽어요.", messages: "메시지만 읽어요.", articles: "기사만 읽어요." },
+    voiceNotes: { cannotNow: "지금은 만들 수 없어요", keyNeeded: "Gemini 키가 필요해요", ready: "만들어 둔 음성이 있어요 · 더보기에서 듣기",
+      failed: "만들지 못했어요 · 더보기에서 다시 시도", making: "만드는 중이에요" },
     updateTag: "업데이트", titlesOnly: "제목만", end: (n: number) => `다이제스트 끝 · ${n}건`,
   },
 });
@@ -305,10 +314,14 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
   return <article className={`reader digest${titles ? " titles" : ""}`} aria-labelledby="digest-title">
     <div className="reader-inner">
       <BackButton place="reader" />
-      <p className="digest-kicker"><SlotMark slot={digest.slot} />{slotTitle(digest.slot)} · {clockOf(digest.scheduledAt)}</p>
-      <h2 id="digest-title" tabIndex={-1} className="reader-title">{dayTitle(digest.date)}</h2>
-      <p className="reader-dates">{totals}{updated && <> · {t.updated} {clockOf(digest.updatedAt)}</>}</p>
-      {actions && <div className="reader-actions" role="toolbar" aria-label={t.toolbar}>{actions}</div>}
+      <header className="digest-head">
+        <div className="digest-head-text">
+          <p className="digest-kicker"><SlotMark slot={digest.slot} />{slotTitle(digest.slot)} · {clockOf(digest.scheduledAt)}</p>
+          <h2 id="digest-title" tabIndex={-1} className="reader-title">{dayTitle(digest.date)}</h2>
+          <p className="reader-dates">{totals}{updated && <> · {t.updated} {clockOf(digest.updatedAt)}</>}</p>
+        </div>
+        {actions && <div className="digest-head-actions">{actions}</div>}
+      </header>
       {listen}
       {sections.length === 0 && <p className="digest-empty-section digest-part-empty">{t.emptyPart[part]}</p>}
       {sections.length > 0 && <div className="digest-bar">
@@ -357,11 +370,52 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
   </article>;
 }
 
+/** What a choice needs to know of a narration: whether it can be made, and whether it has audio, failed or is running. */
+type VoiceState = { readonly available: boolean; readonly narration: { readonly status: string; readonly audio: unknown } | null };
+export type VoiceOption = { readonly key: DigestNarration; readonly label: string; readonly hint: string; readonly make: MenuItem | undefined; readonly state: VoiceState | null };
+/** Why an audio cannot be made now, in words (never colour alone): it has audio, is being made, failed, or lacks the key. */
+function voiceNote({ make, state }: VoiceOption) {
+  const notes = text().voiceNotes;
+  const narration = state?.narration;
+  if (make) return make.disabled ? state?.available ? notes.cannotNow : notes.keyNeeded : null;
+  if (narration?.status === "ready" && narration.audio) return notes.ready;
+  if (narration?.status === "failed") return notes.failed;
+  return notes.making;
+}
+/** The choice behind a digest's one Make audio: which audio (the whole digest or one part) as radio cards; one that cannot be made says why. */
+export function VoiceChoice({ options, onSubmit, onClose }: {
+  readonly options: readonly VoiceOption[]; readonly onSubmit: (make: MenuItem) => void; readonly onClose: () => void;
+}) {
+  const t = text();
+  const ready = options.filter(option => option.make && !option.make.disabled);
+  const [chosen, setChosen] = useState<string>(ready[0]?.key ?? "");
+  const pick = ready.find(option => option.key === chosen)?.make;
+  return <form onSubmit={event => { event.preventDefault(); if (pick) onSubmit(pick); }}>
+    <fieldset className="listen-styles">
+      <legend className="visually-hidden">{t.voiceLegend}</legend>
+      {options.map(option => {
+        const note = voiceNote(option);
+        const enabled = Boolean(option.make && !option.make.disabled);
+        return <label key={option.key} className={`listen-style${enabled ? "" : " is-disabled"}`}>
+          <input type="radio" name="digest-voice" value={option.key} checked={chosen === option.key} disabled={!enabled}
+            data-autofocus={chosen === option.key ? "" : undefined} onChange={() => setChosen(option.key)} />
+          <span className="listen-style-text"><strong>{option.label}</strong>{option.hint && <span>{option.hint}</span>}
+            {note && <span className="listen-style-note">{note}</span>}</span>
+        </label>;
+      })}
+    </fieldset>
+    <div className="dialog-actions">
+      <button type="button" className="btn btn-outline" onClick={onClose}>{t.cancel}</button>
+      <button type="submit" className="btn btn-primary" disabled={!pick}>{t.create}</button>
+    </div>
+  </form>;
+}
+
 const cache = new Map<string, Digest>();
 
 /**
  * The reader pane of the digest tab: loads the digest, shows the filter's parts, marks each unread part with items read once,
- * and offers listening per part.
+ * and offers listening to the whole digest or one part from the ⋯ More beside the date title.
  */
 export function DigestReader({ id, part }: { readonly id: string; readonly part: DigestFilter }) {
   const t = text();
@@ -370,6 +424,7 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
   const [failed, setFailed] = useState<string | null>(null);
   const [collapsed, setExpanded] = useCollapsed();
   const [density, setDensity] = useDensity();
+  const [choosingVoice, setChoosingVoice] = useState(false);
   const marked = useRef(false);
   const scrolledTo = useRef<string | null>(null);
   const known = d.digests?.items.find(item => item.id === id);
@@ -380,10 +435,13 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
   };
   // Only a part with something to read has a read state to change and something to narrate.
   const filled = digest ? filterParts(part).filter(each => digestPartItems(digest, each) > 0) : [];
-  const narrationOf = (each: DigestPart) => digest && filled.includes(each)
-    ? { id: digestPartId(id, each), title: `${dayTitle(digest.date)} ${slotTitle(digest.slot)} · ${partLabel(each)}`, version: digest.version }
+  // The whole digest is narrated as one audio when the filter shows both parts and both have items.
+  const narrated = (each: DigestNarration) => each === "all" ? part === "all" && filled.length > 1 : filled.includes(each);
+  const narrationOf = (each: DigestNarration) => digest && narrated(each)
+    ? { id: digestPartId(id, each), title: `${dayTitle(digest.date)} ${slotTitle(digest.slot)}${each === "all" ? "" : ` · ${partLabel(each)}`}`, version: digest.version }
     : null;
-  const label = (each: DigestPart) => part === "all" ? partLabel(each) : undefined;
+  const label = (each: DigestNarration) => part === "all" ? each === "all" ? t.wholeDigest : partLabel(each) : undefined;
+  const allNarration = useNarration({ record: narrationOf("all"), collection: "digests", label: label("all") });
   const messagesNarration = useNarration({ record: narrationOf("messages"), collection: "digests", label: label("messages") });
   const articlesNarration = useNarration({ record: narrationOf("articles"), collection: "digests", label: label("articles") });
   useEffect(() => {
@@ -416,16 +474,24 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
     const targets = filled.filter(each => (readAtOf(each) === null) === unread);
     targets.forEach((each, index) => { void d.markDigest(id, each, unread, index < targets.length - 1); });
   };
-  const narrationItems = [...messagesNarration.items, ...articlesNarration.items];
-  const actions = filled.length > 0 && <>
-    <button type="button" className="btn btn-outline" onClick={toggleRead}>
-      {unread ? t.markRead : t.markUnread}
-    </button>
-    {narrationItems.length > 0 && <Menu label={t.more} items={narrationItems} />}
-  </>;
+  const narrations = [{ key: "all", narration: allNarration }, { key: "messages", narration: messagesNarration },
+    { key: "articles", narration: articlesNarration }] as const;
+  // A narration with no job yet offers one command, Make audio; with several of them the commands fold into one that asks which.
+  const voices: VoiceOption[] = narrations.flatMap(({ key, narration }) => narration.state ? [{ key, label: key === "all" ? t.wholeDigest : partLabel(key),
+    hint: t.voiceHints[key], make: narration.state.narration === null ? narration.items[0] : undefined, state: narration.state }] : []);
+  const folded = voices.length > 1 && voices.some(each => each.make);
+  const narrationItems = narrations.flatMap(({ narration }) => folded && narration.state?.narration === null ? [] : narration.items);
+  const makeItem: MenuItem[] = folded ? [{ label: t.makeAudio, icon: <Headphones size={16} aria-hidden="true" />,
+    disabled: voices.every(each => !each.make || each.make.disabled), onSelect: () => setChoosingVoice(true) }] : [];
+  const readItem: MenuItem = { label: unread ? t.markRead : t.markUnread,
+    icon: unread ? <CircleCheck size={16} aria-hidden="true" /> : <CircleDot size={16} aria-hidden="true" />, onSelect: toggleRead };
+  const actions = filled.length > 0 && <Menu label={t.more} items={[readItem, ...makeItem, ...narrationItems]} />;
   return <DigestView digest={digest} part={part} actions={actions} collapsed={collapsed} onExpand={setExpanded} density={density} onDensity={setDensity}
     {...(focus ? { focus } : {})}
-    listen={<>{messagesNarration.bar}{articlesNarration.bar}</>} />;
+    listen={<>{allNarration.bar}{messagesNarration.bar}{articlesNarration.bar}
+      {choosingVoice && folded && <Dialog title={t.makeAudio} onClose={() => setChoosingVoice(false)}>
+        <VoiceChoice options={voices} onClose={() => setChoosingVoice(false)} onSubmit={make => { setChoosingVoice(false); make.onSelect(); }} />
+      </Dialog>}</>} />;
 }
 
 const groupByDate = (items: readonly DigestSummary[]) => {
@@ -511,7 +577,7 @@ export function DigestPane() {
   return <>
     <header className="pane-head">
       <BackButton place="list" />
-      <div className="pane-title-row">
+      <div className="pane-title-row"><SidebarOpen />
         <h1 className="pane-title">{t.digests} <span className="count">{q ? searched ? hits.items.length : "" : items.length}</span></h1>
       </div>
       <div className="pane-toolbar">

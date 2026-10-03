@@ -66,6 +66,14 @@
 .digest-kicker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .digest-kicker .digest-mark { width: 26px; height: 26px; border-radius: 8px; }
 .digest .reader-title { margin-top: 10px; }
+/* Head: kicker, date and counts on the left, the ⋯ More (mark read, audio) at the trailing edge beside the date title. */
+.digest-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; }
+.digest-head-text { min-width: 0; }
+.digest-head-actions { margin-right: -4px; }
+/* Make audio's choice: an audio that cannot be made now stays listed, dimmed, with its reason in words. */
+.listen-style.is-disabled { cursor: default; opacity: .6; }
+.listen-style.is-disabled:hover { background: transparent; }
+.listen-style-text .listen-style-note { color: var(--faint); font-size: 12.5px; }
 /* Section bar: jump chips and titles only, stuck to the top of the reader pane (under the app bar on phones). */
 .digest-bar {
   position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; gap: 6px 8px; margin: 18px -8px 0; padding: 8px;
@@ -165,8 +173,6 @@
   list-style: decimal; color: var(--text); font-size: 14px; line-height: 1.55;
 }
 .appbar-compose { margin-left: auto; color: var(--ink); }
-/* A digest has one command (읽음 표시); it scrolls away instead of pinning a bar over the cards. */
-.digest .reader-actions { position: static; padding-bottom: 0; border-bottom: 0; }
 
 @media (max-width: 767px) {
   .segmented button { min-height: 44px; font-size: 14px; }

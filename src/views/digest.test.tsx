@@ -4,8 +4,8 @@ import { DigestSchema, DigestSummarySchema } from "../../shared/contracts";
 import { applyLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
-import { DENSITY_KEY, DigestPane, DigestRow, DigestView, digestPart, dayHeading, parseCollapsed, publishedLabel, splitLede, splitUpdate } from "./Digest";
-import type { DigestFilter } from "./Digest";
+import { DENSITY_KEY, DigestPane, DigestRow, DigestView, digestPart, dayHeading, parseCollapsed, publishedLabel, splitLede, splitUpdate, VoiceChoice } from "./Digest";
+import type { DigestFilter, VoiceOption } from "./Digest";
 
 const at = "2026-09-30T23:30:00.000Z";
 const digest = DigestSchema.parse({
@@ -118,6 +118,35 @@ test("splitUpdate takes an update prefix off the front in either language; split
   expect(splitLede("He said “a farce.” Then he left.")).toEqual(["He said “a farce.”", "Then he left."]);
   expect(splitLede("One sentence.")).toEqual(["One sentence.", ""]);
   expect(splitLede("")).toEqual(["", ""]);
+});
+
+test("The head puts the ⋯ More beside the date title instead of a toolbar under it", async () => {
+  const html = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
+    <DigestView digest={digest} part="all" actions={<button type="button" className="menu-button" aria-label="더보기" />} /></DashboardContext.Provider>);
+  expect(html).toMatch(/<header class="digest-head"><div class="digest-head-text">.*<h2 id="digest-title".*<\/div><div class="digest-head-actions"><button type="button" class="menu-button" aria-label="더보기">/);
+  expect(html).not.toContain("reader-actions");
+});
+
+test("One Make audio asks which audio as radio cards, the whole digest first: a part that already has audio is disabled and says why", async () => {
+  const make = (label: string) => ({ label: `${label} 음성 만들기`, onSelect: () => undefined });
+  const ready = { available: true, narration: { status: "ready", audio: { url: "/x.m4a" } } };
+  const options: VoiceOption[] = [
+    { key: "all", label: "전체", hint: "", make: make("전체"), state: { available: true, narration: null } },
+    { key: "messages", label: "메시지", hint: "", make: undefined, state: ready },
+    { key: "articles", label: "기사", hint: "", make: make("기사"), state: { available: true, narration: null } },
+  ];
+  const html = renderToStaticMarkup(<VoiceChoice options={options} onSubmit={() => undefined} onClose={() => undefined} />);
+  expect(await scan(html, ".listen-style strong")).toEqual(["전체", "메시지", "기사"]);
+  const radios = [...html.matchAll(/<input type="radio"[^>]*>/g)].map(([tag]) => [/value="([^"]+)"/.exec(tag)?.[1], tag.includes('checked=""'), tag.includes('disabled=""')]);
+  expect(radios).toEqual([["all", true, false], ["messages", false, true], ["articles", false, false]]);
+  expect(await scan(html, ".listen-style-note")).toEqual(["만들어 둔 음성이 있어요 · 더보기에서 듣기"]);
+  expect(await scan(html, "button[type=submit]")).toEqual(["만들기"]);
+  applyLocale("en");
+  try {
+    const english = renderToStaticMarkup(<VoiceChoice options={options} onSubmit={() => undefined} onClose={() => undefined} />);
+    expect(await scan(english, ".listen-style-note")).toEqual(["Audio is ready · listen from More"]);
+    expect(await scan(english, "button[type=submit]")).toEqual(["Make"]);
+  } finally { applyLocale("ko"); }
 });
 
 test("Each section head is a disclosure button; a collapsed section hides its body and keeps its head", async () => {
