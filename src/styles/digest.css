@@ -61,14 +61,24 @@
 .importance.todo { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
 .importance.check { background: var(--selected); color: var(--ink); }
 
-/* One digest: kicker, date title, section jump chips, then each section's cards. */
+/* One digest: kicker, date title, the stuck section bar, then each section as a list (no boxes: the items are alike, so
+   space and hairlines group them, NN/g cards-component). */
 .digest-kicker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .digest-kicker .digest-mark { width: 26px; height: 26px; border-radius: 8px; }
 .digest .reader-title { margin-top: 10px; }
-.digest-jump { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
-.digest-section { margin-top: 32px; scroll-margin-top: 16px; }
+/* Section bar: jump chips and titles only, stuck to the top of the reader pane (under the app bar on phones). */
+.digest-bar {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; gap: 6px 8px; margin: 18px -8px 0; padding: 8px;
+  background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.digest-jump { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.digest-jump .chip[aria-current="location"] { background: var(--selected); border-color: transparent; color: var(--ink); font-weight: 650; }
+.digest-jump .chip[aria-current="location"] .chip-count { color: var(--muted); }
+.digest-density { margin-left: auto; }
+.digest-section { margin-top: 36px; scroll-margin-top: 72px; }
+.digest-bar + .digest-section { margin-top: 20px; }
 /* Section head: one row, every child centered; the disclosure button covers chevron, icon (fixed 18px slot), label and count. */
-.digest-section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 12px; }
+.digest-section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 2px; }
 .digest-section-head h3 { display: flex; min-width: 0; margin: 0; font: inherit; }
 .digest-section-toggle {
   display: inline-flex; align-items: center; gap: 6px; min-height: 36px; margin-left: -6px; padding: 0 10px 0 4px;
@@ -79,25 +89,40 @@
 .digest-chevron { flex: none; color: var(--faint); transition: transform 120ms var(--ease); }
 .digest-section-toggle[aria-expanded="true"] .digest-chevron { transform: rotate(90deg); }
 .digest-section-icon { display: grid; place-items: center; flex: none; width: 18px; height: 18px; color: var(--muted); }
-.digest-section-label { font-size: 17px; font-weight: 700; line-height: 1.3; letter-spacing: -0.2px; }
+.digest-section-label { font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: -0.3px; }
 .digest-section-head .count { color: var(--faint); font-size: 14px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
 .digest-section-note { margin-left: auto; color: var(--muted); font-size: 12.5px; }
 .digest-shortfall, .digest-empty-section { margin-bottom: 10px; color: var(--faint); font-size: 13px; }
-.digest-cards { display: grid; gap: 10px; }
+/* Items: hairlines between them, a wash only on hover or when a search opened the digest at one. The title reads first
+   (17px ink), then the summary's first sentence in body colour and the rest muted (what is new, then context). */
+.digest-cards { display: grid; }
+.digest-cards > li + li { border-top: 1px solid var(--line); }
 .digest-card {
-  display: grid; gap: 6px; padding: 14px 16px 12px; border: 1px solid var(--line); border-radius: var(--r-lg);
-  background: var(--surface); transition: border-color 120ms var(--ease), background-color 120ms var(--ease);
+  display: grid; gap: 6px; margin: 0 -10px; padding: 16px 10px; border-radius: var(--r);
+  transition: background-color 120ms var(--ease);
 }
-@media (hover: hover) { a.digest-card:hover { border-color: var(--line-strong); background: var(--raised); } }
-.focused > .digest-card { background: var(--selected); border-color: var(--line-strong); }
+@media (hover: hover) { a.digest-card:hover { background: var(--wash); } }
+.focused > .digest-card { background: var(--selected); }
 .digest-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .digest-num { color: var(--faint); font-family: var(--mono); font-size: 11.5px; }
-.digest-card-title { color: var(--ink); font-size: 16px; line-height: 1.45; font-weight: 650; letter-spacing: -0.2px; }
-.digest-card-summary { color: var(--text); font-size: 14.5px; line-height: 1.65; }
-.digest-card-foot { display: inline-flex; align-items: center; gap: 4px; color: var(--faint); font-size: 12px; overflow-wrap: anywhere; }
+.digest-meta-end { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.digest-card-out { flex: none; color: var(--faint); }
+.message-from .digest-card-out { display: inline; margin-left: 6px; vertical-align: -1px; }
+.digest-card-title { color: var(--ink); font-size: 17px; line-height: 1.45; font-weight: 650; letter-spacing: -0.25px; word-break: keep-all; overflow-wrap: anywhere; }
+.digest-update {
+  display: inline-flex; align-items: center; height: 19px; margin-right: 6px; padding: 0 6px; border-radius: 6px; vertical-align: 2px;
+  background: var(--wash); color: var(--muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0;
+}
+.digest-card-summary { color: var(--text); font-size: 16px; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
+.digest-rest { color: var(--muted); }
 .message-from { color: var(--ink); font-weight: 600; }
 .message-address { color: var(--faint); font-weight: 500; overflow-wrap: anywhere; }
-.message-action { padding: 8px 10px; border-radius: var(--r); background: var(--raised); color: var(--ink); font-size: 13.5px; line-height: 1.5; }
+/* What to do: an arrow and ink text, no inset box. */
+.message-action { display: flex; align-items: flex-start; gap: 6px; color: var(--ink); font-size: 15px; line-height: 1.55; font-weight: 600; word-break: keep-all; overflow-wrap: anywhere; }
+.message-action svg { flex: none; margin-top: 3px; color: var(--muted); }
+/* Titles only: denser rows, titles and message actions only. */
+.digest.titles .digest-card { gap: 4px; padding: 12px 10px; }
+.digest-end { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* 알림 설정: rows like 더보기 with a switch at the end. */
 .setting-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 12px 10px 14px; color: var(--ink); font-size: 15px; font-weight: 500; }
@@ -149,11 +174,11 @@
   .date-chip input { inset: -6px 0; height: auto; }
   .digest-list, .digest-hits { padding: 0; gap: 0; }
   .digest-row, .digest-hit { padding: 14px 16px; border-radius: 0; border-bottom: 1px solid var(--line); }
-  .digest-card { padding: 14px 14px 12px; }
-  .digest-card-title { font-size: 15.5px; }
+  .digest-bar { top: calc(var(--appbar) + var(--safe-top)); margin: 14px -20px 0; padding: 8px 20px; }
+  .digest-section-label { font-size: 18px; }
   .digest-section-toggle { min-height: 44px; }
   .digest-section-note { flex-basis: 100%; margin-left: 0; }
-  .digest-section { scroll-margin-top: calc(var(--appbar) + var(--safe-top) + 12px); }
+  .digest-section { scroll-margin-top: calc(var(--appbar) + var(--safe-top) + 72px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .digest-row, .digest-hit, .digest-card, .switch, .switch-thumb, .segmented button, .digest-section-toggle, .digest-chevron { transition: none; }

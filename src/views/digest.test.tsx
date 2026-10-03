@@ -4,7 +4,7 @@ import { DigestSchema, DigestSummarySchema } from "../../shared/contracts";
 import { applyLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
-import { DigestPane, DigestRow, DigestView, digestPart, dayHeading, parseCollapsed, publishedLabel } from "./Digest";
+import { DENSITY_KEY, DigestPane, DigestRow, DigestView, digestPart, dayHeading, parseCollapsed, publishedLabel, splitLede, splitUpdate } from "./Digest";
 import type { DigestFilter } from "./Digest";
 
 const at = "2026-09-30T23:30:00.000Z";
@@ -60,6 +60,64 @@ test("DigestView shows sections in stored order under their own titles, filtered
   expect(await scan(allHtml, ".reader-dates")).toEqual(["메시지 2건 · 기사 1건"]);
   expect(await scan(allHtml, ".digest-jump .chip")).toEqual(["Local1", "Inbox2"]);
   expect(allHtml).toContain('id="item-inbox-m2"');
+});
+
+const local = digest.sections[0];
+const updatedDigest = DigestSchema.parse({ ...digest, sections: [
+  { ...local, items: local?.kind === "articles" ? [{ ...local.items[0], title: "업데이트: 국내 첫 소식", summary: "업데이트: 첫 문장이에요. 둘째 문장이에요." }] : [] },
+  ...digest.sections.slice(1),
+] });
+const renderView = (density?: "summary" | "titles") => renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
+  <DigestView digest={updatedDigest} part="all" {...(density ? { density } : {})} /></DashboardContext.Provider>);
+
+test("Items read as a list: an update prefix becomes one tag, the summary splits into its first sentence and the rest, the source shows once, and the end counts the items", async () => {
+  const html = renderView();
+  expect(await scan(html, "#item-local-a .digest-update")).toEqual(["업데이트"]);
+  expect(await scan(html, "#item-local-a .digest-card-title")).toEqual(["업데이트국내 첫 소식"]);
+  expect(await scan(html, "#item-local-a .digest-lede")).toEqual(["첫 문장이에요."]);
+  expect(await scan(html, "#item-local-a .digest-rest")).toEqual(["둘째 문장이에요."]);
+  expect(html).not.toContain("업데이트:");
+  // The source is named once, in the meta line; no host line under the item.
+  expect(await scan(html, "#item-local-a .digest-card-meta")).toEqual(["01Daily · 오전 7:04"]);
+  expect(html).not.toContain("digest-card-foot");
+  expect(await scan(html, ".message-action")).toEqual(["바로 확인", "본인인지 확인"]);
+  expect(await scan(html, ".digest-end")).toEqual(["다이제스트 끝 · 3건"]);
+  // The section bar holds the jump chips, the first one current, and the titles-only toggle (off).
+  expect(await scan(html, ".digest-bar .digest-jump .chip")).toEqual(["Local1", "Inbox2"]);
+  expect(await scan(html, '.digest-bar a.chip[aria-current="location"]')).toEqual(["Local1"]);
+  expect(html).toContain('<button type="button" class="chip digest-density" aria-pressed="false">제목만</button>');
+});
+
+test("Titles only hides every summary and keeps titles, sources and what each message asks to do; the choice is kept on this device", async () => {
+  const html = renderView("titles");
+  expect(await scan(html, ".digest-card-summary")).toEqual([]);
+  expect(await scan(html, ".digest-card-title")).toEqual(["업데이트국내 첫 소식", "계정 확인", "접속 알림"]);
+  expect(await scan(html, ".message-action")).toEqual(["바로 확인", "본인인지 확인"]);
+  expect(html).toContain('<button type="button" class="chip digest-density" aria-pressed="true">제목만</button>');
+  expect(html).toContain('class="reader digest titles"');
+  expect(DENSITY_KEY).toBe("agentic:digest-density");
+});
+
+test("The update tag, the titles-only toggle and the end line read in English when the locale is en", async () => {
+  applyLocale("en");
+  try {
+    const html = renderView();
+    expect(await scan(html, "#item-local-a .digest-update")).toEqual(["Update"]);
+    expect(await scan(html, ".digest-density")).toEqual(["Titles only"]);
+    expect(await scan(html, ".digest-end")).toEqual(["End of digest · 3 items"]);
+  } finally { applyLocale("ko"); }
+});
+
+test("splitUpdate takes an update prefix off the front in either language; splitLede cuts at the first sentence end", () => {
+  expect(splitUpdate("업데이트: X")).toEqual({ updated: true, text: "X" });
+  expect(splitUpdate("Update: X")).toEqual({ updated: true, text: "X" });
+  expect(splitUpdate("UPDATED：X")).toEqual({ updated: true, text: "X" });
+  expect(splitUpdate("Breaking update: X")).toEqual({ updated: false, text: "Breaking update: X" });
+  expect(splitUpdate("Update:")).toEqual({ updated: false, text: "Update:" });
+  expect(splitLede("Rates held at 2.5 percent. The next meeting is in November.")).toEqual(["Rates held at 2.5 percent.", "The next meeting is in November."]);
+  expect(splitLede("He said “a farce.” Then he left.")).toEqual(["He said “a farce.”", "Then he left."]);
+  expect(splitLede("One sentence.")).toEqual(["One sentence.", ""]);
+  expect(splitLede("")).toEqual(["", ""]);
 });
 
 test("Each section head is a disclosure button; a collapsed section hides its body and keeps its head", async () => {

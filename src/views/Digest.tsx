@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { CalendarDays, ChevronRight, Clock3, ExternalLink, Layers, Mail, Moon, Newspaper, Sun } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronRight, Clock3, ExternalLink, Layers, Mail, Moon, Newspaper, Sun } from "lucide-react";
 import { DigestSectionKeySchema, digestPartId, MESSAGE_IMPORTANCE } from "../../shared/contracts";
 import type { Digest, DigestArticle, DigestHit, DigestMessage, DigestPart, DigestSummary, MessageImportance } from "../../shared/contracts";
 import { errorMessage, loadDigest, loadDigests, searchDigests } from "../api";
@@ -33,6 +33,7 @@ const text = strings({
     noneOnDate: { all: "No digests on this date", articles: "No article digests on this date", messages: "No message digests on this date" },
     noneYet: { all: "No digests yet", articles: "No article digests yet", messages: "No message digests yet" },
     earlier2Weeks: "Show earlier 2 weeks",
+    updateTag: "Update", titlesOnly: "Titles only", end: (n: number) => `End of digest · ${n} ${n === 1 ? "item" : "items"}`,
   },
   ko: {
     parts: { articles: "기사", messages: "메시지" },
@@ -51,6 +52,7 @@ const text = strings({
     noneOnDate: { all: "이 날짜의 다이제스트 없음", articles: "이 날짜의 기사 다이제스트 없음", messages: "이 날짜의 메시지 다이제스트 없음" },
     noneYet: { all: "아직 다이제스트 없음", articles: "아직 기사 다이제스트 없음", messages: "아직 메시지 다이제스트 없음" },
     earlier2Weeks: "이전 2주 보기",
+    updateTag: "업데이트", titlesOnly: "제목만", end: (n: number) => `다이제스트 끝 · ${n}건`,
   },
 });
 const partLabel = (part: DigestPart) => text().parts[part];
@@ -74,7 +76,6 @@ export function publishedLabel(item: DigestArticle, digestDate: string) {
   }
   return item.publishedDate ? calendarDay(item.publishedDate, { month: "long", day: "numeric" }) : "";
 }
-const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } };
 function SlotMark({ slot }: { readonly slot: string }) {
   const Icon = slot === "morning" ? Sun : slot === "evening" ? Moon : Clock3;
   return <span className={`digest-mark slot-${slot === "morning" || slot === "evening" ? slot : "extra"}`} aria-hidden="true"><Icon size={16} /></span>;
@@ -118,6 +119,94 @@ function useCollapsed() {
   return [collapsed, setExpanded] as const;
 }
 
+/** Summary (every summary shown, the default) or titles (titles, sources and message actions only), kept on this device. */
+export type DigestDensity = "summary" | "titles";
+export const DENSITY_KEY = "agentic:digest-density";
+function useDensity() {
+  const [density, setDensity] = useState<DigestDensity>(() => storage()?.getItem(DENSITY_KEY) === "titles" ? "titles" : "summary");
+  const choose = (next: DigestDensity) => {
+    setDensity(next);
+    try { if (next === "titles") storage()?.setItem(DENSITY_KEY, next); else storage()?.removeItem(DENSITY_KEY); } catch { /* blocked storage: keep it for this screen */ }
+  };
+  return [density, choose] as const;
+}
+
+/** An agent marks a revised item with a leading "Update:" (in English or Korean); the view shows one tag instead. */
+const UPDATE_PREFIX = /^\s*(?:update[sd]?|업데이트) *[:：]/i; // i18n-allow: agents write this prefix into content in either language
+export function splitUpdate(text: string): { readonly updated: boolean; readonly text: string } {
+  const match = UPDATE_PREFIX.exec(text);
+  if (!match) return { updated: false, text };
+  const rest = text.slice(match[0].length).trimStart();
+  return rest ? { updated: true, text: rest } : { updated: false, text };
+}
+/** A summary's first sentence and the rest. A sentence ends at . ! ? 。 … (with closing quotes or brackets) before a space, so "2.5" never splits. */
+export function splitLede(summary: string): readonly [lede: string, rest: string] {
+  const end = /[.!?。…]["'”’)\]]*(?=\s)/.exec(summary);
+  if (!end) return [summary.trim(), ""];
+  const cut = end.index + end[0].length;
+  return [summary.slice(0, cut).trim(), summary.slice(cut).trim()];
+}
+
+/** The scroll owner of the open digest: the reader pane on split layouts, the document on phones. */
+function scrollerOf(element: Element): Element {
+  const pane = element.closest(".pane");
+  return pane && getComputedStyle(pane).overflowY !== "visible" && pane.scrollHeight > pane.clientHeight ? pane : document.scrollingElement ?? document.documentElement;
+}
+/** Where the section bar's bottom edge sits once it is stuck: the line a section has to reach to be the current one. */
+function stuckLine(bar: HTMLElement, scroller: Element) {
+  const top = scroller === document.scrollingElement ? 0 : scroller.getBoundingClientRect().top;
+  return top + (Number.parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight;
+}
+/** Scrolls a section's head to just under the stuck section bar. */
+function jumpTo(key: string) {
+  const section = document.getElementById(`section-${key}`);
+  const bar = document.querySelector<HTMLElement>(".digest-bar");
+  if (!section || !bar) return;
+  const scroller = scrollerOf(section);
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  const top = section.getBoundingClientRect().top - stuckLine(bar, scroller) - 12;
+  if (scroller === document.scrollingElement) window.scrollBy({ top, behavior }); else scroller.scrollBy({ top, behavior });
+}
+/** The section being read: the last one whose head has reached the stuck bar, the last one once the end is reached. */
+function useCurrentSection(keys: readonly string[], layout: unknown) {
+  const [current, setCurrent] = useState<string | undefined>(keys[0]);
+  const joined = keys.join(",");
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const bar = document.querySelector<HTMLElement>(".digest-bar");
+      const first = keys[0] && document.getElementById(`section-${keys[0]}`);
+      if (!bar || !first) return;
+      const scroller = scrollerOf(first);
+      const line = stuckLine(bar, scroller) + 16;
+      const atEnd = scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+      let next = keys[0];
+      for (const key of keys) {
+        const section = document.getElementById(`section-${key}`);
+        if (section && section.getBoundingClientRect().top <= line) next = key;
+      }
+      setCurrent(atEnd ? keys.at(-1) : next);
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
+    measure();
+    document.addEventListener("scroll", schedule, { capture: true, passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      document.removeEventListener("scroll", schedule, { capture: true });
+      window.removeEventListener("resize", schedule);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [joined, layout]);
+  return current;
+}
+
+/** A summary as its first sentence (what is new, body colour) and the rest (context, muted), without a leading update prefix. */
+function Summary({ text: value }: { readonly text: string }) {
+  const [lede, rest] = splitLede(splitUpdate(value).text);
+  return <span className="digest-card-summary"><span className="digest-lede">{lede}</span>{rest && <> <span className="digest-rest">{rest}</span></>}</span>;
+}
+
 /** One digest in the list: unread dot (in all, any unread part with items), its headline (first article title, else the most important message) and counts. */
 export function DigestRow({ summary, part, selected, href, onOpen }: {
   readonly summary: DigestSummary; readonly part: DigestFilter; readonly selected: boolean; readonly href: string;
@@ -127,7 +216,8 @@ export function DigestRow({ summary, part, selected, href, onOpen }: {
   const unread = part === "all"
     ? filterParts(part).some(each => digestPartItems(summary, each) > 0 && partReadAt(summary, each) === null)
     : partReadAt(summary, part) === null;
-  const headline = part === "messages" ? summary.messageHeadline : part === "articles" ? summary.headlines[0] : summary.headlines[0] ?? summary.messageHeadline;
+  const first = part === "messages" ? summary.messageHeadline : part === "articles" ? summary.headlines[0] : summary.headlines[0] ?? summary.messageHeadline;
+  const headline = first && splitUpdate(first).text;
   return <li><a className={`digest-row${unread ? " unread" : ""}`} href={href} aria-current={selected ? "true" : undefined} onClick={onOpen}>
     <SlotMark slot={summary.slot} />
     <span className="digest-row-main">
@@ -145,33 +235,44 @@ export function DigestRow({ summary, part, selected, href, onOpen }: {
   </a></li>;
 }
 
-function ArticleCard({ item, index, date, section, focused }: {
+/**
+ * One article as a list item: number · source · time and an external-link mark, the title (a leading update prefix becomes a
+ * small tag), then the summary unless only titles are shown. The whole item opens the original in a new tab.
+ */
+function ArticleCard({ item, index, date, section, focused, titles }: {
   readonly item: DigestArticle; readonly index: number; readonly date: string; readonly section: string; readonly focused: boolean;
+  readonly titles: boolean;
 }) {
+  const t = text();
   const href = item.originalUrl ?? item.url;
   const meta = [item.source, publishedLabel(item, date)].filter(Boolean).join(" · ");
+  const title = splitUpdate(item.title);
+  const updated = title.updated || Boolean(item.summary && splitUpdate(item.summary).updated);
   return <li id={`item-${section}-${item.key}`} className={focused ? "focused" : undefined}>
     <a className="digest-card" href={href} target="_blank" rel="noopener noreferrer">
-      <span className="digest-card-meta"><span className="digest-num">{String(index + 1).padStart(2, "0")}</span>{meta}</span>
-      <span className="digest-card-title">{item.title}</span>
-      {item.summary && <span className="digest-card-summary">{item.summary}</span>}
-      <span className="digest-card-foot">{hostOf(href)}<ExternalLink size={13} aria-hidden="true" /></span>
+      <span className="digest-card-meta"><span className="digest-num">{String(index + 1).padStart(2, "0")}</span>
+        <span className="digest-meta-end">{meta}<ExternalLink className="digest-card-out" size={12} aria-hidden="true" /></span></span>
+      <span className="digest-card-title">{updated && <span className="digest-update">{t.updateTag}</span>}{title.text}</span>
+      {!titles && item.summary && <Summary text={item.summary} />}
     </a>
   </li>;
 }
 
-function MessageCard({ item, section, focused }: { readonly item: DigestMessage; readonly section: string; readonly focused: boolean }) {
+/** One message as a list item: importance, sender, subject, summary (unless only titles are shown) and what to do, which always shows. */
+function MessageCard({ item, section, focused, titles }: { readonly item: DigestMessage; readonly section: string; readonly focused: boolean; readonly titles: boolean }) {
   const t = text();
+  const subject = splitUpdate(item.subject);
+  // The external mark rides on the last meta piece so a narrow screen never wraps it onto a line of its own.
+  const out = item.url && <><ExternalLink className="digest-card-out" size={12} aria-hidden="true" /><span className="visually-hidden">{t.openOriginal}</span></>;
   const body = <>
     <span className="digest-card-meta">
       <span className={`importance ${item.importance}`}>{importanceLabel(item.importance)}</span>
-      <span className="message-from">{item.from}{item.address && <span className="message-address"> · {item.address}</span>}</span>
-      {item.merged > 1 && <span>{t.merged(item.merged)}</span>}
+      <span className="message-from">{item.from}{item.address && <span className="message-address"> · {item.address}</span>}{item.merged <= 1 && out}</span>
+      {item.merged > 1 && <span className="digest-meta-end">{t.merged(item.merged)}{out}</span>}
     </span>
-    <span className="digest-card-title">{item.subject}</span>
-    {item.summary && <span className="digest-card-summary">{item.summary}</span>}
-    {item.action && <span className="message-action">{item.action}</span>}
-    {item.url && <span className="digest-card-foot">{t.openOriginal}<ExternalLink size={13} aria-hidden="true" /></span>}
+    <span className="digest-card-title">{subject.updated && <span className="digest-update">{t.updateTag}</span>}{subject.text}</span>
+    {!titles && item.summary && <Summary text={item.summary} />}
+    {item.action && <span className="message-action"><ArrowRight size={15} aria-hidden="true" />{item.action}</span>}
   </>;
   return <li id={`item-${section}-${item.key}`} className={focused ? "focused" : undefined}>
     {item.url ? <a className="digest-card message-card" href={item.url} target="_blank" rel="noopener noreferrer">{body}</a>
@@ -182,20 +283,26 @@ function MessageCard({ item, section, focused }: { readonly item: DigestMessage;
 const NO_SECTIONS: ReadonlySet<string> = new Set();
 
 /**
- * A digest under a filter: date and slot, then its sections in stored order under their own titles, as cards; `listen` and
- * `actions` slot in under the title. Each section head is a disclosure button; `collapsed` sections keep their head and hide the body.
+ * A digest under a filter: date and slot, then its sections in stored order under their own titles, as lists; `listen` and
+ * `actions` slot in under the title. A section bar stays stuck above the content: jump chips (the section being read marked
+ * `aria-current="location"`) and titles only. Each section head is a disclosure button; `collapsed` sections keep their head
+ * and hide the body. The end line counts the items shown.
  */
-export function DigestView({ digest, part, focus, actions, listen, collapsed = NO_SECTIONS, onExpand }: {
+export function DigestView({ digest, part, focus, actions, listen, collapsed = NO_SECTIONS, onExpand, density = "summary", onDensity }: {
   readonly digest: Digest; readonly part: DigestFilter; readonly focus?: string; readonly actions?: ReactNode; readonly listen?: ReactNode;
   readonly collapsed?: ReadonlySet<string>; readonly onExpand?: (key: string, expanded: boolean) => void;
+  readonly density?: DigestDensity; readonly onDensity?: (density: DigestDensity) => void;
 }) {
   const t = text();
   const sections = digest.sections.filter(section => inFilter(part, section.kind));
+  const titles = density === "titles";
+  const current = useCurrentSection(sections.map(section => section.key), `${[...collapsed].join()}|${density}`);
+  const shown = sections.reduce((sum, section) => sum + section.items.length, 0);
   const present = filterParts(part).filter(each => digest.sections.some(section => section.kind === each));
   const totals = part === "all" ? present.map(each => t.countedIn(partLabel(each), digestPartItems(digest, each))).join(" · ") || t.count(0)
     : t.countedIn(partLabel(part), digestPartItems(digest, part));
   const updated = digest.updatedAt !== digest.createdAt;
-  return <article className="reader digest" aria-labelledby="digest-title">
+  return <article className={`reader digest${titles ? " titles" : ""}`} aria-labelledby="digest-title">
     <div className="reader-inner">
       <BackButton place="reader" />
       <p className="digest-kicker"><SlotMark slot={digest.slot} />{slotTitle(digest.slot)} · {clockOf(digest.scheduledAt)}</p>
@@ -204,14 +311,18 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
       {actions && <div className="reader-actions" role="toolbar" aria-label={t.toolbar}>{actions}</div>}
       {listen}
       {sections.length === 0 && <p className="digest-empty-section digest-part-empty">{t.emptyPart[part]}</p>}
-      {sections.length > 1 && <nav className="digest-jump" aria-label={t.jumpTo}>
-        {sections.map(section => <a key={section.key} className="chip" href={`#section-${section.key}`} onClick={event => {
-          event.preventDefault();
-          // A collapsed section opens first, so the jump lands on its cards.
-          if (collapsed.has(section.key)) flushSync(() => onExpand?.(section.key, true));
-          document.getElementById(`section-${section.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }}>{section.title}<span className="chip-count">{section.items.length}</span></a>)}
-      </nav>}
+      {sections.length > 0 && <div className="digest-bar">
+        {sections.length > 1 && <nav className="digest-jump" aria-label={t.jumpTo}>
+          {sections.map(section => <a key={section.key} className="chip" href={`#section-${section.key}`}
+            aria-current={current === section.key ? "location" : undefined} onClick={event => {
+              event.preventDefault();
+              // A collapsed section opens first, so the jump lands on its items.
+              if (collapsed.has(section.key)) flushSync(() => onExpand?.(section.key, true));
+              jumpTo(section.key);
+            }}>{section.title}<span className="chip-count">{section.items.length}</span></a>)}
+        </nav>}
+        <button type="button" className="chip digest-density" aria-pressed={titles} onClick={() => onDensity?.(titles ? "summary" : "titles")}>{t.titlesOnly}</button>
+      </div>}
       {sections.map(section => {
         const { key } = section;
         const expanded = !collapsed.has(key);
@@ -235,12 +346,13 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
             {section.shortfall && <p className="digest-shortfall">{section.shortfall}</p>}
             {section.items.length === 0 ? <p className="digest-empty-section">{t.nothingThisTime}</p>
               : <ol className="digest-cards">{section.kind === "messages"
-                ? sortedMessages(section.items).map(item => <MessageCard key={item.key} item={item} section={key} focused={focus === `${key}:${item.key}`} />)
+                ? sortedMessages(section.items).map(item => <MessageCard key={item.key} item={item} section={key} focused={focus === `${key}:${item.key}`} titles={titles} />)
                 : section.items.map((item, index) => <ArticleCard key={item.key} item={item} index={index} date={digest.date} section={key}
-                  focused={focus === `${key}:${item.key}`} />)}</ol>}
+                  focused={focus === `${key}:${item.key}`} titles={titles} />)}</ol>}
           </div>
         </section>;
       })}
+      {sections.length > 0 && <p className="digest-end">{t.end(shown)}</p>}
     </div>
   </article>;
 }
@@ -257,6 +369,7 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
   const [digest, setDigest] = useState<Digest | null>(() => cache.get(id) ?? null);
   const [failed, setFailed] = useState<string | null>(null);
   const [collapsed, setExpanded] = useCollapsed();
+  const [density, setDensity] = useDensity();
   const marked = useRef(false);
   const scrolledTo = useRef<string | null>(null);
   const known = d.digests?.items.find(item => item.id === id);
@@ -310,7 +423,8 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
     </button>
     {narrationItems.length > 0 && <Menu label={t.more} items={narrationItems} />}
   </>;
-  return <DigestView digest={digest} part={part} actions={actions} collapsed={collapsed} onExpand={setExpanded} {...(focus ? { focus } : {})}
+  return <DigestView digest={digest} part={part} actions={actions} collapsed={collapsed} onExpand={setExpanded} density={density} onDensity={setDensity}
+    {...(focus ? { focus } : {})}
     listen={<>{messagesNarration.bar}{articlesNarration.bar}</>} />;
 }
 
@@ -427,7 +541,7 @@ export function DigestPane() {
     {q ? !searched ? <div role="status" className="empty">{t.searching}</div>
       : hits.items.length === 0 ? <Empty action={<button type="button" className="btn btn-outline" onClick={() => search.clear({ q: null })}>{t.clearSearch}</button>}>{t.noResults}</Empty>
         : <ul className="digest-hits">{hits.items.map(hit => {
-          const title = "subject" in hit.item ? hit.item.subject : hit.item.title;
+          const title = splitUpdate("subject" in hit.item ? hit.item.subject : hit.item.title).text;
           const focusKey = `${hit.section}:${hit.item.key}`;
           return <li key={`${hit.digestId}-${focusKey}`}>
             <a className="digest-hit" href={formatRoute({ view: "digest", id: hit.digestId, params: { ...route.params, focus: focusKey } })}
@@ -435,7 +549,7 @@ export function DigestPane() {
               onClick={open(hit.digestId, { focus: focusKey })}>
               <span className="digest-hit-meta">{dayTitle(hit.date)} {slotName(hit.slot)} · {hit.sectionTitle}{"from" in hit.item ? ` · ${hit.item.from}` : ""}</span>
               <span className="digest-hit-title">{title}</span>
-              {hit.item.summary && <span className="digest-hit-summary">{hit.item.summary}</span>}
+              {hit.item.summary && <span className="digest-hit-summary">{splitUpdate(hit.item.summary).text}</span>}
             </a>
           </li>;
         })}</ul>
