@@ -552,6 +552,8 @@ export function App() {
   };
   const locked = !connected && !loading;
   const demoBadge = config.features.demo && <span className="demo-badge" title={t.demoNotice}>{t.demo}</span>;
+  // The sidebar foot has room to name the release the demo runs; the phone app bar keeps the short badge beside the app name.
+  const demoReleaseBadge = config.features.demo && <span className="demo-badge" title={t.demoNotice}>{config.version ? `${t.demo} · v${config.version}` : t.demo}</span>;
   const toastView = toast && <div key={toast.key} className={`toast ${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}>
     <span>{toast.message}</span>
     {toast.undo && <button type="button" className="toast-action" onClick={() => { const undo = toast.undo; setToast(null); undo?.(); }}>{t.undo}</button>}
@@ -586,7 +588,7 @@ export function App() {
           })}</ul>
         </>}
         <div className="sidebar-foot">
-          {demoBadge}
+          {demoReleaseBadge}
           <span className={`status${offline ? " offline" : ""}`} role="status">{offline ? t.offline : connected ? syncLabel(syncedAt) : t.disconnected}</span>
           {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh} title={t.refresh}><RefreshCw size={16} aria-hidden="true" /></button>}
         </div>

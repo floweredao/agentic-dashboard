@@ -50,6 +50,12 @@
   padding: 12px 0 var(--foot-pad); border-top: 1px solid var(--line); background: var(--canvas);
 }
 .sidebar-foot .demo-badge { margin-right: 4px; }
+/* The demo badge names its release, too long to share a line with the sync time: it takes its own line above it.
+   The zero-height ::before, a full-width flex item ordered after the badge, forces the break. */
+.sidebar-foot:has(.demo-badge) { flex-wrap: wrap; }
+.sidebar-foot:has(.demo-badge)::before { content: ""; flex-basis: 100%; height: 0; }
+.sidebar-foot .demo-badge { order: -1; }
+.sidebar-foot:has(.demo-badge) .demo-badge { margin-bottom: 6px; }
 .sidebar-foot .status { flex: 1; min-width: 0; color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-foot .status.offline { color: var(--danger); font-weight: 600; }
 /* Before the owner connects there is nothing to navigate to; the gate carries the only action. */

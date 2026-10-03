@@ -97,7 +97,7 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | Route | Who | Result |
 |---|---|---|
 | `GET /api/health`, `GET /api/v1/health` | anyone | `{ status: "ok" }` |
-| `GET /api/v1/config` | anyone | `{ appName, timeZone, locale, features: { narration, push, digest, trustedLogin, demo } }` |
+| `GET /api/v1/config` | anyone | `{ appName, version, timeZone, locale, features: { narration, push, digest, trustedLogin, demo } }`; `version` is the `package.json` version the server was built from |
 | `GET /api/v1/schema` | anyone | kinds, field lists, agent format, JSON Schema of RecordInput, `timeZone` |
 | `POST /api/v1/auth/session` | owner | `{ token }` to `{ csrfToken, expiresAt }` plus cookie |
 | `GET /api/v1/auth/session` | owner | `{ principal, csrfToken, expiresAt }` |

@@ -55,7 +55,7 @@ Numbers use tabular figures.
 
 A 4px base: 2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 56. Radii: 6 (chips, small buttons), 8 (buttons, inputs, rows), 12 (panes, dialogs, cards), 999 (dots, counts).
 
-- **Sidebar (every width):** one 248px panel (at most 86vw) whose head holds the app name (15px there, so a name as long as "Agentic Dashboard" fits whole; longer names end in an ellipsis) and Hide sidebar. In demo mode the Demo badge sits in the sidebar foot before the sync time, so it never squeezes the name; the phone app bar keeps it beside the name. Breakpoints follow available space, not device: iPad windows top out at 1376pt and a full-screen desktop browser starts around 1440px.
+- **Sidebar (every width):** one 248px panel (at most 86vw) whose head holds the app name (15px there, so a name as long as "Agentic Dashboard" fits whole; longer names end in an ellipsis) and Hide sidebar. In demo mode the Demo badge, with the release ("Demo · v0.1.0"), sits on its own line in the sidebar foot above the sync time, so it never squeezes the name; the phone app bar keeps the short "Demo" beside the name. Breakpoints follow available space, not device: iPad windows top out at 1376pt and a full-screen desktop browser starts around 1440px.
 - **1100px and wider:** the sidebar is a column of the layout. Folding pulls it left by its own width (`margin-left`) while the list and reader fill the room; unfolding pushes them back. It starts unfolded from 1400px and folded below (iPad landscape: two columns) until the owner chooses; the choice is stored per device (`localStorage agentic:sidebar` = shown | hidden).
 - **768 to 1099px:** three columns don't fit, so Show sidebar slides the panel over list and reader with a scrim; nothing is stored.
 - **From 768px there is no app bar:** while the sidebar is not docked, its opener Show sidebar (`SidebarOpen`, `.sidebar-open`) sits before the title of the screen's first pane (every `.pane-title-row`), and Hide sidebar in the sidebar head is its counterpart, so only one of the two shows. Phones keep the app bar's menu button.
@@ -80,7 +80,8 @@ Routes are hash based and the URL owns committed state: `#/inbox`, `#/library`, 
 - **Dialogs:** native `<dialog>`, radius 12, a bottom sheet on phones.
 - **Toasts:** bottom center, ink fill, `role=status`, 4 seconds (6 with Undo).
 - **Empty states:** a 20px muted icon and one factual line.
-- **Demo badge:** in demo mode only, a small outlined "Demo" chip (11.5px, `--muted`, `--line-strong` border) beside the app name in the sidebar and app bar.
+- **Demo badge:** in demo mode only, a small outlined "Demo" chip (11.5px, `--muted`, `--line-strong` border) beside the app name in the phone app bar, and "Demo · v<version>" in the sidebar foot.
+- **Version:** the server's version ("Version 0.1.0") closes the Settings page in 12px `--faint`, aligned with the section labels.
 
 ## Motion
 

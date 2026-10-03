@@ -172,6 +172,7 @@
   display: grid; gap: 8px; padding: 14px 16px 14px 34px; border: 1px solid var(--line); border-radius: var(--r-lg);
   list-style: decimal; color: var(--text); font-size: 14px; line-height: 1.55;
 }
+.settings-version { margin: 24px 20px 16px; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .appbar-compose { margin-left: auto; color: var(--ink); }
 
 @media (max-width: 767px) {

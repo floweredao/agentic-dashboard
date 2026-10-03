@@ -18,6 +18,7 @@ const text = strings({
     system: "Follow the system",
     systemNote: (name: string) => `This device: ${name}`,
     languageNote: "Saved on this device only. The page reloads in the chosen language.",
+    version: (version: string) => `Version ${version}`,
     kinds: {
       digest: { label: "New digest", note: "When an agent posts a digest, with its headlines" },
       review: { label: "Needs review", note: "When an agent marks a task as needing review" },
@@ -53,6 +54,7 @@ const text = strings({
     system: "시스템 설정 따르기",
     systemNote: (name: string) => `지금 이 기기: ${name}`,
     languageNote: "이 기기에만 저장하고, 고른 언어로 페이지를 다시 불러와요.",
+    version: (version: string) => `버전 ${version}`,
     kinds: {
       digest: { label: "다이제스트 도착", note: "에이전트가 다이제스트를 올리면 헤드라인과 함께" },
       review: { label: "확인 필요", note: "에이전트가 할 일을 확인 필요로 바꾸면" },
@@ -144,6 +146,7 @@ export function SettingsPane() {
     </header>
     <LanguageChoice />
     {config.features.push && <PushSettings />}
+    {config.version && <p className="settings-version">{text().version(config.version)}</p>}
   </div>;
 }
 

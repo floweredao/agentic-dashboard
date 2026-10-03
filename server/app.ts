@@ -19,6 +19,8 @@ import { createMcpHandler } from "./mcp";
 import { createNarration, type NarrationOptions } from "./narration";
 import { projectRecord, renderMarkdown, Shares } from "./share";
 import { agentCanRead, agentView, Store } from "./store";
+// Bundled at build time (bun build --compile, the Docker image and vite all read package.json), so it is the one version source.
+import packageJson from "../package.json" with { type: "json" };
 
 export interface AppOptions {
   readonly databasePath?: string;
@@ -236,9 +238,9 @@ export function createApp(options: AppOptions = {}) {
       app.get("/api/health", c => c.json({ status: "ok" }));
       app.get("/api/v1/health", c => c.json({ status: "ok" }));
       app.get("/api/v1/schema", c => c.json({ ...schemaInfo, timeZone }));
-      /** What the UI needs before sign-in: name, calendar zone, default language and which optional features are on. */
+      /** What the UI needs before sign-in: name, version, calendar zone, default language and which optional features are on. */
       app.get("/api/v1/config", async c => c.json({
-        appName: options.appName ?? "Agentic Dashboard", timeZone, locale: options.locale ?? "en",
+        appName: options.appName ?? "Agentic Dashboard", version: packageJson.version, timeZone, locale: options.locale ?? "en",
         features: { narration: await narration.available(), push: pushOn, digest: digestOn, trustedLogin: options.trustedIdentity !== undefined, demo },
       }));
       app.get("/api/v1/agents", c => {
