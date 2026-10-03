@@ -84,7 +84,7 @@ test("list rows name the channel in the meta line without a separate channel col
     .transform(new Response(html)).text();
   // Then: no dot column, and the meta line reads "채널 · 종류".
   expect(marks).toBe(0);
-  expect(meta).toBe("chatgpt · 조사 보고");
+  expect(meta).toBe("chatgpt · 조사");
 });
 
 test("the reader lists links by address and names a finished confirmation", () => {

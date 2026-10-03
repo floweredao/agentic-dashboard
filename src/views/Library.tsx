@@ -9,14 +9,14 @@ import { useDashboard } from "../state";
 
 const text = strings({
   en: {
-    types: { research: "Research", "work-report": "Work report", social: "Link", note: "Note" },
+    types: { research: "Research", "work-report": "Work", social: "Link", note: "Note" },
     title: "Library", search: "Search library", placeholder: "Title, content, summary, tags",
     kind: "Record type", all: "All", channel: "Channel", status: "Record status", starred: "Starred",
     noResults: "No results", noMatches: "No records match", none: "No records",
     clearAll: "Clear all filters", clearSearch: "Clear search",
   },
   ko: {
-    types: { research: "조사 보고", "work-report": "작업 보고", social: "링크", note: "메모" },
+    types: { research: "조사", "work-report": "작업", social: "링크", note: "메모" },
     title: "기록", search: "기록 검색", placeholder: "제목, 내용, 요약, 태그",
     kind: "기록 종류", all: "전체", channel: "채널", status: "기록 상태", starred: "별표",
     noResults: "검색 결과 없음", noMatches: "조건에 맞는 기록 없음", none: "기록 없음",

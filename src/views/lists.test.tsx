@@ -205,8 +205,10 @@ test("library chip counts follow the committed search, and the search field can 
     make("00000000-0000-4000-8000-000000000014", { title: "감마" }),
   ];
   const html = render(records, "library", { q: "알파" });
-  // Then: 전체 and 링크 count the one search result, not the whole library (전체, 조사 보고, 작업 보고, 링크, 메모).
+  // Then: 전체 and 링크 count the one search result, not the whole library (전체, 조사, 작업, 링크, 메모).
   const counts = await scan(html, 'div[aria-label="기록 종류"] .chip-count');
   expect(counts.text).toBe("10010");
+  // And: the kind chips are named without 보고.
+  expect((await scan(html, 'div[aria-label="기록 종류"] button.chip')).text).toBe("전체1조사0작업0링크1메모0");
   expect(html).toContain('aria-label="검색어 지우기"');
 });

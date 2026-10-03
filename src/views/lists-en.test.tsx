@@ -24,6 +24,8 @@ test("list views render their text in English", () => {
   expect(library).toContain("Library");
   expect(library).toContain("Search library");
   expect(library).toContain("No records");
+  // And: the kind chips use the short kind names the rows use.
+  expect(library.match(/aria-label="Record type">(.*?)<\/div>/)?.[1]?.replace(/<[^>]+>/g, "")).toBe("All0Research0Work0Link0Note0");
   expect(archive).toContain("Nothing archived");
   expect(more).toContain("Manage channels");
   expect(purgeLabel("2026-10-03T00:00:00Z", Date.parse("2026-10-02T00:00:00Z"))).toBe("Deleted permanently in 1 day");
