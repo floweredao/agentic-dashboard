@@ -267,14 +267,15 @@ It is developed and verified on macOS with Bun. Linux should work the same way; 
 <details>
 <summary><b>Is there a Docker image?</b></summary>
 
-There's a `Dockerfile` in the repository, but no image is published to a registry yet. Build it yourself:
+Yes. `ghcr.io/floweredao/agentic-dashboard` has `0.1.0` and `latest` for linux/amd64 and linux/arm64:
 
 ```sh
-docker build -t agentic-dashboard .
-docker run -p 8080:8080 -v "$PWD/data:/app/data" -e APP_ORIGIN=http://localhost:8080 agentic-dashboard
+docker run -d --name agentic-dashboard -p 8080:8080 -v agentic-data:/app/data \
+  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.1.0
+docker exec agentic-dashboard cat /app/data/credentials.json   # the "owner" value is the owner key
 ```
 
-The image listens on port 8080 and keeps its data in `/app/data`. [docs/deploy.md](docs/deploy.md) covers it, and [docs/demo.md](docs/demo.md) shows the same image running the public demo.
+Or build it yourself from the `Dockerfile`: `docker build -t agentic-dashboard .`. The image listens on port 8080 and keeps its data in `/app/data`; mount a volume there. [docs/deploy.md](docs/deploy.md) covers it, and [docs/demo.md](docs/demo.md) shows the same image running the public demo.
 </details>
 
 <details>

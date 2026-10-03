@@ -267,14 +267,15 @@ macOS와 Bun 환경에서 개발하고 검증했습니다. Linux에서도 같은
 <details>
 <summary><b>Docker 이미지가 있나요?</b></summary>
 
-저장소에 `Dockerfile`이 있지만, 레지스트리에 올린 이미지는 아직 없습니다. 직접 빌드하세요.
+네. `ghcr.io/floweredao/agentic-dashboard`에 linux/amd64·linux/arm64용 `0.1.0`과 `latest`가 있습니다.
 
 ```sh
-docker build -t agentic-dashboard .
-docker run -p 8080:8080 -v "$PWD/data:/app/data" -e APP_ORIGIN=http://localhost:8080 agentic-dashboard
+docker run -d --name agentic-dashboard -p 8080:8080 -v agentic-data:/app/data \
+  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.1.0
+docker exec agentic-dashboard cat /app/data/credentials.json   # "owner" 값이 소유자 키입니다
 ```
 
-이미지는 8080 포트에서 듣고 데이터를 `/app/data`에 둡니다. 자세한 내용은 [docs/deploy.md](docs/deploy.md), 같은 이미지로 공개 데모를 돌리는 방법은 [docs/demo.md](docs/demo.md)에 있습니다.
+`Dockerfile`로 직접 빌드해도 됩니다: `docker build -t agentic-dashboard .`. 이미지는 8080 포트에서 듣고 데이터를 `/app/data`에 두니, 그곳에 볼륨을 연결하세요. 자세한 내용은 [docs/deploy.md](docs/deploy.md), 같은 이미지로 공개 데모를 돌리는 방법은 [docs/demo.md](docs/demo.md)에 있습니다.
 </details>
 
 <details>
