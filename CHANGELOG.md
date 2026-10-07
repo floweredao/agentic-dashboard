@@ -16,6 +16,11 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 - The star is named Favorite everywhere: the reader toggle (Add to favorites / Remove from favorites), its toasts, the row mark and the Library chip.
 
+### Fixed
+
+- A narration failure closed with x stays closed when a retry fails again for the same reason on the same audio.
+- When audio already exists, a failed remake keeps the player and shows a small status line with Retry and x instead of the alert that hid the audio.
+
 ## [0.2.0] - 2026-10-07
 
 Full HTML documents on records, full-screen reading and whole-body narration. On first start the server adds a `documents` table to the database; back up the data folder before you upgrade.
