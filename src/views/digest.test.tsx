@@ -62,6 +62,24 @@ test("DigestView shows sections in stored order under their own titles, filtered
   expect(allHtml).toContain('id="item-inbox-m2"');
 });
 
+test("A social section, shown only when an agent sends one, reads Social or 소셜 in the app's language whatever its title", async () => {
+  const withSocial = DigestSchema.parse({ ...digest, sections: [...digest.sections, { key: "social", title: "Posts", kind: "articles", updatedAt: at, shortfall: null, items: [
+    { key: "s1", title: "A new open model", source: "Example (@example)", summary: "Why it is worth a look.", url: "https://social.example.com/example/1",
+      originalUrl: null, publishedAt: null, publishedDate: null },
+  ] }] });
+  const render = () => renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
+    <DigestView digest={withSocial} part="articles" /></DashboardContext.Provider>);
+  expect(await scan(render(), ".digest-section-label")).toEqual(["Local", "소셜"]);
+  expect(await scan(render(), ".digest-jump .digest-tab")).toEqual(["Local1", "소셜1"]);
+  expect(render()).toContain('href="https://social.example.com/example/1"');
+  applyLocale("en");
+  try { expect(await scan(render(), ".digest-section-label")).toEqual(["Local", "Social"]); } finally { applyLocale("ko"); }
+  // Without one, nothing names it.
+  const plain = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
+    <DigestView digest={digest} part="all" /></DashboardContext.Provider>);
+  expect(plain).not.toContain("소셜");
+});
+
 const local = digest.sections[0];
 const updatedDigest = DigestSchema.parse({ ...digest, sections: [
   { ...local, items: local?.kind === "articles" ? [{ ...local.items[0], title: "업데이트: 국내 첫 소식", summary: "업데이트: 첫 문장이에요. 둘째 문장이에요." }] : [] },
