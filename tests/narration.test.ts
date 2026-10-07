@@ -18,6 +18,8 @@ function deferred<T>(): Deferred<T> {
 type Fake = {
   provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[]; systems: string[]; converse: SpeechTurn[][]; models: string[] }; available: boolean;
   failSpeak: number | "always"; error: Error | null; scriptText: string; hold: Hold | null;
+  /** Holds the script call after half its text has streamed in, until `release`. */
+  scriptHold: Hold | null;
   /** Returned, one per call and in order, before `scriptText`. */
   scriptTexts: string[];
   /** Thrown, one per call and in order, by the next script and speak calls. */
@@ -27,15 +29,24 @@ type Fake = {
 /** A TTS provider that returns one second of silence per chunk and records what it was asked. */
 function fake(): Fake {
   const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [], models: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT,
-    hold: null, scriptErrors: [], speakErrors: [], scriptTexts: [], provider: null as never };
+    hold: null, scriptHold: null, scriptErrors: [], speakErrors: [], scriptTexts: [], provider: null as never };
   state.provider = {
     ttsModel: "fake-tts", scriptModel: "fake-script", fallbackScriptModel: "fake-lite", voice: "Kore", hosts: ["Kore", "Puck"],
     available: async () => state.available,
-    script: async (system, prompt, _signal, model) => {
+    script: async (system, prompt, signal, model, onText) => {
       state.calls.models.push(model ?? "fake-script");
       const failure = state.scriptErrors.shift();
       if (failure) throw failure;
-      state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system); return state.scriptTexts.shift() ?? state.scriptText;
+      state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system);
+      const text = state.scriptTexts.shift() ?? state.scriptText;
+      const hold = state.scriptHold;
+      if (hold) {
+        onText?.(Math.floor(text.length / 2));
+        hold.entered.resolve(signal);
+        await hold.release.promise;
+      }
+      onText?.(text.length);
+      return text;
     },
     converse: async (turns, _style, signal) => {
       state.calls.converse.push([...turns]);
@@ -123,6 +134,43 @@ test("cancelling while speaking aborts the call, makes no further call and fails
   expect(after.narration).toMatchObject({ status: "failed", error: "cancelled", attempts: 0, audio: null });
   expect(after.narration?.script).toBeTruthy();
   expect(audioFiles()).toEqual([]);
+});
+
+test("while the script streams in, the job reports the characters received against the expected length and when the step began", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  tts.scriptText = TWO_CHUNKS;
+  const gate = (tts.scriptHold = { entered: deferred<AbortSignal>(), release: deferred<void>() });
+  // Given: half of the script has streamed in.
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await gate.entered.promise;
+
+  // When: the dashboard asks how far the job is.
+  const during = (await read(await f.call(narration(record.id), "GET", undefined, owner))).narration;
+
+  // Then: it reports the characters received over the expected length, and when writing the script began.
+  expect(during).toMatchObject({ status: "scripting", progress: { done: Math.floor(TWO_CHUNKS.length / 2) } });
+  expect(during?.progress?.total).toBeGreaterThan(0);
+  expect(Date.parse(during?.stepAt ?? "")).toBeLessThanOrEqual(Date.now());
+  gate.release.resolve();
+  await idle();
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", progress: null, stepAt: null });
+});
+
+test("while speaking, the step began when the chunk being made started", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  tts.scriptText = TWO_CHUNKS;
+  const gate = hold(tts);
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await gate.entered.promise;
+  const speaking = (await read(await f.call(narration(record.id), "GET", undefined, owner))).narration;
+  expect(speaking).toMatchObject({ status: "speaking", progress: { done: 0, total: 2 } });
+  expect(speaking?.stepAt).toBeString();
+  gate.release.resolve();
+  await idle();
 });
 
 test("cancelling a regeneration keeps the earlier audio ready and playable", async () => {

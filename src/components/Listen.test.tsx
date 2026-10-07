@@ -6,7 +6,7 @@ import { clock, failureDismissed, initialRate, NarrationBar, narrationFailure, n
 
 const record = { id: "00000000-0000-4000-8000-000000000201", title: "조사" };
 const base = {
-  recordId: record.id, style: "read" as const, stale: false, progress: null, waitUntil: null, attempts: 0, error: null, requestedBy: "owner",
+  recordId: record.id, style: "read" as const, stale: false, progress: null, waitUntil: null, stepAt: null, attempts: 0, error: null, requestedBy: "owner",
   requestedAt: "2026-10-01T12:00:00Z", updatedAt: "2026-10-01T12:00:00Z", audio: null, script: null,
 };
 const audio = { url: `/api/v1/records/${record.id}/narration/audio?v=abcd1234`, mime: "audio/mp4", bytes: 1000, durationMs: 754_000,

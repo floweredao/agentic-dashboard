@@ -9,7 +9,7 @@ import { config } from "../config";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
 import type { MenuItem } from "./Menu";
-import { narrationStage, stageValue } from "./narration-progress";
+import { narrationStage } from "./narration-progress";
 import { Dialog, Tag } from "./primitives";
 
 const WORKING: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
@@ -248,57 +248,27 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
   </div>;
 }
 
-function useReducedMotion() {
-  const query = typeof window === "undefined" || !window.matchMedia ? null : window.matchMedia("(prefers-reduced-motion: reduce)");
-  const [reduced, setReduced] = useState(query?.matches ?? false);
-  useEffect(() => {
-    if (!query) return;
-    const change = () => setReduced(query.matches);
-    query.addEventListener("change", change);
-    return () => query.removeEventListener("change", change);
-  }, []);
-  return reduced;
-}
-
 /**
- * The job's stage and a percent bar. The bar never moves back: it eases toward the stage's value (see narration-progress),
- * creeping inside the stage while it runs and gliding to the next stage's start when the server reports it. With reduced
- * motion it shows each stage's start and jumps without easing.
+ * The job's stage and a percent bar showing only what the server reported (see narration-progress). Within one job the value
+ * never moves back (a script written again counts from zero), a newly reported value slides in over 300 ms (CSS `.listen-fill`,
+ * none with reduced motion), and a once-a-second tick only renews the elapsed time in the label.
  */
 function NarrationProgress({ narration, prefix, lead }: { readonly narration: Narration; readonly prefix: string; readonly lead: string }) {
-  const reduced = useReducedMotion();
-  const target = (now: number) => {
-    const stage = narrationStage(narration, now);
-    return reduced ? stage.from : stageValue(stage, now);
-  };
-  const shown = useRef<number | null>(null);
-  shown.current ??= target(Date.now());
-  const fill = useRef<HTMLSpanElement>(null);
-  const [percent, setPercent] = useState(() => Math.floor(shown.current ?? 0));
-  const [label, setLabel] = useState(() => narrationStage(narration, Date.now()).label);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    let frame = 0;
-    let last = performance.now();
-    const draw = (time: number) => {
-      const now = Date.now();
-      const current = shown.current ?? 0;
-      const goal = Math.max(current, target(now));
-      const eased = reduced ? goal : current + (goal - current) * (1 - Math.exp(-(time - last) / EASE_MS));
-      last = time;
-      shown.current = goal - eased < 0.05 ? goal : eased;
-      if (fill.current) fill.current.style.transform = `scaleX(${shown.current / 100})`;
-      setPercent(Math.floor(shown.current));
-      setLabel(narrationStage(narration, now).label);
-      if (!reduced || narration.waitUntil !== null) frame = requestAnimationFrame(draw);
-    };
-    frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
-  }, [narration, reduced]);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const { label, value } = narrationStage(narration, now);
+  const shown = useRef({ job: narration.requestedAt, value });
+  if (shown.current.job !== narration.requestedAt) shown.current = { job: narration.requestedAt, value };
+  shown.current.value = Math.max(shown.current.value, value);
+  const percent = Math.floor(shown.current.value);
   return <>
     <span className="listen-stage">{lead}{label}</span>
     <span className="listen-track" role="progressbar" aria-label={`${prefix}${text().progress}`} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={percent} aria-valuetext={`${label} ${percent}%`}>
-      <span ref={fill} className="listen-fill" style={{ transform: `scaleX(${(shown.current ?? 0) / 100})` }} />
+      <span className="listen-fill" style={{ transform: `scaleX(${shown.current.value / 100})` }} />
     </span>
     <span className="listen-percent" aria-hidden="true">{percent}%</span>
   </>;

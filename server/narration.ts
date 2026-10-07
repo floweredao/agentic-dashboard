@@ -20,8 +20,8 @@ export interface NarrationProvider {
   readonly hosts: readonly [string, string];
   /** Whether a key is configured; checked before any paid call. */
   available(): Promise<boolean>;
-  /** Writes the script with `model`, else `scriptModel`. */
-  script(system: string, prompt: string, signal: AbortSignal, model?: string): Promise<string>;
+  /** Writes the script with `model`, else `scriptModel`, telling `onText` how many characters have arrived so far. */
+  script(system: string, prompt: string, signal: AbortSignal, model?: string, onText?: (chars: number) => void): Promise<string>;
   /** Speaks one chunk as 24 kHz mono 16-bit little-endian PCM. */
   speak(text: string, style: string, signal: AbortSignal): Promise<Uint8Array>;
   /** Speaks a run of podcast turns in one request, each in its host's voice, as the same PCM. */
@@ -134,6 +134,14 @@ const abortableSleep = (ms: number, signal: AbortSignal) => new Promise<void>(re
   const timer = setTimeout(resolve, ms);
   signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
 });
+/**
+ * The script length to measure its progress against: about the model input's length (a record of about 1,000
+ * input characters turned into a script of about the same length), at least a short note's and at most the length the
+ * instructions allow. Only the bar uses it; a longer script stops at the end of the script's share.
+ */
+export function expectedScriptChars(prompt: string) {
+  return Math.min(NARRATION_LIMITS.scriptChars - 500, Math.max(600, prompt.length));
+}
 const rowSchema = z.object({
   record_id: z.string(), status: NarrationStatusSchema, job_hash: z.string(), requested_by: z.string(),
   requested_at: z.string(), updated_at: z.string(), attempts: z.number().int(), error: z.string().nullable(),
@@ -323,7 +331,7 @@ export function createNarration(options: NarrationOptions) {
   }
   let chain: Promise<void> = Promise.resolve();
   /** The job being run, with its own controller: a cancel aborts only this run, never a later request for the same id. */
-  let running: { id: string; controller: AbortController; waitUntil: number | null } | null = null;
+  let running: { id: string; controller: AbortController; waitUntil: number | null; stepAt: number | null } | null = null;
   const now = () => new Date(store.now()).toISOString();
   const available = async () => provider !== null && await provider.available();
 
@@ -344,8 +352,10 @@ export function createNarration(options: NarrationOptions) {
       bytes: current.audio_bytes ?? 0, durationMs: current.audio_ms ?? 0, model: current.audio_model ?? "", voice: current.audio_voice ?? "",
       style: current.audio_style, createdAt: current.audio_at,
     } : null;
+    const live = running?.id === current.record_id && ACTIVE.has(current.status) ? running : null;
+    const stepAt = live?.stepAt != null ? new Date(live.stepAt).toISOString() : current.status === "queued" ? current.requested_at : null;
     return {
-      recordId: current.record_id, status: current.status, style: current.style, stale: audio !== null && current.audio_hash !== sourceHash(record),
+      recordId: current.record_id, status: current.status, style: current.style, stale: audio !== null && current.audio_hash !== sourceHash(record), stepAt,
       progress: current.progress_total === null ? null : { done: current.progress_done ?? 0, total: current.progress_total },
       waitUntil: running?.id === current.record_id && running.waitUntil !== null && ACTIVE.has(current.status) ? new Date(running.waitUntil).toISOString() : null,
       attempts: current.attempts, error: current.error, requestedBy: current.requested_by, requestedAt: current.requested_at,
@@ -437,21 +447,35 @@ export function createNarration(options: NarrationOptions) {
     }
   }
   /** The script from the main model, or from the lighter one when the main one stays busy or is out of today's quota. */
-  async function writeScript(source: NarrationProvider, system: string, prompt: string, cancel: AbortSignal) {
+  async function writeScript(source: NarrationProvider, system: string, prompt: string, cancel: AbortSignal, onText: (chars: number) => void) {
     try {
-      return await retrying(signal => source.script(system, prompt, signal), cancel);
+      return await retrying(signal => source.script(system, prompt, signal, undefined, onText), cancel);
     } catch (error) {
       const fallback = source.fallbackScriptModel;
       if (!(error instanceof ProviderError) || !fallback || !(error.transient || error.code === "quota_daily")) throw error;
-      return await retrying(signal => source.script(system, prompt, signal, fallback), cancel);
+      return await retrying(signal => source.script(system, prompt, signal, fallback, onText), cancel);
     }
+  }
+  /** The running job's next step (the script, a chunk, saving) starts now; the owner sees how long it has run. */
+  function stepStarted() {
+    if (running) running.stepAt = store.now();
+  }
+  /** Stores the script characters received, at most once per 2% of the expected length so a fast stream costs few writes. */
+  function scriptProgress(id: string, expected: number, cancel: AbortSignal) {
+    let mark = 0;
+    return (chars: number) => {
+      const next = Math.floor(Math.min(chars, expected) * 50 / expected);
+      if (next === mark || cancel.aborted) return;
+      mark = next;
+      set(id, { progress_done: chars });
+    };
   }
 
   async function run(id: string) {
     const job = row(id);
     if (!job || job.status !== "queued") return;
     const controller = new AbortController();
-    running = { id, controller, waitUntil: null };
+    running = { id, controller, waitUntil: null, stepAt: null };
     try { await work(id, job, controller.signal); }
     finally { if (running?.controller === controller) running = null; }
   }
@@ -477,19 +501,22 @@ export function createNarration(options: NarrationOptions) {
     try {
       let script = job.script_hash === hash && job.script_style === style ? job.script : null;
       if (!script) {
-        set(id, { status: "scripting", job_hash: hash });
         const digest = label !== undefined;
         const korean = isKorean(record);
         const base = podcast ? PODCAST_SCRIPT_SYSTEM : digest ? DIGEST_SCRIPT_SYSTEM : SCRIPT_SYSTEM;
         const system = korean ? `${base}\n${KOREAN_POLITE}` : base;
         const prompt = scriptPrompt(record, label);
-        script = normalizeScript(await writeScript(provider, system, prompt, cancel));
+        const expected = expectedScriptChars(prompt);
+        set(id, { status: "scripting", job_hash: hash, progress_done: 0, progress_total: expected });
+        stepStarted();
+        const received = scriptProgress(id, expected, cancel);
+        script = normalizeScript(await writeScript(provider, system, prompt, cancel, received));
         // One more script when a Korean script slipped into 반말 or into one tone; a second slip is kept rather than paid for again.
         const tone = korean ? oneSidedTone(script) : null;
         const again = korean ? [plainSentences(script).length > 0 ? KOREAN_POLITE_AGAIN : "", tone ? KOREAN_TONE_AGAIN[tone] : ""].filter(Boolean) : [];
         if (again.length > 0) {
           check();
-          script = normalizeScript(await writeScript(provider, `${system}\n${again.join("\n")}`, prompt, cancel)) || script;
+          script = normalizeScript(await writeScript(provider, `${system}\n${again.join("\n")}`, prompt, cancel, received)) || script;
         }
         if (!script) throw new ProviderError("empty_script", false);
         // Kept even when cancelled meanwhile: it is paid for, and a later request reuses it.
@@ -503,6 +530,7 @@ export function createNarration(options: NarrationOptions) {
       if (speeches.length === 0) throw new ProviderError("empty_script", false);
       const pcm: Uint8Array[] = [];
       set(id, { status: "speaking", job_hash: hash, progress_done: 0, progress_total: speeches.length });
+      stepStarted();
       let pace = 0;
       for (const [index, speech] of speeches.entries()) {
         if (index > 0 && pace > 0) await pause(pace, cancel);
@@ -511,6 +539,7 @@ export function createNarration(options: NarrationOptions) {
         if (audio.byteLength === 0) throw new ProviderError("no_audio", false);
         pcm.push(audio);
         set(id, { progress_done: index + 1 });
+        stepStarted();
       }
       const body = Buffer.concat(pcm);
       mkdirSync(audioDir, { recursive: true, mode: 0o700 });
