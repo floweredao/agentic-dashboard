@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { AGENT_RECORD_RULES, agentRecordIssues, DashboardRecordSchema, DateSchema, RecordInputSchema, RecordKindSchema, ReviewStateSchema, TITLE_MAX_WIDTH, titleWidth, TRASH_RETENTION_DAYS } from "../shared/contracts";
-import type { DashboardRecord, RecordInput, RecordKind, RecordPatch, Source, TrashItem } from "../shared/contracts";
+import type { DashboardRecord, RecordDocument, RecordInput, RecordKind, RecordPatch, Source, TrashItem } from "../shared/contracts";
 import { ApiError } from "./errors";
 
 export interface Principal { readonly id: string; readonly source: Source }
@@ -17,6 +17,7 @@ const querySchema = z.object({
 }).strict();
 const cursorSchema = z.object({ createdAt: z.iso.datetime(), id: z.string().uuid() }).strict();
 const trashRow = z.object({ data: z.string(), deleted_at: z.string() });
+const documentRow = z.object({ html: z.string(), bytes: z.number(), updated_by: z.string(), updated_at: z.string() });
 const RETENTION_MS = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const CONTINUABLE: ReadonlySet<RecordKind> = new Set(["research", "work-report", "note", "social"]);
 /** Kinds every agent may read whoever saved them, while unarchived. Tasks, projects and archived records stay with their creator and the owner. */
@@ -65,7 +66,8 @@ export class Store {
       CREATE TABLE IF NOT EXISTS comments(id TEXT PRIMARY KEY, record_id TEXT NOT NULL, author TEXT NOT NULL REFERENCES principals(id),
         source TEXT NOT NULL, body TEXT NOT NULL, reply_to TEXT REFERENCES comments(id), status TEXT, created_at TEXT NOT NULL,
         seen_at TEXT, seen_by TEXT, done_at TEXT, done_by TEXT, request_id TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(author,request_id));
-      CREATE INDEX IF NOT EXISTS comments_record ON comments(record_id, created_at);`);
+      CREATE INDEX IF NOT EXISTS comments_record ON comments(record_id, created_at);
+      CREATE TABLE IF NOT EXISTS documents(record_id TEXT PRIMARY KEY, html TEXT NOT NULL, bytes INTEGER NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);`);
   }
   get(id: string): DashboardRecord {
     const row = this.db.query("SELECT data FROM records WHERE id=?").get(id);
@@ -216,10 +218,26 @@ export class Store {
     if (purged) this.dropOrphanComments();
     return purged;
   }
-  /** A trashed record keeps its timeline for a restore; once it is gone for good, so are its comments. */
+  /** A trashed record keeps its timeline and document for a restore; once it is gone for good, so are they. */
   private dropOrphanComments() {
     this.db.run(`DELETE FROM comments WHERE record_id NOT IN (SELECT id FROM records) AND record_id NOT IN (SELECT id FROM trash)`);
+    this.db.run(`DELETE FROM documents WHERE record_id NOT IN (SELECT id FROM records) AND record_id NOT IN (SELECT id FROM trash)`);
   }
+  document(id: string): RecordDocument | null {
+    const row = this.db.query("SELECT html,bytes,updated_by,updated_at FROM documents WHERE record_id=?").get(id);
+    if (!row) return null;
+    const value = documentRow.parse(row);
+    return { html: value.html, bytes: value.bytes, updatedBy: value.updated_by, updatedAt: value.updated_at };
+  }
+  putDocument(id: string, html: string, by: Principal): RecordDocument {
+    const timestamp = new Date(this.now()).toISOString();
+    const bytes = new TextEncoder().encode(html).byteLength;
+    this.db.query(`INSERT INTO documents(record_id,html,bytes,updated_by,updated_at) VALUES(?,?,?,?,?)
+      ON CONFLICT(record_id) DO UPDATE SET html=excluded.html, bytes=excluded.bytes, updated_by=excluded.updated_by, updated_at=excluded.updated_at`)
+      .run(id, html, bytes, by.source, timestamp);
+    return { html, bytes, updatedBy: by.source, updatedAt: timestamp };
+  }
+  deleteDocument(id: string) { this.db.query("DELETE FROM documents WHERE record_id=?").run(id); }
   /** Sets a task or project status from a timeline entry, as a new version. */
   setStatus(id: string, status: string): DashboardRecord {
     const current = this.get(id);

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import type { Context } from "hono";
-import { CommentInputSchema, DIGEST_LIMITS, DigestInputSchema, DigestPartSchema, NarrationStyleSchema, PushKindsSchema, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
+import { CommentInputSchema, DIGEST_LIMITS, DigestInputSchema, DigestPartSchema, DOCUMENT_LIMITS, DocumentInputSchema, NARRATABLE_KINDS, NarrationStyleSchema, PushKindsSchema, RECORD_LIMITS, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
 import type { Comment, DashboardRecord, PushPayload } from "../shared/contracts";
 import { createAiFill, type AiFillOptions } from "./ai-fill";
 import { systemTimeZone } from "../shared/time";
@@ -175,7 +175,7 @@ export function createApp(options: AppOptions = {}) {
       c.header("X-Content-Type-Options", "nosniff");
       c.header("X-Frame-Options", "DENY");
       c.header("Referrer-Policy", "no-referrer");
-      c.header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+      c.header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
       c.header("Cache-Control", "no-store");
       const url = new URL(c.req.url);
       if (!hosts.has(c.req.header("host") ?? url.host)) throw new ApiError(421, "invalid_host", "Host is not allowed");
@@ -283,7 +283,7 @@ export function createApp(options: AppOptions = {}) {
       app.patch("/api/v1/records/:id", async c => {
         const principal = auth.authenticate(c.req.raw, false);
         if (principal.source === "manual") auth.csrf(c.req.raw, origins);
-        const patch = RecordPatchSchema.parse(await json(c.req.raw));
+        const patch = RecordPatchSchema.parse(await json(c.req.raw, RECORD_LIMITS.requestBytes));
         if (principal.source === "manual") return c.json({ record: store.patch(c.req.param("id"), patch) });
         const before = store.get(c.req.param("id"));
         const record = store.agentPatch(principal, c.req.param("id"), patch);
@@ -347,6 +347,26 @@ export function createApp(options: AppOptions = {}) {
         return c.json(await narration.cancel(record));
       });
       app.get("/api/v1/records/:id/narration/audio", c => serveAudio(c, narration.audioFile(narratable(c.req.raw, c.req.param("id")).record.id)));
+      /** Full document: read like the record; replaced or removed by the owner (CSRF) or the agent that created the record. */
+      app.get("/api/v1/records/:id/document", c => c.json({ document: store.document(narratable(c.req.raw, c.req.param("id")).record.id) }));
+      const documentWriter = (request: Request, id: string) => {
+        const { principal, record } = narratable(request, id);
+        if (principal.source === "manual") auth.csrf(request, origins);
+        else if (record.createdBy !== principal.id) throw new ApiError(403, "forbidden", "Agents attach documents only to records they created");
+        if (!NARRATABLE_KINDS.some(kind => kind === record.kind)) {
+          throw new ApiError(400, "document_unsupported", "Only research, work-report, note and social records take a document");
+        }
+        return { principal, record };
+      };
+      app.put("/api/v1/records/:id/document", async c => {
+        const { principal, record } = documentWriter(c.req.raw, c.req.param("id"));
+        const input = DocumentInputSchema.parse(await json(c.req.raw, DOCUMENT_LIMITS.requestBytes));
+        return c.json({ document: store.putDocument(record.id, input.html, principal) });
+      });
+      app.delete("/api/v1/records/:id/document", c => {
+        store.deleteDocument(documentWriter(c.req.raw, c.req.param("id")).record.id);
+        return c.body(null, 204);
+      });
       /** The owner and every registered agent read digests. */
       const digestReader = (request: Request) => { digestRoute(); return auth.authenticate(request, false); };
       app.post("/api/v1/digests", async c => {
@@ -446,7 +466,7 @@ export function createApp(options: AppOptions = {}) {
     app.post("/api/v1/records", async c => {
       const principal = auth.authenticate(c.req.raw, publicOnly);
       if (principal.source === "manual") auth.csrf(c.req.raw, origins);
-      const input = createSchema.parse(await json(c.req.raw));
+      const input = createSchema.parse(await json(c.req.raw, RECORD_LIMITS.requestBytes));
       const result = store.create(principal, input.requestId, RecordInputSchema.parse(input.record), input.record);
       if (!result.replayed && aiFillSources.has(principal.source)) aiFill?.enqueue(result.record.id);
       if (!result.replayed && principal.source !== "manual") notifyReview(null, result.record);

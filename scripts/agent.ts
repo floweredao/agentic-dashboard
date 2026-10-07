@@ -1,9 +1,9 @@
 import { parseArgs } from "node:util";
 import { HTTPError } from "ky";
 import { z } from "zod";
-import { NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
+import { DocumentStateSchema, NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { NarrationState } from "../shared/contracts";
-import { getNarration, getRecord, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, updateRecord } from "./agent-client";
+import { getDocument, getNarration, getRecord, putDocument, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, updateRecord } from "./agent-client";
 
 let readingShared = false;
 type Action = "save" | "get" | "update" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "digest" | "digests";
@@ -82,6 +82,7 @@ try {
       digests: { type: "boolean" },
       from: { type: "string" },
       to: { type: "string" },
+      html: { type: "string" },
       help: { type: "boolean" },
     },
   });
@@ -90,12 +91,19 @@ try {
   const connect = async () => ({ url: base, token: z.string().trim().min(1, "Set DASHBOARD_TOKEN to this agent's key").parse(values.token ?? process.env["DASHBOARD_TOKEN"]) });
   const requestId = () => z.string().min(1).max(128).parse(values["request-id"] ?? crypto.randomUUID());
   const status = () => values.status === undefined ? undefined : statusSchema.parse(values.status);
+  /** --html <file>: the full document to attach; only its size and time are printed, never the HTML. */
+  const attach = async (connection: Awaited<ReturnType<typeof connect>>, id: string) => {
+    if (values.html === undefined) return {};
+    const html = await Bun.file(z.string().min(1).parse(values.html)).text();
+    const { document } = DocumentStateSchema.parse(await putDocument(connection, id, html));
+    return { document: document && { bytes: document.bytes, updatedAt: document.updatedAt } };
+  };
   if (values.help) {
     console.log(
       "Every command reads the agent's key from DASHBOARD_TOKEN (or --token) and the dashboard from DASHBOARD_URL (or --url; default http://127.0.0.1:4310).\n\n" +
-      "Save:        bun run agent --file record.json --request-id unique-id\n" +
-        "Read:        bun run agent --get <record-id>\n" +
-        "Update:      bun run agent --update <record-id> --expected-version <n> --file changes.json\n" +
+      "Save:        bun run agent --file record.json --request-id unique-id [--html document.html]\n" +
+        "Read:        bun run agent --get <record-id>   (with the attached document's size and time)\n" +
+        "Update:      bun run agent --update <record-id> [--expected-version <n> --file changes.json] [--html document.html]\n" +
         "Search:      bun run agent --search \"words\" [--kind research|work-report|note|social|task|project] [--limit 1-50] [--cursor <nextCursor>]\n" +
         "Shared:      bun run agent --shared <code|share-url>\n" +
         "New task:    bun run agent --new-task \"Title\" --tags topic1,topic2 [--text \"Details\"] [--status todo|active|review|paused|done] [--evidence <record-id,...>] [--request-id id]\n" +
@@ -147,20 +155,20 @@ try {
   } else if (values.get !== undefined) {
     action = "get";
     const id = z.string().trim().min(1).parse(values.get);
-    print(await getRecord(await connect(), id));
+    const connection = await connect();
+    const record = z.record(z.string(), z.unknown()).parse(await getRecord(connection, id));
+    const { document } = DocumentStateSchema.parse(await getDocument(connection, id));
+    print({ ...record, document: document && { bytes: document.bytes, updatedAt: document.updatedAt } });
   } else if (values.update !== undefined) {
     action = "update";
     const id = z.string().trim().min(1).parse(values.update);
-    const expectedVersion = z.coerce
-      .number()
-      .int()
-      .positive()
-      .parse(values["expected-version"]);
-    const file = z.string().min(1).parse(values.file);
-    print(await updateRecord(await connect(), id, {
-      expectedVersion,
-      changes: await Bun.file(file).json(),
+    const connection = await connect();
+    if (values.file === undefined && values.html === undefined) z.string().parse(values.file);
+    const updated = values.file === undefined ? {} : z.record(z.string(), z.unknown()).parse(await updateRecord(connection, id, {
+      expectedVersion: z.coerce.number().int().positive().parse(values["expected-version"]),
+      changes: await Bun.file(values.file).json(),
     }));
+    print({ ...updated, ...await attach(connection, id) });
   } else if (values["new-task"] !== undefined) {
     action = "task";
     const id = requestId();
@@ -233,10 +241,12 @@ try {
   } else {
     const file = z.string().min(1).parse(values.file);
     const id = z.string().min(1).max(128).parse(values["request-id"]);
-    print(await sendRecord(await connect(), {
+    const connection = await connect();
+    const saved = savedSchema.parse(await sendRecord(connection, {
       requestId: id,
       record: await Bun.file(file).json(),
     }));
+    print({ ...saved, ...await attach(connection, saved.record.id) });
   }
 } catch (error) {
   const label = labels[action];
