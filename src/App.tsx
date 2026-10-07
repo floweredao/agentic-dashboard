@@ -32,7 +32,7 @@ const text = strings({
   en: {
     synced: (time: string) => `Synced ${time}`,
     saved: "Saved.", undone: "Undone.", openedNext: " Opened the next item.", markedDone: "Marked as done.", confirmed: "Marked as reviewed.",
-    restored: "Restored.", markedRead: "Marked as read.", markedUnread: "Marked as unread.", unstarred: "Removed the star.", starred: "Starred.",
+    restored: "Restored.", markedRead: "Marked as read.", markedUnread: "Marked as unread.", unstarred: "Removed from favorites.", starred: "Added to favorites.",
     markedPending: "Moved back to review.", revisitCleared: "Cleared the revisit date.", snoozed: "You'll see this again in 7 days.",
     archived: "Archived.", trashed: "Moved to the trash.",
     purgeConfirm: (title: string) => `Delete "${title}" permanently? This can't be undone.`, purged: "Deleted permanently.",
@@ -50,7 +50,7 @@ const text = strings({
   ko: {
     synced: (time: string) => `동기화 ${time}`,
     saved: "저장했어요.", undone: "되돌렸어요.", openedNext: " 다음 항목을 열었어요.", markedDone: "완료로 표시했어요.", confirmed: "확인했어요.",
-    restored: "복원했어요.", markedRead: "읽음으로 표시했어요.", markedUnread: "안 읽음으로 표시했어요.", unstarred: "별표를 뺐어요.", starred: "별표를 달았어요.",
+    restored: "복원했어요.", markedRead: "읽음으로 표시했어요.", markedUnread: "안 읽음으로 표시했어요.", unstarred: "즐겨찾기에서 뺐어요.", starred: "즐겨찾기에 넣었어요.",
     markedPending: "미확인으로 바꿨어요.", revisitCleared: "다시 볼 날을 지웠어요.", snoozed: "7일 뒤에 다시 보여 드릴게요.",
     archived: "보관했어요.", trashed: "휴지통으로 옮겼어요.",
     purgeConfirm: (title: string) => `"${title}" 항목을 영구 삭제할까요? 되돌릴 수 없어요.`, purged: "영구 삭제했어요.",

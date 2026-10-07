@@ -25,15 +25,15 @@ const text = strings<ModelText>({
     },
     kinds: { project: "Project", task: "Task", research: "Research", "work-report": "Work", note: "Note", social: "Link" },
     share: "Shared links", manual: "Written here", other: "Other",
-    inboxStates: { all: "All", pending: "To review", approved: "Reviewed" },
+    inboxStates: { all: "All", pending: "To review", approved: "Reviewed", starred: "Favorites" },
     today: "Today", yesterday: "Yesterday",
     projectStatuses: { idea: "Idea", planning: "Planning", active: "In progress", paused: "On hold", done: "Done" },
     taskStatuses: { todo: "Not started", active: "In progress", review: "Needs review", paused: "On hold", done: "Done" },
     filters: {
       projects: [{ id: "all", label: "All" }, { id: "active", label: "In progress" }, { id: "idea", label: "Idea" }, { id: "paused", label: "On hold" }, { id: "done", label: "Done" }],
       tasks: [{ id: "today", label: "Today" }, { id: "week", label: "This week" }, { id: "all", label: "All tasks" }, { id: "review", label: "Needs review" }, { id: "done", label: "Done" }, { id: "notes", label: "Task notes" }],
-      research: [{ id: "pending", label: "To review" }, { id: "all", label: "All" }, { id: "starred", label: "Starred" }],
-      social: [{ id: "x", label: "X" }, { id: "threads", label: "Threads" }, { id: "starred", label: "Starred" }],
+      research: [{ id: "pending", label: "To review" }, { id: "all", label: "All" }, { id: "starred", label: "Favorites" }],
+      social: [{ id: "x", label: "X" }, { id: "threads", label: "Threads" }, { id: "starred", label: "Favorites" }],
     },
     justNow: "Just now", hoursAgo: hours => `${hours}h ago`, daysAgo: days => `${days}d ago`,
   },
@@ -44,15 +44,15 @@ const text = strings<ModelText>({
     },
     kinds: { project: "프로젝트", task: "할 일", research: "조사", "work-report": "작업", note: "메모", social: "링크" },
     share: "iPhone 공유", manual: "직접 작성", other: "기타",
-    inboxStates: { all: "전체", pending: "미확인", approved: "확인함" },
+    inboxStates: { all: "전체", pending: "미확인", approved: "확인함", starred: "즐겨찾기" },
     today: "오늘", yesterday: "어제",
     projectStatuses: { idea: "아이디어", planning: "기획", active: "진행 중", paused: "보류", done: "완료" },
     taskStatuses: { todo: "시작 전", active: "진행 중", review: "확인 필요", paused: "보류", done: "끝남" },
     filters: {
       projects: [{ id: "all", label: "전체" }, { id: "active", label: "진행 중" }, { id: "idea", label: "아이디어" }, { id: "paused", label: "보류" }, { id: "done", label: "완료" }],
       tasks: [{ id: "today", label: "오늘" }, { id: "week", label: "이번 주" }, { id: "all", label: "전체 할 일" }, { id: "review", label: "확인 필요" }, { id: "done", label: "끝남" }, { id: "notes", label: "할 일 메모" }],
-      research: [{ id: "pending", label: "미확인" }, { id: "all", label: "전체" }, { id: "starred", label: "별표" }],
-      social: [{ id: "x", label: "X" }, { id: "threads", label: "Threads" }, { id: "starred", label: "별표" }],
+      research: [{ id: "pending", label: "미확인" }, { id: "all", label: "전체" }, { id: "starred", label: "즐겨찾기" }],
+      social: [{ id: "x", label: "X" }, { id: "threads", label: "Threads" }, { id: "starred", label: "즐겨찾기" }],
     },
     justNow: "방금 전", hoursAgo: hours => `${hours}시간 전`, daysAgo: days => `${days}일 전`,
   },
@@ -108,16 +108,17 @@ export function inboxItems(records: readonly DashboardRecord[], today = localDat
   return records.filter(record => isRecord(record) && inQueue(record, today))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-/** The inbox's review filter (`?state=`): all (every unarchived material) is the default; pending is the queue above; approved is confirmed material. */
-export type InboxState = "pending" | "approved" | "all";
+/** The inbox's review filter (`?state=`): all (every unarchived material) is the default; pending is the queue above; approved is confirmed material; starred is starred material. */
+export type InboxState = "pending" | "approved" | "all" | "starred";
 export const inboxStates: readonly { readonly id: InboxState; readonly label: string }[] = localized(() =>
-  (["all", "pending", "approved"] as const).map(id => ({ id, label: text().inboxStates[id] })));
+  (["all", "pending", "approved", "starred"] as const).map(id => ({ id, label: text().inboxStates[id] })));
 export const inboxStateOf = (params: Readonly<Record<string, string>>): InboxState =>
-  params.state === "approved" || params.state === "pending" ? params.state : "all";
+  params.state === "approved" || params.state === "pending" || params.state === "starred" ? params.state : "all";
 /** Unarchived material for one review filter, newest first. */
 export function inboxView(records: readonly DashboardRecord[], state: InboxState, today = localDate()) {
   if (state === "pending") return inboxItems(records, today);
-  return records.filter(record => isRecord(record) && record.archivedAt === null && (state === "all" || record.reviewState === "approved"))
+  return records.filter(record => isRecord(record) && record.archivedAt === null
+    && (state === "all" || (state === "starred" ? record.fields.starred === true : record.reviewState === "approved")))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 /** Case-insensitive match over the text a person remembers: title, body, summary, conclusion, tags, host. */
@@ -154,6 +155,7 @@ export function digestMatches(item: DigestSummary, query: string, title: string)
 }
 /** Digests for one review filter, newest first: all of them, pending those with an unread part, approved the fully read ones. */
 export function inboxDigestView(items: readonly DigestSummary[], state: InboxState) {
+  if (state === "starred") return [];
   return items.filter(item => state === "all" || (state === "pending") === digestUnread(item))
     .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
 }

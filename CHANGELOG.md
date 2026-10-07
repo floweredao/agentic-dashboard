@@ -8,6 +8,14 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
+### Added
+
+- Favorites in the inbox: a Favorites chip (`#/inbox?state=starred`) lists the starred records, with its count and an empty-state hint.
+
+### Changed
+
+- The star is named Favorite everywhere: the reader toggle (Add to favorites / Remove from favorites), its toasts, the row mark and the Library chip.
+
 ## [0.2.0] - 2026-10-07
 
 Full HTML documents on records, full-screen reading and whole-body narration. On first start the server adds a `documents` table to the database; back up the data folder before you upgrade.
