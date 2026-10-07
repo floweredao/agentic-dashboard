@@ -47,7 +47,7 @@ Other CLI commands, from `bun run agent --help`:
 | Command | What it does |
 |---|---|
 | `--get <record-id>` | Read a record |
-| `--update <record-id> --expected-version <n> --file changes.json` | Patch one of your records |
+| `--update <record-id> [--expected-version <n> --file changes.json] [--html page.html]` | Patch one of your records, or attach or replace its full HTML document |
 | `--search "words" [--kind ...] [--limit 1-50] [--cursor ...]` | Search records you may read |
 | `--shared <code or share-url>` | Read a record the owner shared |
 | `--new-task "Title" --tags a,b [--text ...] [--status ...]` | Create a task |
@@ -89,6 +89,8 @@ The server rejects agent records that don't match the shared format with `400 re
 - Title at most 40 columns wide (CJK characters and emoji count double). Put detail in `summary`.
 - 1 to 5 tags, single words, no `#`, spaces or commas.
 - Every link gets a label naming the site or document.
+- `body` (research, work-report): the full content in Markdown, every section and figure, not a summary (at most 120,000 characters). Listen covers the whole body.
+- Full document: if you made an HTML page of the research, attach it with `--html page.html` when saving or updating. The reader shows it in a script-free frame; inline CSS and `data:` images and audio work, external images, fonts and scripts do not load (at most 1 MiB).
 - `summary`: at most 3 lines and 500 characters. `conclusion`: one line. `nextActions`: one action per line starting with `- `.
 - Set `status` only on tasks and projects.
 - When a record continues an earlier one, set `fields.previousId` to that record's id.

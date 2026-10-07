@@ -45,8 +45,10 @@ The server refuses other shapes with `400 record_incomplete` and lists each prob
 Write the record to a JSON file, then:
 
 ```sh
-bun run agent --file record.json --request-id <kind>-<yyyy-mm-dd>-<slug>
+bun run agent --file record.json --request-id <kind>-<yyyy-mm-dd>-<slug> [--html page.html]
 ```
+
+Write the full findings in `body`, not a summary. If you made an HTML page of the research, attach it with `--html`; the reader shows it as the record's full document (no scripts run; inline CSS and `data:` images and audio work; at most 1 MiB). `bun run agent --update <record-id> --html page.html` replaces it.
 
 ## Save with HTTP (from anywhere)
 
