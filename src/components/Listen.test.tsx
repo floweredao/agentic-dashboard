@@ -53,18 +53,43 @@ test("a running job shows one compact row with its stage, a percent bar inside t
   expect(labels({ narration: { ...base, status: "queued" }, available: true })).toEqual(["음성 만들기 취소"]);
 });
 
-test("a failure the owner closed stays closed on this device, until the job fails again", () => {
+test("a failure the owner closed stays closed on this device, even when a retry fails again for the same reason", () => {
   const saved = new Map<string, string>();
   const read = (key: string) => saved.get(key) ?? null;
+  const failure = { updatedAt: "2026-10-02T11:10:00.000Z", error: "quota_daily", audio };
   // Given a failure from 20:10 that was never closed
-  expect(failureDismissed(record.id, "2026-10-02T11:10:00.000Z", read)).toBe(false);
+  expect(failureDismissed(record.id, failure, read)).toBe(false);
   // When x is pressed, then the record is opened again
-  rememberDismissed(record.id, "2026-10-02T11:10:00.000Z", (key: string, value: string) => { saved.set(key, value); });
-  expect(failureDismissed(record.id, "2026-10-02T11:10:00.000Z", read)).toBe(true);
+  rememberDismissed(record.id, failure, (key: string, value: string) => { saved.set(key, value); });
+  expect(failureDismissed(record.id, failure, read)).toBe(true);
   expect([...saved.keys()]).toEqual([`agentic:listen-dismissed:${record.id}`]);
-  // Then a later failure, or another record's failure, still shows once
-  expect(failureDismissed(record.id, "2026-10-02T12:30:00.000Z", read)).toBe(false);
-  expect(failureDismissed("00000000-0000-4000-8000-000000000202", "2026-10-02T11:10:00.000Z", read)).toBe(false);
+  // Then a retry that fails the next morning for the same reason on the same audio stays closed
+  expect(failureDismissed(record.id, { ...failure, updatedAt: "2026-10-03T00:18:27.000Z" }, read)).toBe(true);
+  // But another reason, new audio, or another record's failure still shows once
+  expect(failureDismissed(record.id, { ...failure, error: "http_403" }, read)).toBe(false);
+  expect(failureDismissed(record.id, { ...failure, audio: { ...audio, url: `${audio.url}x` } }, read)).toBe(false);
+  expect(failureDismissed("00000000-0000-4000-8000-000000000202", failure, read)).toBe(false);
+  // And a failure closed before this change (saved as its time) stays closed
+  saved.set(`agentic:listen-dismissed:${record.id}`, "2026-10-04T09:00:00.000Z");
+  expect(failureDismissed(record.id, { ...failure, updatedAt: "2026-10-04T09:00:00.000Z" }, read)).toBe(true);
+});
+
+test("a failed remake keeps the audio that exists playable, with a small note, 다시 시도 and x instead of the alert", () => {
+  // Given audio made earlier and a later job that failed on today's quota
+  const state = { narration: { ...base, status: "failed" as const, attempts: 2, error: "quota_daily", audio }, available: true };
+  const html = bar(state);
+  // Then the player is there and the failure is a status note, not an alert
+  expect(html).toContain(`src="${audio.url}"`);
+  expect(html).not.toContain('role="alert"');
+  expect(html).toMatch(/class="listen-note" role="status"/);
+  expect(text(html)).toContain("새 음성을 만들지 못했어요");
+  expect(text(html)).toContain("다시 시도");
+  expect(html).toContain('aria-label="알림 닫기"');
+  // And once closed only the player is left
+  const closed = renderToStaticMarkup(<NarrationBar record={record} state={parse(state)} pending={false} cancelling={false} dismissed={true} open={false}
+    finishing={false} playNonce={0} onCancel={noop} onRetry={noop} onDismiss={noop} onOpen={noop} onFold={noop} onRemove={noop} />);
+  expect(closed).toContain(`src="${audio.url}"`);
+  expect(closed).not.toContain("listen-note");
 });
 
 test("while the cancel is in flight the row says 취소하고 있어요 and the x is disabled", () => {

@@ -61,7 +61,7 @@ const text = strings({
     fold: "Collapse player", listen: "Listen", outdated: "Outdated",
     cancelMake: "Cancel audio", retry: "Try again", make: "Make audio", keyNeeded: " · key needed",
     makeNew: "Make new", makeAgain: "Make again", viewScript: "View script", deleteAudio: "Delete audio",
-    cancelling: "Cancelling", progress: "Audio progress", dismiss: "Dismiss",
+    cancelling: "Cancelling", progress: "Audio progress", dismiss: "Dismiss", remakeFailed: "Couldn't make new audio",
     confirmRemake: "Making the audio again costs another Gemini charge. Make it again?",
     confirmDelete: "Delete the audio file and script? You'll need to make it again to listen.",
     cancelled: "Audio cancelled.", deleted: "Audio deleted.", script: "Script",
@@ -99,7 +99,7 @@ const text = strings({
     fold: "플레이어 접기", listen: "듣기", outdated: "예전 내용",
     cancelMake: "음성 만들기 취소", retry: "다시 시도", make: "음성 만들기", keyNeeded: " · 키 필요",
     makeNew: "새로 만들기", makeAgain: "다시 만들기", viewScript: "원고 보기", deleteAudio: "음성 삭제",
-    cancelling: "취소하고 있어요", progress: "음성 만드는 진행", dismiss: "알림 닫기",
+    cancelling: "취소하고 있어요", progress: "음성 만드는 진행", dismiss: "알림 닫기", remakeFailed: "새 음성을 만들지 못했어요",
     confirmRemake: "음성을 다시 만들면 Gemini 요금이 한 번 더 들어요. 다시 만들까요?",
     confirmDelete: "음성 파일과 원고를 삭제할까요? 다시 들으려면 새로 만들어야 해요.",
     cancelled: "음성 만들기를 취소했어요.", deleted: "음성을 삭제했어요.", script: "원고",
@@ -138,12 +138,21 @@ export function initialRate(read: (key: string) => string | null = stored): numb
   return knownRate(read(RATE_KEY)) ?? knownRate(read(OLD_RATE_KEY)) ?? DEFAULT_RATE;
 }
 
-/** Whether the owner already closed this failure here: it stays closed on every visit until the job fails again. */
-export function failureDismissed(recordId: string, updatedAt: string | undefined, read: (key: string) => string | null = stored): boolean {
-  return updatedAt !== undefined && read(dismissKey(recordId)) === updatedAt;
+type Failure = Pick<NonNullable<NarrationState["narration"]>, "updatedAt" | "error" | "audio">;
+/** A failure is the same one while its reason and the audio it left are: a retry that fails again the same way is not new. */
+const failureKey = (failure: Failure) => `${failure.error ?? ""}|${failure.audio?.url ?? ""}`;
+
+/**
+ * Whether the owner already closed this failure here. It stays closed on every visit, and when a retry fails again for the
+ * same reason on the same audio; another reason or new audio shows again. A value saved as the failure's time still counts.
+ */
+export function failureDismissed(recordId: string, failure: Failure | null | undefined, read: (key: string) => string | null = stored): boolean {
+  if (!failure) return false;
+  const saved = read(dismissKey(recordId));
+  return saved !== null && (saved === failureKey(failure) || saved === failure.updatedAt);
 }
-export function rememberDismissed(recordId: string, updatedAt: string, write: (key: string, value: string) => void = (key, value) => localStorage.setItem(key, value)) {
-  write(dismissKey(recordId), updatedAt);
+export function rememberDismissed(recordId: string, failure: Failure, write: (key: string, value: string) => void = (key, value) => localStorage.setItem(key, value)) {
+  write(dismissKey(recordId), failureKey(failure));
 }
 
 const working = (state: NarrationState | null) => state?.narration ? WORKING.has(state.narration.status) : false;
@@ -334,18 +343,28 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
       </button>}
     </div>;
   }
-  if (narration && failedFor(state) && !dismissed) {
-    const exhausted = narration.attempts >= NARRATION_LIMITS.attempts;
+  const exhausted = (narration?.attempts ?? 0) >= NARRATION_LIMITS.attempts;
+  const audio = narration?.audio;
+  // Without audio the failure is the bar; with audio made earlier, the player stays and the failed remake is a small note.
+  if (narration && failedFor(state) && !dismissed && !audio) {
     return <div className="listen-bar listen-error" role="alert">
       <span className="listen-stage">{lead}{narrationFailure(narration.error)}</span>
       <button type="button" className="btn btn-ghost" disabled={pending || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
       <button type="button" className="icon-btn listen-icon" aria-label={text().dismiss} onClick={onDismiss}><X size={16} aria-hidden="true" /></button>
     </div>;
   }
-  const audio = narration?.audio;
   if (!audio) return null;
-  return <Player key={audio.url} recordId={record.id} title={record.title} src={audio.url} durationMs={audio.durationMs} stale={narration?.stale ?? false}
-    podcast={audio.style === "podcast"} prefix={prefix} open={open} playNonce={playNonce} pending={pending} onOpen={onOpen} onFold={onFold} onRemove={onRemove} />;
+  const note = narration && failedFor(state) && !dismissed ? <div className="listen-note" role="status">
+    <span className="listen-stage">{lead}{text().remakeFailed} · {narrationFailure(narration.error)}</span>
+    <button type="button" className="btn btn-ghost" disabled={pending || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
+    <button type="button" className="icon-btn listen-icon" aria-label={text().dismiss} onClick={onDismiss}><X size={16} aria-hidden="true" /></button>
+  </div> : null;
+  // The player keeps its place in the tree, so closing the note does not restart what is playing.
+  return <>
+    <Player key={audio.url} recordId={record.id} title={record.title} src={audio.url} durationMs={audio.durationMs} stale={narration?.stale ?? false}
+      podcast={audio.style === "podcast"} prefix={prefix} open={open} playNonce={playNonce} pending={pending} onOpen={onOpen} onFold={onFold} onRemove={onRemove} />
+    {note}
+  </>;
 }
 
 /** The choice behind a record's Make audio: read aloud or podcast, the style last used checked; a remake states that it costs again. */
@@ -471,11 +490,11 @@ export function useNarration({ record, collection = "records", label }: {
   const paragraphs = state.narration?.script?.split(/\n{2,}/) ?? [];
   const bar = <>
     <NarrationBar record={record} state={state} label={label} pending={pending} cancelling={cancelling}
-      dismissed={(dismissed !== null && dismissed === state.narration?.updatedAt) || failureDismissed(forId, state.narration?.updatedAt)} open={open} finishing={finishing} playNonce={playNonce}
+      dismissed={(dismissed !== null && dismissed === state.narration?.updatedAt) || failureDismissed(forId, state.narration)} open={open} finishing={finishing} playNonce={playNonce}
       onCancel={() => { void cancel(); }} onRetry={force => { void request(force); }}
       onDismiss={() => {
         const updatedAt = state.narration?.updatedAt ?? null;
-        if (updatedAt) rememberDismissed(forId, updatedAt);
+        if (state.narration) rememberDismissed(forId, state.narration);
         setDismissed(updatedAt);
       }} onOpen={() => setOpen(true)} onFold={() => setOpen(false)} onRemove={() => { void remove(); }} />
     {script && paragraphs.length > 0 && <Dialog title={`${label ? `${label} ` : ""}${text().script}`} onClose={() => setScript(false)}>
