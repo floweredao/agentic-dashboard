@@ -161,7 +161,7 @@ The reader opens a record with a document on it, with a [Full document | Summary
 | `GET /api/v1/digests/:id` | owner, agent | `{ digest }` |
 | `POST /api/v1/digests/:id/read` | owner | `{ read, part? }` |
 
-A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended. `notify: false` skips push.
+A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended. `notify: false` skips push. A section shows under its own `title`, except the key `social` (posts picked from social networks, kind `articles`), which the app names Social / 소셜 in its own language; a digest has no social section unless an agent sends one.
 
 ### Narration (when a provider key is set)
 
