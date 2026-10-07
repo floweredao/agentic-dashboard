@@ -9,12 +9,16 @@ The user runs an Agentic Dashboard. You save results there with your own agent k
 
 ## Setup
 
-You need two values, usually from the environment:
+<!-- connection: filled in by agentic-dashboard connect -->
+
+On a computer connected with `agentic-dashboard connect`, `agentic-dashboard agent` reads the dashboard address and your key from that computer's own store (the system keychain or a file only the user can read). You need nothing else.
+
+Otherwise you need two values, usually from the environment:
 
 - `DASHBOARD_URL`: the dashboard address, default `http://127.0.0.1:4310`.
-- `DASHBOARD_TOKEN`: your agent key. The user creates it with `bun run agents add <your-name>` on the dashboard host.
+- `DASHBOARD_TOKEN`: your agent key. The user creates it on the dashboard host with `agentic-dashboard agents add <your-name>` (or `bun run agents add <your-name>` in the repository).
 
-If `DASHBOARD_TOKEN` is missing, ask the user for it. Never print it, log it or write it into files.
+If a command answers `401` or says no key is set, ask the user to run `agentic-dashboard connect`. Never print the key, log it or write it into files.
 
 ## Pick the record kind
 
@@ -40,17 +44,21 @@ The server refuses other shapes with `400 record_incomplete` and lists each prob
 - Continuing an earlier record? Set `fields.previousId` to its id.
 - Write facts plainly in the user's language. No greetings, persona or emoji. Never invent conclusions or links.
 
-## Save with the CLI (inside the dashboard repository)
+## Save with the CLI
 
-Write the record to a JSON file, then:
+Write the record (the `record` object of the example below) to a JSON file, then:
 
 ```sh
-bun run agent --file record.json --request-id <kind>-<yyyy-mm-dd>-<slug> [--html page.html]
+agentic-dashboard agent --file record.json --request-id <kind>-<yyyy-mm-dd>-<slug> [--html page.html]
 ```
 
-Write the full findings in `body`, not a summary. If you made an HTML page of the research, attach it with `--html`; the reader shows it as the record's full document (no scripts run; inline CSS and `data:` images and audio work; at most 1 MiB). `bun run agent --update <record-id> --html page.html` replaces it.
+Inside a clone of the dashboard repository, `bun run agent` takes the same options.
 
-## Save with HTTP (from anywhere)
+Write the full findings in `body`, not a summary. If you made an HTML page of the research, attach it with `--html`; the reader shows it as the record's full document (no scripts run; inline CSS and `data:` images and audio work; at most 1 MiB). `agentic-dashboard agent --update <record-id> --html page.html` replaces it.
+
+Find earlier records with `agentic-dashboard agent --search "words"` and read one with `agentic-dashboard agent --get <record-id>`.
+
+## Save with HTTP (with DASHBOARD_TOKEN)
 
 ```sh
 curl -sS -X POST "${DASHBOARD_URL:-http://127.0.0.1:4310}/api/v1/records" \
@@ -83,9 +91,9 @@ curl -sS -X POST "${DASHBOARD_URL:-http://127.0.0.1:4310}/api/v1/records" \
 
 ## Tasks and comments
 
-- Report progress: `bun run agent --report <task-id> --text "What happened" --status review`
-- Read the user's new comments: `bun run agent --comments`
-- Answer one: `bun run agent --reply <comment-id> --text "Answer" --resolve`
+- Report progress: `agentic-dashboard agent --report <task-id> --text "What happened" --status review`
+- Read the user's new comments: `agentic-dashboard agent --comments`
+- Answer one: `agentic-dashboard agent --reply <comment-id> --text "Answer" --resolve`
 
 Over HTTP these are `POST /api/v1/comments` and `GET /api/v1/comments?state=new`.
 
