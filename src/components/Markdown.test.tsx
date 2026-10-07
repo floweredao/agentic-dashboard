@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { recordByRef } from "../model";
@@ -70,6 +71,26 @@ test("inline emphasis, code and soft breaks stay inside one paragraph", () => {
   const out = html("**굵게** 와 *기울임* 그리고 `코드`\n다음 줄");
   // Then: emphasis is semantic and the line break is preserved.
   expect(out).toBe("<p><strong>굵게</strong> 와 <em>기울임</em> 그리고 <code>코드</code><br/>다음 줄</p>");
+});
+
+test("a line that ends a sentence starts a new paragraph, while other soft breaks stay line breaks", () => {
+  // Given: an agent's body with one sentence per line, a quoted ending and a line wrapped mid-sentence.
+  const out = html("첫 문장입니다.\n둘째 문장이에요!\n그는 \"끝났다.\"\n셋째 줄은 여기서\n이어집니다.");
+  // Then: each finished sentence is its own paragraph and the wrapped line stays inside its paragraph.
+  expect(out).toBe("<p>첫 문장입니다.</p><p>둘째 문장이에요!</p><p>그는 &quot;끝났다.&quot;</p><p>셋째 줄은 여기서<br/>이어집니다.</p>");
+});
+
+test("prose separates paragraphs and list items and keeps lines within 40 Korean characters", () => {
+  const css = readFileSync(new URL("../styles/reader.css", import.meta.url), "utf8");
+  const em = (selector: string, property: string) => {
+    const block = new RegExp(`(?:^|\\n)${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    const value = new RegExp(`(?:^|;)\\s*${property}:\\s*([\\d.]+)em`).exec(block)?.[1];
+    return value === undefined ? Number.NaN : Number(value);
+  };
+  // WCAG 1.4.8: paragraph spacing at least 1.5x the line spacing's extra space, lines at most 40 CJK characters.
+  expect(em(".prose > * + *", "margin-top")).toBeGreaterThanOrEqual(1.25);
+  expect(em(".prose li + li", "margin-top")).toBeGreaterThanOrEqual(0.75);
+  expect(em(".prose", "max-width")).toBeLessThanOrEqual(40);
 });
 
 test("raw HTML is shown as text and unsafe links never become anchors", () => {
