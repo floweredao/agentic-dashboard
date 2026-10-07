@@ -71,6 +71,11 @@
 .listen-error { color: var(--danger); }
 .listen-error .btn { margin-left: auto; color: var(--text); }
 .listen-error .btn + .icon-btn { margin-left: 0; }
+/* A failed remake under audio that still plays: a quiet line, not the alert box. */
+.listen-note { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding-left: 12px; color: var(--muted); font-size: 12.5px; }
+.listen-note .listen-stage { flex: 1 1 auto; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.35; }
+.listen-note .btn { min-height: 32px; padding: 0 8px; font-size: 12.5px; flex: none; color: var(--text); }
+.listen-note .icon-btn { width: 32px; height: 32px; min-height: 32px; flex: none; }
 .listen-play {
   display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; border: 0; border-radius: 999px;
   background: var(--ink); color: var(--on-ink);
@@ -111,8 +116,9 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .listen-styles:disabled .listen-style { cursor: default; opacity: .6; }
 @media (prefers-reduced-motion: reduce) { .listen-style, .listen-fill { transition: none; } }
 @media (max-width: 767px) {
-  .listen-bar .icon-btn, .listen-bar .btn, button.listen-play { position: relative; }
-  .listen-bar .icon-btn::after, .listen-bar .btn::after, button.listen-play::after { content: ""; position: absolute; inset: -6px; }
+  .listen-bar .icon-btn, .listen-bar .btn, button.listen-play, .listen-note .icon-btn, .listen-note .btn { position: relative; }
+  .listen-bar .icon-btn::after, .listen-bar .btn::after, button.listen-play::after,
+  .listen-note .icon-btn::after, .listen-note .btn::after { content: ""; position: absolute; inset: -6px; }
   .listen-bar .icon-btn { width: 32px; min-height: 32px; }
   .listen-bar .btn { min-height: 32px; }
   .listen-open { min-height: 44px; }
