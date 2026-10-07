@@ -8,6 +8,10 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
+One-line install with first-run setup, one-time codes that connect another computer's agents, audio that keeps playing across screens, and narration voices in Settings. On first start the server adds the `agent_invites` and `narration_settings` tables to the database; back up the data folder before you upgrade.
+
 ### Added
 
 - One-line install: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh` installs Bun when missing, the app in `~/.agentic-dashboard` and an `agentic-dashboard` command, then opens a first-run choice once: host the dashboard here (port, data folder, owner key, access through this computer, Tailscale or a proxy, start at login with launchd or `systemd --user`) or connect this computer's agents to a dashboard elsewhere. `setup`, `connect` and `onboard` open it again; `start`, `service`, `invite`, `agents`, `owner-key`, `agent`, `skills install` and `status` cover the rest, in English and Korean.
@@ -25,6 +29,7 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 - English copy reads naturally: audio commands name the part inside the label ("Stop generating articles audio", "Generate messages audio") instead of putting it in front ("Articles Make audio"), audio is "generated" everywhere, push notifications use the same importance names as the digest (Act now, Review), and a few stiff labels and messages were rewritten.
 - A disabled primary button keeps its dimmed look on touch screens, where a tapped button kept its hover style and looked enabled.
+- A narration script model that sends nothing for 30 seconds, or goes quiet for 90 seconds mid-stream, fails as stalled, and a stalled or timed-out script model moves to the lighter model at once instead of being retried for about 15 minutes with no visible progress.
 - A narration failure closed with x stays closed when a retry fails again for the same reason on the same audio.
 - When audio already exists, a failed remake keeps the player and shows a small status line with Retry and x instead of the alert that hid the audio.
 
@@ -87,6 +92,7 @@ The first public release.
 - Escape closes a dialog without the macOS alert sound.
 - The app name keeps its full width beside the sidebar's hide button.
 
-[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/floweredao/agentic-dashboard/releases/tag/v0.1.0
