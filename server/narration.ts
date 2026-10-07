@@ -15,15 +15,15 @@ export interface SpeechTurn { readonly speaker: "A" | "B"; readonly text: string
 export interface NarrationProvider {
   readonly ttsModel: string;
   readonly scriptModel: string;
-  /** A lighter model that writes the script when `scriptModel` stays busy or its daily quota is used up. */
-  readonly fallbackScriptModel?: string;
+  /** The ways to reach `scriptModel` (for example Vertex AI, then the key), tried in turn; one unnamed route when absent. */
+  readonly scriptRoutes?: readonly string[];
   readonly voice: string;
   /** The voices of podcast hosts A and B. */
   readonly hosts: readonly [string, string];
   /** Whether a key is configured; checked before any paid call. */
   available(): Promise<boolean>;
-  /** Writes the script with `model`, else `scriptModel`, telling `onText` how many characters have arrived so far. */
-  script(system: string, prompt: string, signal: AbortSignal, model?: string, onText?: (chars: number) => void): Promise<string>;
+  /** Writes the script with `scriptModel` through `route` (else the first), telling `onText` how many characters have arrived so far. */
+  script(system: string, prompt: string, signal: AbortSignal, route?: string, onText?: (chars: number) => void): Promise<string>;
   /** Speaks one chunk as 24 kHz mono 16-bit little-endian PCM, in `voice` or else `voice` above. */
   speak(text: string, style: string, signal: AbortSignal, voice?: string): Promise<Uint8Array>;
   /** Speaks a run of podcast turns in one request, each in its host's voice (`hosts`, else `hosts` above), as the same PCM. */
@@ -456,7 +456,7 @@ export function createNarration(options: NarrationOptions) {
     updated_at TEXT NOT NULL)`);
   let chain: Promise<void> = Promise.resolve();
   /** The job being run, with its own controller: a cancel aborts only this run, never a later request for the same id. */
-  let running: { id: string; controller: AbortController; waitUntil: number | null; stepAt: number | null } | null = null;
+  let running: { id: string; controller: AbortController; waitUntil: number | null; stepAt: number | null; scriptTry: number | null } | null = null;
   const now = () => new Date(store.now()).toISOString();
   const available = async () => provider !== null && await provider.available();
 
@@ -483,6 +483,7 @@ export function createNarration(options: NarrationOptions) {
       recordId: current.record_id, status: current.status, style: current.style, stale: audio !== null && current.audio_hash !== sourceHash(record), stepAt,
       progress: current.progress_total === null ? null : { done: current.progress_done ?? 0, total: current.progress_total },
       waitUntil: running?.id === current.record_id && running.waitUntil !== null && ACTIVE.has(current.status) ? new Date(running.waitUntil).toISOString() : null,
+      ...(live && current.status === "scripting" && live.scriptTry !== null && live.scriptTry > 1 ? { scriptTry: live.scriptTry } : {}),
       attempts: current.attempts, error: current.error, requestedBy: current.requested_by, requestedAt: current.requested_at,
       updatedAt: current.updated_at, audio, script: current.script,
     };
@@ -560,13 +561,12 @@ export function createNarration(options: NarrationOptions) {
    * One provider call, retried up to NARRATION_LIMITS.retries times on a transient failure: after the wait the provider asked
    * for (also reported to `pace`), else after exponential backoff with jitter (https://ai.google.dev/gemini-api/docs/troubleshooting).
    */
-  async function retrying<T>(work: (signal: AbortSignal) => Promise<T>, cancel: AbortSignal, pace?: (ms: number) => void,
-    final?: (error: ProviderError) => boolean): Promise<T> {
+  async function retrying<T>(work: (signal: AbortSignal) => Promise<T>, cancel: AbortSignal, pace?: (ms: number) => void): Promise<T> {
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await call(work, cancel);
       } catch (error) {
-        if (!(error instanceof ProviderError) || !error.transient || attempt >= NARRATION_LIMITS.retries || final?.(error)) throw error;
+        if (!(error instanceof ProviderError) || !error.transient || attempt >= NARRATION_LIMITS.retries) throw error;
         const asked = error.retryAfterMs;
         if (asked !== undefined && asked > MAX_WAIT_MS) throw error;
         if (asked !== undefined) pace?.(Math.min(asked, PACE_CAP_MS));
@@ -577,20 +577,37 @@ export function createNarration(options: NarrationOptions) {
     }
   }
   /**
-   * The script from the main model, or from the lighter one when the main one stays busy, is out of today's quota, or hangs: a
-   * main model that stalls or times out moves to the lighter one at once, since a stuck model stays stuck (2026-10-07: retrying
-   * it sat out about 15 minutes with no visible progress).
+   * The script, always from the script model, in up to 1 + NARRATION_LIMITS.retries tries that take the provider's routes to it
+   * in turn (Vertex AI, then the key). A try that stalls or times out is followed at once, since waiting does not help a stuck
+   * connection (2026-10-07: the key sent nothing for minutes while Vertex answered in seconds); another transient failure waits as
+   * `retrying` does; a route that fails for good, or asks for a wait over a minute, is not asked again. There is no other model:
+   * when every try fails the job fails, rather than speak a lighter model's worse script (the owner, 2026-10-07).
    */
   async function writeScript(source: NarrationProvider, system: string, prompt: string, cancel: AbortSignal, onText: (chars: number) => void) {
-    const fallback = source.fallbackScriptModel;
-    try {
-      return await retrying(signal => source.script(system, prompt, signal, undefined, onText), cancel, undefined,
-        error => fallback !== undefined && (error.code === "stalled" || error.code === "timeout"));
-    } catch (error) {
-      if (!(error instanceof ProviderError) || !fallback || !(error.transient || error.code === "quota_daily")) throw error;
-      stepStarted();
-      return await retrying(signal => source.script(system, prompt, signal, fallback, onText), cancel);
+    const routes: readonly (string | undefined)[] = source.scriptRoutes?.length ? source.scriptRoutes : [undefined];
+    const closed = new Set<string | undefined>();
+    let waits = 0;
+    let failure: ProviderError | null = null;
+    for (let attempt = 0; attempt <= NARRATION_LIMITS.retries; attempt += 1) {
+      const open = routes.filter(route => !closed.has(route));
+      if (open.length === 0) break;
+      const route = open[attempt % open.length];
+      if (running) running.scriptTry = attempt + 1;
+      if (attempt > 0) stepStarted();
+      try {
+        return await call(signal => source.script(system, prompt, signal, route, onText), cancel);
+      } catch (error) {
+        if (!(error instanceof ProviderError)) throw error;
+        failure = error;
+        const asked = error.retryAfterMs;
+        if (!error.transient || (asked !== undefined && asked > MAX_WAIT_MS)) { closed.add(route); continue; }
+        if (error.code === "stalled" || error.code === "timeout" || attempt === NARRATION_LIMITS.retries) continue;
+        const wait = asked ?? Math.round(retryDelayMs * 2 ** waits * (1 + Math.random() * 0.25));
+        waits += 1;
+        if (wait > 0) await pause(wait, cancel);
+      }
     }
+    throw failure ?? new ProviderError("empty_script", false);
   }
   /** The running job's next step (the script, a chunk, saving) starts now; the owner sees how long it has run. */
   function stepStarted() {
@@ -611,7 +628,7 @@ export function createNarration(options: NarrationOptions) {
     const job = row(id);
     if (!job || job.status !== "queued") return;
     const controller = new AbortController();
-    running = { id, controller, waitUntil: null, stepAt: null };
+    running = { id, controller, waitUntil: null, stepAt: null, scriptTry: null };
     try { await work(id, job, controller.signal); }
     finally { if (running?.controller === controller) running = null; }
   }

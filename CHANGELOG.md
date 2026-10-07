@@ -18,6 +18,7 @@ On first start the server adds a `narration_auto` table and two columns to `narr
 
 ### Changed
 
+- Narration scripts always come from the script model: the lighter fallback model and `NARRATION_SCRIPT_FALLBACK_MODEL` are gone. With Vertex AI speech configured, the script is also streamed from the same model on Vertex AI first and then through the key; a try that stalls or times out is followed at once by the next, up to five tries, and when every try fails the audio fails with Retry instead of being made from a weaker script. While a script is tried again, the progress reads "Writing the script · attempt 2".
 - Digests are listed only in the Digest tab: the inbox shows records alone, and its badge, filter chips and title count only records.
 
 ## [0.3.0] - 2026-10-07

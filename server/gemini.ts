@@ -6,12 +6,11 @@ import type { AdcSource } from "./vertex";
 
 /** Gemini 3.8 Flash TTS (stable): https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts */
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
-export const GEMINI_SCRIPT_MODEL = "gemini-3.8-flash";
 /**
- * Writes the script when the script model stays overloaded (503 "high demand") or its free daily quota is used up: a stable
- * model on the free tier with its own per-model quota (https://ai.google.dev/gemini-api/docs/models, /pricing).
+ * Writes every script. There is deliberately no lighter model to fall back to: a lighter model writes a worse script; a
+ * failed try is retried with this model, on Vertex AI and on the key.
  */
-export const GEMINI_SCRIPT_FALLBACK_MODEL = "gemini-3.5-flash-lite";
+export const GEMINI_SCRIPT_MODEL = "gemini-3.8-flash";
 export const GEMINI_VOICE = "Kore";
 /** Podcast host B, a prebuilt voice that is easy to tell apart from host A; multi-speaker requests take at most two prebuilt voices. */
 export const GEMINI_PODCAST_VOICE = "Puck";
@@ -42,14 +41,10 @@ const streamEventSchema = z.object({
  * event, or a stream that ends before `interaction.completed`, is a dropped connection and worth a retry.
  */
 async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSignal, idleMs: number, stop: () => void, onText?: (chars: number) => void) {
-  const decoder = new TextDecoder();
   const stepTypes = new Map<number, string>();
-  let buffer = "";
   let text = "";
   let completed = false;
-  const take = (block: string) => {
-    const data = block.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
-    if (!data || data === "[DONE]") return;
+  await readEvents(body, signal, idleMs, stop, data => {
     let parsed: z.infer<typeof streamEventSchema>;
     try { parsed = streamEventSchema.parse(JSON.parse(data)); }
     catch (error) {
@@ -64,6 +59,21 @@ async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSigna
       text += parsed.delta.text;
       onText?.(text.length);
     }
+  });
+  if (!completed) throw new ProviderError("network", true);
+  return text;
+}
+
+/**
+ * Hands each server-sent event's data to `take`. A stream that goes quiet for `idleMs` is a stuck model: the connection is
+ * dropped (`stop`) and the call fails as `stalled`; a broken connection is `network`, the caller's abort `timeout`.
+ */
+async function readEvents(body: ReadableStream<Uint8Array>, signal: AbortSignal, idleMs: number, stop: () => void, take: (data: string) => void) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const block = (raw: string) => {
+    const data = raw.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
+    if (data && data !== "[DONE]") take(data);
   };
   try {
     const reader = body.getReader();
@@ -79,9 +89,9 @@ async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSigna
     for (let read = await next(); !read.done; read = await next()) {
       buffer += decoder.decode(read.value, { stream: true });
       for (let end = buffer.search(/\r?\n\r?\n/); end >= 0; end = buffer.search(/\r?\n\r?\n/)) {
-        const block = buffer.slice(0, end);
+        const raw = buffer.slice(0, end);
         buffer = buffer.slice(end).replace(/^\r?\n\r?\n/, "");
-        take(block);
+        block(raw);
       }
     }
     buffer += decoder.decode();
@@ -91,10 +101,19 @@ async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSigna
     if (error instanceof Error) throw new ProviderError("network", true);
     throw error;
   }
-  if (buffer.trim()) take(buffer);
-  if (!completed) throw new ProviderError("network", true);
-  return text;
+  if (buffer.trim()) block(buffer);
 }
+
+/** One server-sent event of a streamed Vertex AI generateContent: text parts, and `finishReason` on the last one. */
+const vertexChunkSchema = z.object({
+  candidates: z.array(z.object({
+    content: z.object({ parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() }).passthrough()).optional() })
+      .passthrough().optional(),
+    finishReason: z.string().optional(),
+  }).passthrough()).optional(),
+  modelVersion: z.string().optional(),
+  error: z.unknown().optional(),
+}).passthrough();
 
 /** The parts of a Google error body that say how long to wait and which quota was hit; messages are never kept. */
 const errorSchema = z.object({ error: z.object({
@@ -176,7 +195,10 @@ const vertexResponseSchema = z.object({
   usageMetadata: z.object({ candidatesTokenCount: z.number().optional() }).passthrough().optional(),
 }).passthrough();
 
-/** Speech through Vertex AI (billed to the Google Cloud project) instead of the AI Studio key; the script stays on the key. */
+/**
+ * Speech, and the script's first route, through Vertex AI (billed to the Google Cloud project) instead of the AI Studio key. The
+ * script tries the key, with the same model, when Vertex fails.
+ */
 export interface VertexSpeech {
   readonly project: string;
   readonly location?: string;
@@ -199,7 +221,7 @@ export function pcmOf(bytes: Uint8Array): Uint8Array {
 
 /** Interactions API with `store: false`; the key goes only in the x-goog-api-key header and never into errors. */
 export function geminiProvider(options: {
-  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly fallbackScriptModel?: string;
+  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string;
   readonly voice?: string; readonly podcastVoice?: string; readonly vertex?: VertexSpeech;
   readonly fetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** Script calls only: the wait for the response to start and the longest quiet gap in its stream before it fails as `stalled`. */
@@ -208,7 +230,9 @@ export function geminiProvider(options: {
   const send = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   const ttsModel = options.ttsModel ?? GEMINI_TTS_MODEL;
   const scriptModel = options.scriptModel ?? GEMINI_SCRIPT_MODEL;
-  const fallbackScriptModel = options.fallbackScriptModel ?? GEMINI_SCRIPT_FALLBACK_MODEL;
+  /** The ways to reach the script model, tried in turn: Vertex AI when configured, then the key. Never another model. */
+  const scriptRoutes = options.vertex ? ["vertex", "gemini"] as const : ["gemini"] as const;
+  const log = (line: string) => (options.vertex?.log ?? console.log)(line);
   const voice = options.voice ?? GEMINI_VOICE;
   const hosts = [voice, options.podcastVoice ?? GEMINI_PODCAST_VOICE] as const;
   const firstByteMs = options.firstByteMs ?? SCRIPT_FIRST_BYTE_MS;
@@ -281,6 +305,66 @@ export function geminiProvider(options: {
     if (!audio) throw new ProviderError("no_audio", false);
     return pcmOf(Buffer.from(audio, "base64"));
   }
+  // https://docs.cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/projects.locations.publishers.models/streamGenerateContent
+  async function vertexScript(vertex: VertexSpeech, system: string, prompt: string, signal: AbortSignal, onText?: (chars: number) => void) {
+    const location = vertex.location ?? VERTEX_LOCATION;
+    const host = location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
+    const url = `https://${host}/v1/projects/${vertex.project}/locations/${location}/publishers/google/models/${scriptModel}:streamGenerateContent?alt=sse`;
+    const token = await vertex.credentials.token(signal);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), firstByteMs);
+    let response: Response;
+    try {
+      response = await send(url, { method: "POST", signal: AbortSignal.any([signal, controller.signal]), headers: { "content-type": "application/json",
+        authorization: `Bearer ${token}`, "x-goog-user-project": vertex.project },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: prompt }] }] }) });
+    } catch (error) {
+      if (signal.aborted) throw new ProviderError("timeout", true);
+      if (controller.signal.aborted) {
+        log(`narration script: ${host} ${scriptModel} ${location} stalled`);
+        throw new ProviderError("stalled", true);
+      }
+      if (error instanceof Error) throw new ProviderError("network", true);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!response.ok || !response.body) {
+      log(`narration script: ${host} ${scriptModel} ${location} ${response.status}`);
+      throw response.ok ? new ProviderError("invalid_response", false) : await vertexFailureOf(response);
+    }
+    let text = "";
+    let model = "";
+    let finished = false;
+    try {
+      await readEvents(response.body, signal, idleMs, () => controller.abort(), data => {
+        let chunk: z.infer<typeof vertexChunkSchema>;
+        try { chunk = vertexChunkSchema.parse(JSON.parse(data)); }
+        catch (error) {
+          if (error instanceof Error) throw new ProviderError("invalid_response", false);
+          throw error;
+        }
+        if (chunk.error !== undefined) throw new ProviderError("network", true);
+        model = chunk.modelVersion ?? model;
+        const candidate = chunk.candidates?.[0];
+        const added = (candidate?.content?.parts ?? []).filter(part => !part.thought).map(part => part.text ?? "").join("");
+        if (candidate?.finishReason) finished = true;
+        if (added) {
+          text += added;
+          onText?.(text.length);
+        }
+      });
+    } catch (error) {
+      if (error instanceof ProviderError) log(`narration script: ${host} ${scriptModel} ${location} ${error.code} chars=${text.length}`);
+      throw error;
+    }
+    if (!finished) {
+      log(`narration script: ${host} ${scriptModel} ${location} network chars=${text.length}`);
+      throw new ProviderError("network", true);
+    }
+    log(`narration script: ${host} ${scriptModel} ${location} ${response.status} model=${model || "unknown"} chars=${text.length}`);
+    return text;
+  }
   async function audioOf(input: unknown, speechConfig: unknown, signal: AbortSignal) {
     const content = await contentOf(await post({
       model: ttsModel, input,
@@ -293,16 +377,23 @@ export function geminiProvider(options: {
     return pcmOf(Buffer.from(audio, "base64"));
   }
   return {
-    ttsModel, scriptModel, fallbackScriptModel, voice, hosts,
+    ttsModel, scriptModel, scriptRoutes, voice, hosts,
     available: async () => await options.key() !== null && (!options.vertex || await options.vertex.credentials.exists()),
     // Streamed, so the job can report the script's characters as they arrive; a plain JSON answer is read whole.
-    async script(system, prompt, signal, model = scriptModel, onText) {
+    async script(system, prompt, signal, route = scriptRoutes[0], onText) {
+      if (route === "vertex" && options.vertex) {
+        const script = await vertexScript(options.vertex, system, prompt, signal, onText);
+        if (!script.trim()) throw new ProviderError("empty_script", false);
+        return script;
+      }
+      const model = scriptModel;
       const controller = new AbortController();
       const response = await post({ model, system_instruction: system, input: prompt, stream: true, store: false }, signal, { ms: firstByteMs, controller });
       const streamed = response.body !== null && (response.headers.get("content-type") ?? "").includes("text/event-stream");
       const script = streamed && response.body ? await streamedText(response.body, signal, idleMs, () => controller.abort(), onText)
         : (await contentOf(response)).filter(part => part.type === "text").map(part => part.text ?? "").join("");
       if (!streamed) onText?.(script.length);
+      log(`narration script: generativelanguage.googleapis.com ${model} ${response.status} chars=${script.length}`);
       if (!script.trim()) throw new ProviderError("empty_script", false);
       return script;
     },
