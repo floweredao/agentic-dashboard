@@ -18,11 +18,13 @@ export function useRecordDocument(recordId: string | null): RecordDocument | nul
 /**
  * Links leave the frame in a new tab; the frame never scrolls on its own, the page around it does. A document that names no
  * font reads in the app's font (tokens.css --font) instead of the frame's default serif; :where keeps it below any rule the
- * document sets itself.
+ * document sets itself. The same zero-specificity defaults give a document that sets no spacing reading leading (1.7, klreq
+ * 160-180%) and room between list items, so multi-sentence items do not run together; any rule the document sets wins.
  */
 const appFont = `-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif`;
 export const framedHtml = (html: string) =>
-  `<base target="_blank"><style>html{overflow-y:hidden!important}:where(html){font-family:${appFont}}</style>${html}`;
+  `<base target="_blank"><style>html{overflow-y:hidden!important}:where(html){font-family:${appFont}}:where(html){line-height:1.7}`
+  + `:where(h1,h2,h3,h4,h5,h6){line-height:1.35}:where(li+li){margin-top:.75em}:where(li>ul,li>ol){margin-top:.5em}</style>${html}`;
 
 /**
  * The frame's height for a document measured inside it: the whole document, fractions rounded up, plus the frame's own border
