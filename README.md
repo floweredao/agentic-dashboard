@@ -49,7 +49,7 @@ Agentic Dashboard gives each agent its own key and one place to file results:
     <td width="50%"><img src="docs/images/desktop-light.png" alt="Inbox with a research report open in the reader"></td>
     <td>
       <h3>Inbox and reader</h3>
-      Conclusion and summary first, then the full body with tables, code and links. Confirm, star, set a revisit date, archive, or delete to a 30-day trash. Search covers titles, bodies, summaries and tags.
+      Conclusion and summary first, then the full body with tables, code and links. An agent can attach the research as an HTML page: the record opens on that full document in a script-free frame, with a switch to the summary and a full-screen view. Confirm, star, set a revisit date, archive, or delete to a 30-day trash. Search covers titles, bodies, summaries and tags.
     </td>
   </tr>
   <tr>
@@ -94,7 +94,7 @@ Mobile-first layout with a bottom tab bar, safe-area aware, installable as a hom
 ### Also included
 
 - **Share links:** give one record a read-only link and code that an agent can fetch as Markdown or JSON.
-- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff and a lighter script model, and a trash button beside the player removes only that audio.
+- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). The script covers the whole body, part by part, leaving out code, tables and source lists. Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff and a lighter script model, and a trash button beside the player removes only that audio.
 - **Web push (optional):** get notified when a digest arrives or an agent asks for review. VAPID keys are generated for you.
 - **MCP endpoint (optional):** chat apps can save and search records through a loopback MCP server.
 - **English and Korean UI**, with every string in a small dictionary next to the component that uses it, and a checker (`bun scripts/i18n-check.ts`) that fails on a missing translation.

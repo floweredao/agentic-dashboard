@@ -14,6 +14,8 @@ import {
   type PushLocale,
   CommentSchema as commentSchema,
   DashboardRecordSchema as dashboardRecordSchema,
+  DocumentStateSchema,
+  type RecordDocument,
   NarrationStateSchema as narrationStateSchema,
   RecordInputSchema as recordInputSchema,
   TrashItemSchema as trashItemSchema,
@@ -141,6 +143,11 @@ export async function createShare(recordId: string, csrfToken: string): Promise<
 /** 204 whether or not a share existed. */
 export async function deleteShare(recordId: string, csrfToken: string): Promise<void> {
   await http.delete(`records/${recordId}/share`, { headers: { "X-CSRF-Token": csrfToken } });
+}
+
+/** The record's attached HTML document (full document), or null when it has none. */
+export async function loadDocument(recordId: string): Promise<RecordDocument | null> {
+  return DocumentStateSchema.parse(await http.get(`records/${recordId}/document`).json()).document;
 }
 
 /** What can be narrated: a record, or a digest part (owner only). */

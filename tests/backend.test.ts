@@ -1,6 +1,7 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { statSync } from "node:fs";
 import { z } from "zod";
+import { RECORD_LIMITS } from "../shared/contracts";
 import { agentRecord, bearer, fixture, origin, payload, recordResult, tokens } from "./backend-helper";
 
 let f = fixture();
@@ -78,7 +79,7 @@ test("public listener permits only agent create and own read", async () => {
 });
 test("invalid schemas, forged provenance, dates, links, nested fields and relationships are rejected", async () => {
   const invalid = [
-    { title: "" }, { title: "a".repeat(201) }, { source: "manual" }, { body: "a".repeat(16001) },
+    { title: "" }, { title: "a".repeat(201) }, { source: "manual" }, { body: "a".repeat(RECORD_LIMITS.bodyChars + 1) },
     { dueDate: "2026-02-30" }, { links: [{ label: "x", url: "javascript:alert(1)" }] },
     { fields: { today: "yes" } }, { fields: { revisitDate: "2026-13-01" } },
     { fields: { summary: "x".repeat(8193) } }, { fields: { nested: [[[[[[[[[1]]]]]]]]] } },
@@ -219,7 +220,7 @@ test("pagination filters avoid duplicates and reject invalid query/cursor", asyn
 test("transport rejects Host, media type, malformed JSON, oversized body and unauthenticated access", async () => {
   expect((await f.call("/api/health", "GET", undefined, { Host: "evil.example" })).status).toBe(421);
   expect((await f.call("/api/v1/records")).status).toBe(401);
-  for (const [body, contentType, expected] of [["{", "application/json", 400], ["{}", "text/plain", 415], ["x".repeat(32769), "application/json", 413]] as const) {
+  for (const [body, contentType, expected] of [["{", "application/json", 400], ["{}", "text/plain", 415], ["x".repeat(RECORD_LIMITS.requestBytes + 1), "application/json", 413]] as const) {
     const response = await f.app.fetch(new Request(`${origin}/api/v1/records`, { method: "POST", headers: { ...bearer("codex"), "Content-Type": contentType }, body }));
     expect(response.status).toBe(expected);
   }

@@ -8,6 +8,25 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
+### Added
+
+- Full document: an agent can attach an HTML page to a research, work-report, note or social record (`PUT /api/v1/records/:id/document`, `bun run agent --html page.html`). The reader opens the record on it in a sandboxed, script-free frame, with a [Full document | Summary] switch; `data:` images and audio load and play, `#section` links stay in the document, and on iOS a swipe on it scrolls the page.
+- Full screen reading: an icon button shows a record's reading content alone; Close or Escape returns.
+- Korean audio reads numbers by their unit (5곳 다섯 곳, 6월 유월); the saved script keeps the digits.
+
+### Changed
+
+- Record bodies may hold up to 120,000 characters, so a full research text fits.
+- Listen covers a record's whole body: code, tables, link-only lines and source sections are left out, the rest is scripted part by part, and a part script that summarizes instead of telling is written again. Scripts saved under earlier rules are rewritten.
+- A digest script tells every sentence of each article summary (up to 10,000 characters), and a Korean one that drops a number is written again.
+- The narration bar moves only on reported progress (streamed script characters, finished chunks, saving), says why a job waits, and shows a step's elapsed time.
+- A Korean script written almost all in 해요체 or in 습니다체 is written again with both tones.
+- The digest section bar stays one row: section tabs with count badges scroll sideways, and Titles only is an icon toggle.
+
+### Fixed
+
+- A 429 that asks to wait an hour or more counts as the day's quota instead of a per-minute limit.
+
 ## [0.1.0] - 2026-10-03
 
 The first public release.

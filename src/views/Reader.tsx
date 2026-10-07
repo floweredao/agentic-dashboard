@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
-import { Archive, ArchiveRestore, CalendarCheck, Check, CircleDot, Clock, ListPlus, Pencil, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Archive, ArchiveRestore, CalendarCheck, Check, CircleDot, Clock, ListPlus, Maximize2, Pencil, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
 import type { DashboardRecord } from "../../shared/contracts";
 import { InlineLinkAdd, InlineTagAdd, LinkCard } from "../components/LinkTagFields";
+import { DocumentFrame, useRecordDocument } from "../components/DocumentView";
+import { FullscreenReader } from "../components/FullscreenReader";
 import { useNarration } from "../components/Listen";
 import { Markdown } from "../components/Markdown";
 import { Menu } from "../components/Menu";
@@ -49,6 +51,7 @@ const text = strings({
     completeTitle: "Complete (E)", done: "Done", complete: "Complete", addTask: "Add task",
     share: "Share", shareTitle: "Share with an agent", more: "More",
     related: "Related items", links: "Links",
+    views: "View", summaryView: "Summary", documentView: "Full document", fullscreen: "Full screen", fullscreenTitle: "Read in full screen", exitFullscreen: "Close",
   },
   ko: {
     body: { research: "본문", "work-report": "본문", social: "메모", note: "내용", task: "설명", project: "개요" },
@@ -75,6 +78,7 @@ const text = strings({
     completeTitle: "완료 (E)", done: "완료됨", complete: "완료", addTask: "할 일 추가",
     share: "공유", shareTitle: "에이전트와 공유", more: "더보기",
     related: "연결된 항목", links: "링크",
+    views: "보기", summaryView: "요약", documentView: "전체 문서", fullscreen: "전체화면", fullscreenTitle: "전체화면으로 보기", exitFullscreen: "닫기",
   },
 } satisfies { readonly en: Labels; readonly ko: Labels });
 
@@ -134,6 +138,12 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
 
   const material = isRecord(record);
   const narration = useNarration({ record: material ? record : null });
+  const attached = useRecordDocument(material ? record.id : null);
+  const [shown, setShown] = useState<{ readonly id: string; readonly full: boolean }>({ id: record.id, full: true });
+  // A record with a document opens on it: the full document, not the short summary, is what is worth reading.
+  const full = attached !== null && (shown.id !== record.id || shown.full);
+  const [focused, setFocused] = useState<string | null>(null);
+  const fullscreen = focused === record.id;
   const project = record.projectId ? d.byId.get(record.projectId) : undefined;
   const task = record.taskId ? d.byId.get(record.taskId) : undefined;
   const relationCandidates = record.kind === "project"
@@ -194,7 +204,11 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
   </button>;
 
   return <article className="reader" aria-labelledby="reader-title">
-    <div className="reader-inner">
+    <div className={full ? "reader-inner has-document" : "reader-inner"}>
+      {/* Full screen sits in the reading column's top-right corner on every screen, icon only with its name for assistive tech
+          and the tooltip. */}
+      <div className="reader-top">
+      <div className="reader-top-main">
       <BackButton place="reader" />
       <div className="reader-meta">
         <span className="reader-channel"><RecordChannel record={record} size="tile" />{channelLabel(channelOf(record))}</span>
@@ -204,6 +218,12 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
         {aiFilled(record) && <Tag>{text().autoFilled}</Tag>}
         {record.archivedAt && <Tag>{text().archived}</Tag>}
         {isSample(record) && <Tag>{text().sample}</Tag>}
+      </div>
+      </div>
+      <button type="button" className="btn btn-outline reader-corner-button reader-fullscreen-button" onClick={() => setFocused(record.id)}
+        aria-label={text().fullscreen} title={text().fullscreenTitle}>
+        <Maximize2 size={16} aria-hidden="true" />
+      </button>
       </div>
       <h2 id="reader-title" ref={heading} tabIndex={-1} className="reader-title">{record.title}</h2>
       <p className="reader-dates">{text().saved} {dateLabel(record.createdAt)}{edited && <> · {text().edited} {dateLabel(record.updatedAt)}</>}</p>
@@ -250,9 +270,16 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
 
       {sourceLink && <div className="source-link"><LinkCard link={sourceLink} /></div>}
 
-      {lead.length > 0 && <div className="reader-lead">{lead.map(([label, value]) => <section key={label}>
+      {(() => { const reading = <>
+      {attached && <div className="segmented reader-docswitch" role="group" aria-label={text().views}>
+        <button type="button" data-view="document" aria-pressed={full} onClick={() => setShown({ id: record.id, full: true })}>{text().documentView}</button>
+        <button type="button" data-view="summary" aria-pressed={!full} onClick={() => setShown({ id: record.id, full: false })}>{text().summaryView}</button>
+      </div>}
+
+      {lead.length > 0 && <div className={full ? "reader-lead is-brief" : "reader-lead"}>{lead.map(([label, value]) => <section key={label}>
         <h3>{label}</h3><div className="prose compact"><Markdown text={value} resolveRecord={resolveRecord} /></div>
       </section>)}</div>}
+      {full && attached ? <DocumentFrame key={record.id} html={attached.html} title={`${text().documentView}: ${record.title}`} /> : <>
 
       {record.body.trim() && <section className="reader-section reader-body-section">
         <h3>{text().body[record.kind]}</h3><div className="prose reader-body"><Markdown text={record.body} resolveRecord={resolveRecord} /></div>
@@ -267,6 +294,11 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
       {legacy.map(key => <section key={key} className="reader-section">
         <h3>{text().legacy[key]}</h3><div className="prose"><Markdown text={textField(record, key)} resolveRecord={resolveRecord} /></div>
       </section>)}
+      </>}
+      </>;
+      return fullscreen
+        ? <FullscreenReader title={record.title} closeLabel={text().exitFullscreen} onClose={() => setFocused(null)} wide={full}>{reading}</FullscreenReader>
+        : reading; })()}
 
       <ContinuationLinks previousId={previousId} previous={previousId ? d.byId.get(previousId) : undefined} following={following} navigate={d.navigate} />
 
