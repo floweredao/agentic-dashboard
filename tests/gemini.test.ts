@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { geminiProvider, pcmOf } from "../server/gemini";
+import { geminiProvider, pcmOf, failureOf } from "../server/gemini";
 import { ProviderError } from "../server/narration";
 
 const KEY = "AIza-test-key";
@@ -60,6 +60,47 @@ test("the script call sends the system instruction and joins the model's text ou
   expect(await gemini.script("규칙", "[기록]", signal())).toBe("첫 문장. 둘째 문장.");
   expect(z.object({ model: z.string(), system_instruction: z.string(), store: z.boolean() }).passthrough().parse(sent[0]?.body))
     .toMatchObject({ model: "gemini-3.8-flash", system_instruction: "규칙", input: "[기록]", store: false });
+});
+
+/** A server-sent event stream as the Interactions API sends it, cut into `size`-byte pieces (splitting events and characters). */
+function sse(events: readonly Record<string, unknown>[], size = 7) {
+  const body = new TextEncoder().encode(events.map(event => `event: ${String(event.event_type)}\ndata: ${JSON.stringify(event)}\n\n`).join(""));
+  return () => new Response(new ReadableStream<Uint8Array>({ start(controller) {
+    for (let offset = 0; offset < body.byteLength; offset += size) controller.enqueue(body.slice(offset, offset + size));
+    controller.close();
+  } }), { headers: { "content-type": "text/event-stream" } });
+}
+const delta = (index: number, value: Record<string, unknown>) => ({ index, delta: value, event_type: "step.delta" });
+const opening = [
+  { interaction: { id: "v1_x", status: "in_progress" }, event_type: "interaction.created" },
+  { index: 0, step: { type: "thought" }, event_type: "step.start" },
+  delta(0, { type: "thought_summary", content: { type: "text", text: "생각" } }),
+  { index: 0, event_type: "step.stop" },
+  { index: 1, step: { type: "model_output" }, event_type: "step.start" },
+];
+
+test("the script streams: the model output's text deltas are joined and the characters received so far are reported as they arrive", async () => {
+  const first = "첫 문장입니다. ";
+  const second = "둘째 문장이에요.";
+  const { gemini, sent } = provider(sse([...opening, delta(1, { type: "text", text: first }), delta(1, { type: "text", text: second }),
+    { index: 1, event_type: "step.stop" }, { interaction: { id: "v1_x", status: "completed" }, event_type: "interaction.completed" }]));
+  const received: number[] = [];
+  expect(await gemini.script("규칙", "[기록]", signal(), undefined, chars => received.push(chars))).toBe(first + second);
+  expect(received).toEqual([first.length, first.length + second.length]);
+  expect(sent[0]?.body).toMatchObject({ stream: true, store: false });
+});
+
+test("a stream that reports an error or stops before the interaction completes fails as a transient network error", async () => {
+  const broken = [
+    sse([...opening, delta(1, { type: "text", text: "반쯤" }), { error: { message: `Deadline expired ${KEY}`, code: "gateway_timeout" }, event_type: "error" }]),
+    sse([...opening, delta(1, { type: "text", text: "반쯤" })]),
+  ];
+  for (const reply of broken) {
+    const error = await provider(reply).gemini.script("", "", signal()).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({ code: "network", transient: true });
+    expect(String(error instanceof Error ? error.message : error)).not.toContain(KEY);
+  }
 });
 
 test("HTTP failures become codes: 429 and 5xx are transient, and the key never appears in the error", async () => {
@@ -122,4 +163,12 @@ test("a WAV answer is reduced to its PCM data chunk", () => {
   header.write("fmt ", 12); header.writeUInt32LE(16, 16); header.write("data", 36); header.writeUInt32LE(pcm.byteLength, 40);
   expect(Buffer.from(pcmOf(Buffer.concat([header, pcm])))).toEqual(pcm);
   expect(pcmOf(pcm)).toBe(pcm);
+});
+
+test("a 429 asking to wait an hour or more is the day's quota, not a per-minute limit", async () => {
+  const daily = await failureOf(new Response("{}", { status: 429, headers: { "retry-after": "30814" } }));
+  expect(daily.code).toBe("quota_daily");
+  expect(daily.transient).toBe(false);
+  const minute = await failureOf(new Response("{}", { status: 429, headers: { "retry-after": "40" } }));
+  expect(minute).toMatchObject({ code: "http_429", transient: true, retryAfterMs: 40000 });
 });

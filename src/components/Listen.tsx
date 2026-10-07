@@ -9,7 +9,7 @@ import { config } from "../config";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
 import type { MenuItem } from "./Menu";
-import { narrationStage, stageValue } from "./narration-progress";
+import { narrationStage } from "./narration-progress";
 import { Dialog, Tag } from "./primitives";
 
 const WORKING: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
@@ -99,7 +99,7 @@ const text = strings({
     fold: "플레이어 접기", listen: "듣기", outdated: "예전 내용",
     cancelMake: "음성 만들기 취소", retry: "다시 시도", make: "음성 만들기", keyNeeded: " · 키 필요",
     makeNew: "새로 만들기", makeAgain: "다시 만들기", viewScript: "원고 보기", deleteAudio: "음성 삭제",
-    cancelling: "취소하는 중", progress: "음성 만드는 진행", dismiss: "알림 닫기",
+    cancelling: "취소하고 있어요", progress: "음성 만드는 진행", dismiss: "알림 닫기",
     confirmRemake: "음성을 다시 만들면 Gemini 요금이 한 번 더 들어요. 다시 만들까요?",
     confirmDelete: "음성 파일과 원고를 삭제할까요? 다시 들으려면 새로 만들어야 해요.",
     cancelled: "음성 만들기를 취소했어요.", deleted: "음성을 삭제했어요.", script: "원고",
@@ -248,57 +248,27 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
   </div>;
 }
 
-function useReducedMotion() {
-  const query = typeof window === "undefined" || !window.matchMedia ? null : window.matchMedia("(prefers-reduced-motion: reduce)");
-  const [reduced, setReduced] = useState(query?.matches ?? false);
-  useEffect(() => {
-    if (!query) return;
-    const change = () => setReduced(query.matches);
-    query.addEventListener("change", change);
-    return () => query.removeEventListener("change", change);
-  }, []);
-  return reduced;
-}
-
 /**
- * The job's stage and a percent bar. The bar never moves back: it eases toward the stage's value (see narration-progress),
- * creeping inside the stage while it runs and gliding to the next stage's start when the server reports it. With reduced
- * motion it shows each stage's start and jumps without easing.
+ * The job's stage and a percent bar showing only what the server reported (see narration-progress). Within one job the value
+ * never moves back (a script written again counts from zero), a newly reported value slides in over 300 ms (CSS `.listen-fill`,
+ * none with reduced motion), and a once-a-second tick only renews the elapsed time in the label.
  */
-function NarrationProgress({ narration, prefix }: { readonly narration: Narration; readonly prefix: string }) {
-  const reduced = useReducedMotion();
-  const target = (now: number) => {
-    const stage = narrationStage(narration, now);
-    return reduced ? stage.from : stageValue(stage, now);
-  };
-  const shown = useRef<number | null>(null);
-  shown.current ??= target(Date.now());
-  const fill = useRef<HTMLSpanElement>(null);
-  const [percent, setPercent] = useState(() => Math.floor(shown.current ?? 0));
-  const [label, setLabel] = useState(() => narrationStage(narration, Date.now()).label);
+function NarrationProgress({ narration, prefix, lead }: { readonly narration: Narration; readonly prefix: string; readonly lead: string }) {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    let frame = 0;
-    let last = performance.now();
-    const draw = (time: number) => {
-      const now = Date.now();
-      const current = shown.current ?? 0;
-      const goal = Math.max(current, target(now));
-      const eased = reduced ? goal : current + (goal - current) * (1 - Math.exp(-(time - last) / EASE_MS));
-      last = time;
-      shown.current = goal - eased < 0.05 ? goal : eased;
-      if (fill.current) fill.current.style.transform = `scaleX(${shown.current / 100})`;
-      setPercent(Math.floor(shown.current));
-      setLabel(narrationStage(narration, now).label);
-      if (!reduced || narration.waitUntil !== null) frame = requestAnimationFrame(draw);
-    };
-    frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
-  }, [narration, reduced]);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const { label, value } = narrationStage(narration, now);
+  const shown = useRef({ job: narration.requestedAt, value });
+  if (shown.current.job !== narration.requestedAt) shown.current = { job: narration.requestedAt, value };
+  shown.current.value = Math.max(shown.current.value, value);
+  const percent = Math.floor(shown.current.value);
   return <>
-    <span className="listen-stage">{prefix}{label}</span>
+    <span className="listen-stage">{lead}{label}</span>
     <span className="listen-track" role="progressbar" aria-label={`${prefix}${text().progress}`} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={percent} aria-valuetext={`${label} ${percent}%`}>
-      <span ref={fill} className="listen-fill" style={{ transform: `scaleX(${(shown.current ?? 0) / 100})` }} />
+      <span className="listen-fill" style={{ transform: `scaleX(${shown.current.value / 100})` }} />
     </span>
     <span className="listen-percent" aria-hidden="true">{percent}%</span>
   </>;
@@ -352,11 +322,13 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
 }): ReactNode {
   const narration = state.narration;
   const prefix = label ? `${label} ` : "";
+  // The row's sentence is set off from the part's name (뉴스 · …), so the two never read as one clause.
+  const lead = label ? `${label} · ` : "";
   const done = finishing && narration?.status === "ready";
   if (narration && (working(state) || done)) {
     return <div className="listen-bar listen-working" role="status">
       <Headphones size={15} aria-hidden="true" />
-      {cancelling ? <span className="listen-stage">{prefix}{text().cancelling}</span> : <NarrationProgress narration={narration} prefix={prefix} />}
+      {cancelling ? <span className="listen-stage">{lead}{text().cancelling}</span> : <NarrationProgress narration={narration} prefix={prefix} lead={lead} />}
       {!done && <button type="button" className="icon-btn listen-icon" aria-label={`${prefix}${text().cancelMake}`} disabled={cancelling} onClick={onCancel}>
         <X size={16} aria-hidden="true" />
       </button>}
@@ -365,7 +337,7 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
   if (narration && failedFor(state) && !dismissed) {
     const exhausted = narration.attempts >= NARRATION_LIMITS.attempts;
     return <div className="listen-bar listen-error" role="alert">
-      <span className="listen-stage">{prefix}{narrationFailure(narration.error)}</span>
+      <span className="listen-stage">{lead}{narrationFailure(narration.error)}</span>
       <button type="button" className="btn btn-ghost" disabled={pending || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
       <button type="button" className="icon-btn listen-icon" aria-label={text().dismiss} onClick={onDismiss}><X size={16} aria-hidden="true" /></button>
     </div>;

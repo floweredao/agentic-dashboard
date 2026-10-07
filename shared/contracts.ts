@@ -190,7 +190,7 @@ export const NARRATABLE_KINDS = ["research", "work-report", "note", "social"] as
  * Cost guards for narration: script length, TTS chunk length, model input, queued jobs, generations started per Seoul day,
  * and failed generations per content version before only the owner may try again.
  */
-export const NARRATION_LIMITS = { scriptChars: 6000, chunkChars: 1500, sourceChars: 20000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
+export const NARRATION_LIMITS = { scriptChars: 6000, digestScriptChars: 10000, chunkChars: 1500, sourceChars: 20000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
 /** queued -> scripting (listening script) -> speaking (TTS chunks) -> ready | failed. */
 export const NarrationStatusSchema = z.enum(["queued", "scripting", "speaking", "ready", "failed"]);
 export type NarrationStatus = z.infer<typeof NarrationStatusSchema>;
@@ -206,11 +206,14 @@ export const NarrationAudioSchema = z.object({
  * `stale`: the audio was made from content (title, summary, conclusion, body, next actions) that has since changed.
  * `style`: the style last chosen for this record, the default for the next request.
  * `waitUntil`: while the running job waits out a busy or rate-limited provider, when its next try starts; null otherwise.
+ * `progress`: while scripting, the script characters received so far and the expected length; while speaking, chunks done and total.
+ * `stepAt`: when the current step began (waiting its turn, writing the script, the chunk being spoken, saving); null when no job runs.
  */
 export const NarrationSchema = z.object({
   recordId: z.string().uuid(), status: NarrationStatusSchema, style: NarrationStyleSchema, stale: z.boolean(),
   progress: z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict().nullable(),
   waitUntil: z.iso.datetime().nullable(),
+  stepAt: z.iso.datetime().nullable(),
   attempts: z.number().int().nonnegative(), error: z.string().nullable(),
   requestedBy: z.string(), requestedAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
   audio: NarrationAudioSchema.nullable(), script: z.string().nullable(),
