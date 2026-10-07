@@ -48,6 +48,28 @@ test("stale version, missing CSRF, agents, anonymous callers and the public list
   expect((await get(record.id, session)).status).toBe(200);
 });
 
+test("an agent moves only the records it created to the trash, on the private listener, and the owner restores them", async () => {
+  const session = await f.login();
+  // Given: a note OmO saved and a note the owner saved.
+  const own = await create(bearer("omo"), { kind: "note", title: "OmO note", body: "Body", tags: ["test"] });
+  const owners = await create(session, { kind: "note", title: "Owner note" });
+  // When: another agent or OmO on the public listener tries OmO's note, or OmO tries the owner's note, nothing moves.
+  expect((await remove(own.id, { expectedVersion: 1 }, bearer("codex"))).status).toBe(403);
+  expect((await remove(own.id, { expectedVersion: 1 }, bearer("omo"), true)).status).toBe(404);
+  expect((await remove(owners.id, { expectedVersion: 1 }, bearer("omo"))).status).toBe(403);
+  expect((await remove(own.id, { expectedVersion: 2 }, bearer("omo"))).status).toBe(409);
+  // When: OmO moves its own note to the trash.
+  expect((await remove(own.id, { expectedVersion: 1 }, bearer("omo"))).status).toBe(204);
+  // Then: it is gone from reads and sits in the owner's trash, from where the owner restores it.
+  expect((await get(own.id, session)).status).toBe(404);
+  const trash = z.object({ items: z.array(z.object({ record: z.object({ id: z.string() }) })) })
+    .parse(await (await f.call("/api/v1/trash", "GET", undefined, session)).json());
+  expect(trash.items.map(item => item.record.id)).toEqual([own.id]);
+  expect((await f.call(`/api/v1/trash/${own.id}/restore`, "POST", undefined, session)).status).toBe(200);
+  expect((await get(own.id, session)).status).toBe(200);
+  expect((await get(owners.id, session)).status).toBe(200);
+});
+
 test("deleting detaches project, task and evidence references and bumps their versions", async () => {
   const session = await f.login();
   const project = await create(session, { kind: "project", title: "Project" });

@@ -4,13 +4,13 @@ import { z } from "zod";
 import { DocumentStateSchema, NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { NarrationState } from "../shared/contracts";
 import { storedConnection } from "../cli/client";
-import { getDocument, getNarration, getRecord, putDocument, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, updateRecord } from "./agent-client";
+import { getDocument, getNarration, getRecord, putDocument, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, trashRecord, updateRecord } from "./agent-client";
 
 let readingShared = false;
-type Action = "save" | "get" | "update" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "digest" | "digests";
+type Action = "save" | "get" | "update" | "trash" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "digest" | "digests";
 let action: Action = "save";
 const labels: Record<Action, string> = {
-  save: "Save", get: "Read", update: "Update", search: "Search", task: "Create task", report: "Report",
+  save: "Save", get: "Read", update: "Update", trash: "Move to trash", search: "Search", task: "Create task", report: "Report",
   comments: "List comments", mark: "Mark comment", reply: "Reply", timeline: "Read timeline", narrate: "Narration",
   digest: "Upload digest", digests: "List digests",
 };
@@ -52,6 +52,7 @@ try {
       shared: { type: "string" },
       get: { type: "string" },
       update: { type: "string" },
+      trash: { type: "string" },
       search: { type: "string" },
       kind: { type: "string" },
       limit: { type: "string" },
@@ -115,6 +116,7 @@ try {
       "Save:        bun run agent --file record.json --request-id unique-id [--html document.html]\n" +
         "Read:        bun run agent --get <record-id>   (with the attached document's size and time)\n" +
         "Update:      bun run agent --update <record-id> [--expected-version <n> --file changes.json] [--html document.html]\n" +
+        "Trash:       bun run agent --trash <record-id> [--expected-version <n>]   (only records you created; the owner can restore them from the trash)\n" +
         "Search:      bun run agent --search \"words\" [--kind research|work-report|note|social|task|project] [--limit 1-50] [--cursor <nextCursor>]\n" +
         "Shared:      bun run agent --shared <code|share-url>\n" +
         "New task:    bun run agent --new-task \"Title\" --tags topic1,topic2 [--text \"Details\"] [--status todo|active|review|paused|done] [--evidence <record-id,...>] [--request-id id]\n" +
@@ -180,6 +182,15 @@ try {
       changes: await Bun.file(values.file).json(),
     }));
     print({ ...updated, ...await attach(connection, id) });
+  } else if (values.trash !== undefined) {
+    action = "trash";
+    const id = z.string().trim().min(1).parse(values.trash);
+    const connection = await connect();
+    // Without --expected-version the current version is read first; a change made in between still answers 409.
+    const version = values["expected-version"] !== undefined ? z.coerce.number().int().positive().parse(values["expected-version"])
+      : z.object({ record: z.object({ version: z.number() }).passthrough() }).parse(await getRecord(connection, id)).record.version;
+    await trashRecord(connection, id, version);
+    print({ id, trashed: true, version });
   } else if (values["new-task"] !== undefined) {
     action = "task";
     const id = requestId();
