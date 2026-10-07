@@ -1,9 +1,9 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { NARRATABLE_KINDS, NARRATION_LIMITS, NarrationStatusSchema, NarrationStyleSchema, NarrationVoicesSchema } from "../shared/contracts";
+import { NARRATABLE_KINDS, NARRATION_LIMITS, NarrationAutoSchema, NarrationStatusSchema, NarrationStyleSchema, NarrationVoicesSchema } from "../shared/contracts";
 import { startOfZonedDay } from "../shared/time";
-import type { DashboardRecord, Narration, NarrationState, NarrationStatus, NarrationStyle, NarrationVoiceSettings, NarrationVoices } from "../shared/contracts";
+import type { DashboardRecord, Narration, NarrationAuto, NarrationState, NarrationStatus, NarrationStyle, NarrationVoiceSettings, NarrationVoices } from "../shared/contracts";
 import { KOREAN_VOICES } from "../shared/voices";
 import { ApiError } from "./errors";
 import { spokenNumbers, statedFigures } from "./spoken-numbers";
@@ -57,6 +57,8 @@ export interface NarrationOptions {
   readonly retryDelayMs?: number;
   /** Waits between retries and chunks; resolves early when `signal` aborts. */
   readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** What Settings › Automatic audio starts with until the owner saves a choice; unset values are off and the full document. */
+  readonly autoDefaults?: Partial<NarrationAuto>;
 }
 export type Narrator = ReturnType<typeof createNarration>;
 /** The owner stopped this job; nothing more is paid for and the row was already settled by `cancel`. */
@@ -69,6 +71,8 @@ const FULL_BODY = "Cover every section and paragraph of [Body]; leave none out. 
 /** A record part's script shorter than this share of its source was summarized, not told, so it is written once more with COVERAGE_AGAIN. */
 const COVERAGE_MIN = 0.6;
 const COVERAGE_AGAIN = "The previous script covered only some of this part of [Body]. This time put every section, paragraph, list item and every question and answer into speech, in order, leaving nothing out. Do not summarize or replace content with a mention of what it covers.";
+/** Summary only (Settings › What records read): the prompt carries no [Body], and this note replaces the whole-body rules above. */
+const SUMMARY_ONLY = "This script covers the summary only. No [Body] is given, so ignore the rules above about covering the body. Tell the [Record]'s title, conclusion, summary and next actions in full, add nothing else, and keep it short enough to hear in a minute or two.";
 /** Saved scripts are reused only when written under the current script rules; raise it when the rules change what a script covers. */
 const SCRIPT_RULES = 2;
 /** The note added to the system prompt for one part of a body scripted in parts (`scriptParts`). */
@@ -179,6 +183,7 @@ const rowSchema = z.object({
   audio_bytes: z.number().int().nullable(), audio_ms: z.number().int().nullable(),
   audio_model: z.string().nullable(), audio_voice: z.string().nullable(), audio_at: z.string().nullable(),
   style: NarrationStyleSchema, script_style: NarrationStyleSchema, audio_style: NarrationStyleSchema,
+  scope: NarrationAutoSchema.shape.scope, audio_scope: NarrationAutoSchema.shape.scope,
 });
 type Row = z.infer<typeof rowSchema>;
 type Changes = Partial<Omit<Row, "record_id" | "updated_at">>;
@@ -194,7 +199,8 @@ function sourceHash(record: DashboardRecord) {
 }
 /** A body's parts and where the current one sits, when a record is scripted part by part. */
 interface BodyPart { readonly text: string; readonly index: number; readonly total: number }
-function scriptPrompt(record: DashboardRecord, label?: string, part?: BodyPart) {
+/** `part` null: only the record's summary fields (Summary only), no body. */
+function scriptPrompt(record: DashboardRecord, label?: string, part?: BodyPart | null) {
   const lines = ["[Record]", `Kind: ${label ?? KIND_LABELS[record.kind] ?? record.kind}`, `Title: ${record.title}`];
   for (const [label, key] of [["Conclusion", "conclusion"], ["Summary", "summary"], ["Next actions", "nextActions"]] as const) {
     const value = text(record, key);
@@ -202,6 +208,7 @@ function scriptPrompt(record: DashboardRecord, label?: string, part?: BodyPart) 
   }
   const sources = record.links.map(link => link.label.trim()).filter(Boolean);
   if (sources.length) lines.push(`Sources: ${sources.join(", ")}`);
+  if (part === null) return lines.join("\n");
   const heading = part && part.total > 1 ? `[Body ${part.index + 1}/${part.total}]` : "[Body]";
   lines.push("", heading, (part ? part.text : record.body.trim().slice(0, NARRATION_LIMITS.sourceChars)) || "(none)");
   return lines.join("\n");
@@ -439,6 +446,12 @@ export function createNarration(options: NarrationOptions) {
   for (const column of ["style", "script_style", "audio_style"]) {
     if (!columns.has(column)) store.db.exec(`ALTER TABLE narrations ADD COLUMN ${column} TEXT NOT NULL DEFAULT 'read'`);
   }
+  // What the job reads and what the audio read (full document or summary only); everything before scopes read the full document.
+  for (const column of ["scope", "audio_scope"]) {
+    if (!columns.has(column)) store.db.exec(`ALTER TABLE narrations ADD COLUMN ${column} TEXT NOT NULL DEFAULT 'full'`);
+  }
+  store.db.exec(`CREATE TABLE IF NOT EXISTS narration_auto(id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL CHECK(json_valid(data)),
+    updated_at TEXT NOT NULL)`);
   store.db.exec(`CREATE TABLE IF NOT EXISTS narration_settings(id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL CHECK(json_valid(data)),
     updated_at TEXT NOT NULL)`);
   let chain: Promise<void> = Promise.resolve();
@@ -487,8 +500,11 @@ export function createNarration(options: NarrationOptions) {
     const hash = sourceHash(record);
     const current = row(record.id);
     const style = chosen ?? current?.style ?? "read";
+    const settings = autoSettings();
+    // A digest has no summary of its own to choose: it is always read whole.
+    const scope = options.lookup?.(record.id) ? "full" : settings.scope;
     if (current && ACTIVE.has(current.status)) return { state: await state(record), started: false };
-    if (current && current.audio_hash === hash && current.audio_style === style && !force) {
+    if (current && current.audio_hash === hash && current.audio_style === style && current.audio_scope === scope && !force) {
       if (current.style !== style) set(record.id, { style });
       return { state: await state(record), started: false };
     }
@@ -500,16 +516,17 @@ export function createNarration(options: NarrationOptions) {
     }
     const dayStart = new Date(startOfZonedDay(store.now(), timeZone)).toISOString();
     const started = z.object({ count: z.number() }).parse(store.db.query("SELECT count(*) AS count FROM narration_runs WHERE started_at>=?").get(dayStart)).count;
-    if (started >= dailyLimit) throw new ApiError(429, "narration_daily_limit", `Daily narration limit of ${dailyLimit} reached; try again tomorrow (${timeZone})`);
+    const limit = settings.records === "off" ? dailyLimit : Math.max(dailyLimit, NARRATION_LIMITS.autoDailyRuns);
+    if (started >= limit) throw new ApiError(429, "narration_daily_limit", `Daily narration limit of ${limit} reached; try again tomorrow (${timeZone})`);
     const waiting = z.object({ count: z.number() }).parse(store.db.query("SELECT count(*) AS count FROM narrations WHERE status='queued'").get()).count;
     if (waiting >= NARRATION_LIMITS.queue) throw new ApiError(429, "narration_queue_full", "Too many narrations are waiting; try again later");
     const timestamp = now();
     store.db.transaction(() => {
       if (!current) {
-        store.db.query(`INSERT INTO narrations(record_id,status,job_hash,requested_by,requested_at,updated_at,attempts,style)
-          VALUES(?,'queued',?,?,?,?,0,?)`).run(record.id, hash, principal.id, timestamp, timestamp, style);
+        store.db.query(`INSERT INTO narrations(record_id,status,job_hash,requested_by,requested_at,updated_at,attempts,style,scope)
+          VALUES(?,'queued',?,?,?,?,0,?,?)`).run(record.id, hash, principal.id, timestamp, timestamp, style, scope);
       } else {
-        set(record.id, { status: "queued", style, job_hash: hash, requested_by: principal.id, requested_at: timestamp,
+        set(record.id, { status: "queued", style, scope, job_hash: hash, requested_by: principal.id, requested_at: timestamp,
           attempts: owner && force ? 0 : attempts, error: null, progress_done: null, progress_total: null });
       }
       store.db.query("INSERT INTO narration_runs(record_id,started_at) VALUES(?,?)").run(record.id, timestamp);
@@ -620,13 +637,15 @@ export function createNarration(options: NarrationOptions) {
     const hosts = [voices.hostA, voices.hostB] as const;
     const part = join(audioDir, `${id}.part.wav`);
     try {
-      const scriptKey = `${hash}:${SCRIPT_RULES}`;
+      const digest = label !== undefined;
+      const summaryOnly = !digest && job.scope === "summary";
+      const scriptKey = summaryOnly ? `${hash}:${SCRIPT_RULES}:summary` : `${hash}:${SCRIPT_RULES}`;
       let script = job.script_hash === scriptKey && job.script_style === style ? job.script : null;
       if (!script) {
-        const digest = label !== undefined;
         const korean = isKorean(record);
         const base = podcast ? PODCAST_SCRIPT_SYSTEM : digest ? DIGEST_SCRIPT_SYSTEM : SCRIPT_SYSTEM;
-        const system = korean ? `${base}\n${KOREAN_POLITE}` : base;
+        const scoped = summaryOnly ? `${base}\n${SUMMARY_ONLY}` : base;
+        const system = korean ? `${scoped}\n${KOREAN_POLITE}` : scoped;
         const max = digest ? NARRATION_LIMITS.digestScriptChars : NARRATION_LIMITS.partScriptChars;
         const normalize = (raw: string) => {
           const result = normalizeScript(raw, digest ? max : Number.MAX_SAFE_INTEGER);
@@ -634,9 +653,9 @@ export function createNarration(options: NarrationOptions) {
           return result;
         };
         // A record is heard whole: its listenable body goes to the script model in parts, one script per part, in order.
-        const texts = digest ? [null] : scriptParts(listeningSource(record.body).slice(0, NARRATION_LIMITS.sourceChars));
+        const texts = digest || summaryOnly ? [null] : scriptParts(listeningSource(record.body).slice(0, NARRATION_LIMITS.sourceChars));
         const parts = texts.map((text, index) => ({
-          prompt: scriptPrompt(record, label, text === null ? undefined : { text, index, total: texts.length }),
+          prompt: scriptPrompt(record, label, summaryOnly ? null : text === null ? undefined : { text, index, total: texts.length }),
           system: texts.length > 1 ? `${system}\n${partNote(index, texts.length, podcast, max)}` : system,
           source: text,
         }));
@@ -702,7 +721,7 @@ export function createNarration(options: NarrationOptions) {
       if (!row(id)) { removeFile(name); return; }
       set(id, { status: "ready", attempts: 0, error: null, progress_done: null, progress_total: null, audio_file: name, audio_hash: hash,
         audio_mime: encoded.mime, audio_bytes: Bun.file(join(audioDir, name)).size, audio_ms: Math.round(body.byteLength / BYTES_PER_MS),
-        audio_model: provider.ttsModel, audio_voice: podcast ? hosts.join(", ") : voices.readVoice, audio_style: style, audio_at: now() });
+        audio_model: provider.ttsModel, audio_voice: podcast ? hosts.join(", ") : voices.readVoice, audio_style: style, audio_scope: job.scope, audio_at: now() });
       if (previous !== name) removeFile(previous);
     } catch (error) {
       rmSync(part, { force: true });
@@ -719,7 +738,54 @@ export function createNarration(options: NarrationOptions) {
     chain = chain.then(() => run(id)).catch((error: unknown) => {
       // Neither record content nor provider output reaches the log; only the failure class does.
       console.error(`narration ${id} failed: ${error instanceof Error ? error.name : "unknown"}`);
+    }).then(() => {
+      // Content that changed while this job ran is made next, after it.
+      const next = followUps.get(id);
+      if (next) { followUps.delete(id); auto(next.principal, id, next.style); }
     });
+  }
+
+  /** Settings › Automatic audio: the saved choice, else the server's defaults. */
+  function autoSettings(): NarrationAuto {
+    const defaults: NarrationAuto = { digests: "off", records: "off", scope: "full", ...options.autoDefaults };
+    const value = store.db.query("SELECT data FROM narration_auto WHERE id=1").get();
+    if (!value) return defaults;
+    const parsed = NarrationAutoSchema.safeParse(JSON.parse(z.object({ data: z.string() }).parse(value).data));
+    return parsed.success ? parsed.data : defaults;
+  }
+  function saveAuto(input: unknown): NarrationAuto {
+    const parsed = NarrationAutoSchema.safeParse(input);
+    if (!parsed.success) throw new ApiError(400, "invalid_input", parsed.error.issues.map(issue => issue.message).join("; "));
+    store.db.query("INSERT INTO narration_auto(id,data,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at")
+      .run(JSON.stringify(parsed.data), now());
+    return parsed.data;
+  }
+  /** Requests that changed content while its job ran, made again once that job ends. */
+  const followUps = new Map<string, { principal: Principal; style: NarrationStyle }>();
+  const autoRuns = new Set<Promise<void>>();
+  /**
+   * Asks for `id`'s audio on its own (a digest part on arrival, a new record), in the background and through the same queue,
+   * limits and failure rules as a Listen request. Unchanged audio is kept; content that changes while its job runs is made again
+   * after it. A refusal (daily limit, full queue, attempts used up, no key) is logged by its code and nothing else happens.
+   */
+  function auto(principal: Principal, id: string, style: NarrationStyle) {
+    const work = (async () => {
+      const source = options.lookup?.(id);
+      let record: DashboardRecord;
+      try { record = source?.record ?? store.get(id); }
+      catch (error) { if (error instanceof ApiError && error.status === 404) return; throw error; }
+      if (source && !record.body.trim()) return;
+      try {
+        const result = await request(principal, record, false, style);
+        const current = row(id);
+        if (!result.started && current && ACTIVE.has(current.status) && current.job_hash !== sourceHash(record)) followUps.set(id, { principal, style });
+      } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
+        console.log(`narration auto ${id} skipped: ${error.code}`);
+      }
+    })().catch((error: unknown) => { console.error(`narration auto ${id} failed: ${error instanceof Error ? error.name : "unknown"}`); });
+    autoRuns.add(work);
+    void work.finally(() => autoRuns.delete(work));
   }
   /** Jobs cut off by a restart start again; they were already counted against the daily limit. */
   function resume() {
@@ -773,7 +839,7 @@ export function createNarration(options: NarrationOptions) {
   }
   async function idle() {
     let current: Promise<void>;
-    do { current = chain; await current; } while (current !== chain);
+    do { await Promise.all([...autoRuns]); current = chain; await current; } while (current !== chain || autoRuns.size > 0);
   }
   /** The provider's voices and the built-in speaking styles; what narration uses until the owner saves a choice. */
   function voiceDefaults(): NarrationVoices {
@@ -840,5 +906,5 @@ export function createNarration(options: NarrationOptions) {
     previews.set(voice, made);
     return made;
   }
-  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, voices: voiceView, saveVoices, preview };
+  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, voices: voiceView, saveVoices, preview, autoSettings, saveAuto, auto };
 }

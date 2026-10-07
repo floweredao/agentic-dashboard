@@ -8,6 +8,17 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
+On first start the server adds a `narration_auto` table and two columns to `narrations`; back up the data folder before you upgrade.
+
+### Added
+
+- Automatic audio in Settings: **Digests** (Off | Each part | All in one) makes a digest's audio when it arrives, only for the parts that changed; **New records** (Off | Read aloud | Podcast) makes a new research note or work report's audio, with the daily limit raised to at least 30 while it is on; **What records read** (Full document | Summary only) chooses whether a record's audio reads the whole body or only its conclusion, summary and next steps. Each choice is saved on tap. Audio is made in the background through the same queue and limits as Listen, unchanged audio is never made again, and a part that changes while its audio is being made is made again after it. New routes `GET`/`PUT /api/v1/narration/auto`; `NARRATION_DIGEST_AUTO` (`off`, `parts`, `all`; default `off`) sets the digest default.
+- Agents can move a record they created to the trash: `DELETE /api/v1/records/:id` with the agent's key, or `bun run agent --trash <record-id>`. The owner restores it from the trash; another agent's or the owner's record answers 403.
+
+### Changed
+
+- Digests are listed only in the Digest tab: the inbox shows records alone, and its badge, filter chips and title count only records.
+
 ## [0.3.0] - 2026-10-07
 
 One-line install with first-run setup, one-time codes that connect another computer's agents, audio that keeps playing across screens, and narration voices in Settings. On first start the server adds the `agent_invites` and `narration_settings` tables to the database; back up the data folder before you upgrade.

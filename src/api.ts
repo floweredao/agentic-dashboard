@@ -18,8 +18,10 @@ import {
   type RecordDocument,
   NarrationStateSchema as narrationStateSchema,
   NarrationVoiceSettingsSchema,
+  NarrationAutoSchema,
   type NarrationVoiceSettings,
   type NarrationVoices,
+  type NarrationAuto,
   RecordInputSchema as recordInputSchema,
   TrashItemSchema as trashItemSchema,
   type Comment,
@@ -184,6 +186,16 @@ export async function saveVoiceSettings(voices: NarrationVoices, csrfToken: stri
 }
 
 /** A few seconds of `voice` reading a sample sentence; made once on the server (a small paid call), then served from its file. */
+/** Settings › Automatic audio (owner): which audio is made without asking, and what a record's audio reads. */
+export async function loadNarrationAuto(): Promise<NarrationAuto> {
+  return NarrationAutoSchema.parse(await http.get("narration/auto").json());
+}
+
+/** Saves the automatic audio choice; it applies to audio made from now on. */
+export async function saveNarrationAuto(auto: NarrationAuto, csrfToken: string): Promise<NarrationAuto> {
+  return NarrationAutoSchema.parse(await http.put("narration/auto", { json: auto, headers: { "X-CSRF-Token": csrfToken } }).json());
+}
+
 export const voicePreviewUrl = (voice: string) => `/api/v1/narration/voices/${encodeURIComponent(voice)}/preview`;
 
 /** Stops a narration that is waiting or being made, so no further paid call starts; the state after it (the earlier audio, if any). */
