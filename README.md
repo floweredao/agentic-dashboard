@@ -224,7 +224,7 @@ Optional features are off or keyless by default:
 |---|---|
 | Web push | `PUSH` (on by default; keys are generated) |
 | Digests | `DIGEST` (on by default) |
-| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Default voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` (the owner can pick other voices and speaking styles in Settings › Narration voices), and `NARRATION_SCRIPT_FALLBACK_MODEL` for busy hours. To bill speech to a Google Cloud project instead of the key's quota, set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT` and sign in with Application Default Credentials (see below) |
+| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Default voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` (the owner can pick other voices and speaking styles in Settings › Narration voices) (the script always comes from `NARRATION_SCRIPT_MODEL`; a failed try is retried with the same model, never a lighter one). To bill speech to a Google Cloud project instead of the key's quota, set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT` and sign in with Application Default Credentials (see below) |
 | AI title fill for saved links | `AI_FILL_COMMAND`, any CLI that reads a prompt on stdin and prints JSON |
 | MCP for chat apps | `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` |
 | Agent-only listener | `ENABLE_AGENT_INGRESS=on` |

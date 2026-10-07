@@ -68,11 +68,13 @@ test("with Vertex, a dialogue is one multi-speaker request with every turn namin
   });
 });
 
-test("with Vertex, the script still goes to the AI Studio Interactions API with the key", async () => {
+test("with Vertex, the script's second route still goes to the AI Studio Interactions API with the key, same model", async () => {
   const { gemini, sent } = provider(() => Response.json({ steps: [{ type: "model_output", content: [{ type: "text", text: "원고" }] }] }));
-  expect(await gemini.script("규칙", "[기록]", signal())).toBe("원고");
+  expect(gemini.scriptRoutes).toEqual(["vertex", "gemini"]);
+  expect(await gemini.script("규칙", "[기록]", signal(), "gemini")).toBe("원고");
   expect(sent[0]?.url).toBe("https://generativelanguage.googleapis.com/v1beta/interactions");
   expect(sent[0]?.headers.get("x-goog-api-key")).toBe("AIza-test-key");
+  expect(sent[0]?.body).toMatchObject({ model: "gemini-3.8-flash" });
 });
 
 test("with Vertex, narration is available only when the key and the ADC file both exist", async () => {
