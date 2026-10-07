@@ -224,6 +224,26 @@ export type Narration = z.infer<typeof NarrationSchema>;
 /** GET/POST narration response; `available` is false when no TTS key is configured. */
 export const NarrationStateSchema = z.object({ narration: NarrationSchema.nullable(), available: z.boolean() }).strict();
 export type NarrationState = z.infer<typeof NarrationStateSchema>;
+/** At most this many characters of speaking style per narration style. */
+export const NARRATION_STYLE_TEXT_MAX = 300;
+const voiceId = z.string().trim().min(1).max(64);
+const styleText = z.string().trim().min(1).max(NARRATION_STYLE_TEXT_MAX);
+/**
+ * The voices and speaking style the next narrations use: `readVoice` reads aloud (and digests), `hostA` and `hostB` are the
+ * two podcast hosts and must differ. Audio already made keeps the voice it was made with.
+ */
+export const NarrationVoicesSchema = z.object({
+  readVoice: voiceId, hostA: voiceId, hostB: voiceId, readStyle: styleText, podcastStyle: styleText,
+}).strict().refine(voices => voices.hostA !== voices.hostB, { message: "The two podcast hosts need different voices", path: ["hostB"] });
+export type NarrationVoices = z.infer<typeof NarrationVoicesSchema>;
+export const VoiceSchema = z.object({
+  id: z.string(), name: z.string(), gender: z.enum(["male", "female", "neutral"]), pitch: z.enum(["low", "medium", "high"]).nullable(),
+}).strict();
+/** GET and PUT /api/v1/narration/voices: what is in use, what the server starts with, and the voices to choose from. */
+export const NarrationVoiceSettingsSchema = z.object({
+  settings: NarrationVoicesSchema, defaults: NarrationVoicesSchema, voices: z.array(VoiceSchema),
+}).strict();
+export type NarrationVoiceSettings = z.infer<typeof NarrationVoiceSettingsSchema>;
 
 /**
  * A record's attached HTML document (full document), for research, work-report, note and social records. The dashboard shows

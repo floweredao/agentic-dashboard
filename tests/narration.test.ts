@@ -2,8 +2,8 @@ import { Database } from "bun:sqlite";
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
-import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, listeningSource, missingFigures, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, scriptParts, splitChunks } from "../server/narration";
+import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema, NarrationVoiceSettingsSchema } from "../shared/contracts";
+import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, listeningSource, missingFigures, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, PODCAST_STYLE, ProviderError, SCRIPT_SYSTEM, SPEECH_STYLE, scriptParts, splitChunks } from "../server/narration";
 import type { NarrationOptions, NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
@@ -17,7 +17,9 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 type Fake = {
-  provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[]; systems: string[]; converse: SpeechTurn[][]; models: string[] }; available: boolean;
+  provider: NarrationProvider; calls: { script: number; speak: string[]; prompts: string[]; systems: string[]; converse: SpeechTurn[][]; models: string[];
+    /** The voice and style of each speak call, and the hosts and style of each converse call. */
+    voices: string[]; styles: string[]; hosts: string[][] }; available: boolean;
   failSpeak: number | "always"; error: Error | null; scriptText: string; hold: Hold | null;
   /** Holds the script call after half its text has streamed in, until `release`. */
   scriptHold: Hold | null;
@@ -29,7 +31,7 @@ type Fake = {
 
 /** A TTS provider that returns one second of silence per chunk and records what it was asked. */
 function fake(): Fake {
-  const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [], models: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT,
+  const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [], models: [], voices: [], styles: [], hosts: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT,
     hold: null, scriptHold: null, scriptErrors: [], speakErrors: [], scriptTexts: [], provider: null as never };
   state.provider = {
     ttsModel: "fake-tts", scriptModel: "fake-script", fallbackScriptModel: "fake-lite", voice: "Kore", hosts: ["Kore", "Puck"],
@@ -49,8 +51,9 @@ function fake(): Fake {
       onText?.(text.length);
       return text;
     },
-    converse: async (turns, _style, signal) => {
+    converse: async (turns, style, signal, hosts) => {
       state.calls.converse.push([...turns]);
+      state.calls.styles.push(style); state.calls.hosts.push([...(hosts ?? ["Kore", "Puck"])]);
       const hold = state.hold;
       if (hold) {
         hold.entered.resolve(signal);
@@ -61,8 +64,9 @@ function fake(): Fake {
       }
       return new Uint8Array(48000);
     },
-    speak: async (text, _style, signal) => {
+    speak: async (text, style, signal, voice) => {
       state.calls.speak.push(text);
+      state.calls.styles.push(style); state.calls.voices.push(voice ?? "Kore");
       const hold = state.hold;
       if (hold) {
         hold.entered.resolve(signal);
@@ -1092,4 +1096,85 @@ test("a script saved under earlier script rules is written again instead of reus
   expect((await f.call(narration(record.id), "POST", { force: true }, owner)).status).toBe(202);
   await idle();
   expect(tts.calls.script).toBe(2);
+});
+
+const VOICES = "/api/v1/narration/voices";
+const voiceSettings = async (response: Response) => NarrationVoiceSettingsSchema.parse(await response.json());
+
+test("the owner reads the voice settings: the provider's voices and the speaking styles by default, and the Korean voice list", async () => {
+  const { f } = setup();
+  const owner = await f.login();
+  const response = await f.call(VOICES, "GET", undefined, owner);
+  expect(response.status).toBe(200);
+  const body = await voiceSettings(response);
+  const defaults = { readVoice: "Kore", hostA: "Kore", hostB: "Puck", readStyle: SPEECH_STYLE, podcastStyle: PODCAST_STYLE };
+  expect(body.settings).toEqual(defaults);
+  expect(body.defaults).toEqual(defaults);
+  expect(body.voices.find(voice => voice.id === "ko-kr-podcaster-8")).toEqual({ id: "ko-kr-podcaster-8", name: "Podcaster 8", gender: "male", pitch: "low" });
+  expect(body.voices.filter(voice => voice.id.startsWith("ko-kr-")).length).toBe(117);
+  // The provider's own voices stay choosable even when the list does not name them.
+  expect(body.voices.map(voice => voice.id)).toEqual(expect.arrayContaining(["Kore", "Puck"]));
+  expect((await f.call(VOICES, "GET", undefined, bearer("omo"))).status).toBe(403);
+});
+
+test("saved voices and styles are used from the next narration, and audio made before keeps its voice and is not outdated", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await idle();
+  const chosen = { readVoice: "ko-kr-tutor-1", hostA: "ko-kr-storyteller-2", hostB: "ko-kr-podcaster-3", readStyle: "차분하고 느리게", podcastStyle: "활기찬 대화" };
+  const saved = await f.call(VOICES, "PUT", chosen, owner);
+  expect(saved.status).toBe(200);
+  expect((await voiceSettings(saved)).settings).toEqual(chosen);
+
+  const before = await read(await f.call(narration(record.id), "GET", undefined, owner));
+  expect(before.narration).toMatchObject({ status: "ready", stale: false, audio: { voice: "Kore" } });
+
+  expect((await f.call(narration(record.id), "POST", { force: true }, owner)).status).toBe(202);
+  await idle();
+  expect(tts.calls.voices.at(-1)).toBe("ko-kr-tutor-1");
+  expect(tts.calls.styles.at(-1)).toBe("차분하고 느리게");
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.audio?.voice).toBe("ko-kr-tutor-1");
+
+  tts.scriptText = DIALOGUE;
+  const podcast = await research(f, owner);
+  expect((await f.call(narration(podcast.id), "POST", { style: "podcast" }, owner)).status).toBe(202);
+  await idle();
+  expect(tts.calls.hosts.at(-1)).toEqual(["ko-kr-storyteller-2", "ko-kr-podcaster-3"]);
+  expect(tts.calls.styles.at(-1)).toBe("활기찬 대화");
+  expect((await read(await f.call(narration(podcast.id), "GET", undefined, owner))).narration?.audio?.voice).toBe("ko-kr-storyteller-2, ko-kr-podcaster-3");
+
+  // The choice is kept across a restart.
+  f.restart();
+  expect((await voiceSettings(await f.call(VOICES, "GET", undefined, await f.login()))).settings).toEqual(chosen);
+});
+
+test("voice settings take only listed voices, two different podcast hosts and a short style, and only from the owner", async () => {
+  const { f } = setup();
+  const owner = await f.login();
+  const valid = { readVoice: "ko-kr-tutor-1", hostA: "ko-kr-tutor-1", hostB: "ko-kr-tutor-2", readStyle: "또렷하게", podcastStyle: "편안하게" };
+  for (const bad of [{ ...valid, readVoice: "ko-kr-nobody-9" }, { ...valid, hostB: "ko-kr-tutor-1" }, { ...valid, readStyle: " " },
+    { ...valid, podcastStyle: "가".repeat(301) }, { ...valid, extra: true }]) {
+    const response = await f.call(VOICES, "PUT", bad, owner);
+    expect(response.status).toBe(400);
+  }
+  expect((await f.call(VOICES, "PUT", valid, bearer("omo"))).status).toBe(403);
+  const { Cookie, Origin } = owner;
+  expect((await f.call(VOICES, "PUT", valid, { Cookie, Origin })).status).toBe(403);
+  expect((await voiceSettings(await f.call(VOICES, "GET", undefined, owner))).settings.readVoice).toBe("Kore");
+});
+
+test("a voice preview is spoken once with that voice and then served from the saved file", async () => {
+  const { f, tts } = setup();
+  const owner = await f.login();
+  const first = await f.call(`${VOICES}/ko-kr-tutor-1/preview`, "GET", undefined, owner);
+  expect(first.status).toBe(200);
+  expect(first.headers.get("content-type")).toBe("audio/wav");
+  expect((await first.arrayBuffer()).byteLength).toBeGreaterThan(44);
+  expect(tts.calls.voices).toEqual(["ko-kr-tutor-1"]);
+  expect((await f.call(`${VOICES}/ko-kr-tutor-1/preview`, "GET", undefined, owner)).status).toBe(200);
+  expect(tts.calls.voices).toEqual(["ko-kr-tutor-1"]);
+  expect((await f.call(`${VOICES}/ko-kr-nobody-9/preview`, "GET", undefined, owner)).status).toBe(404);
+  expect((await f.call(`${VOICES}/ko-kr-tutor-1/preview`, "GET", undefined, bearer("omo"))).status).toBe(403);
 });

@@ -315,6 +315,10 @@ export function createApp(options: AppOptions = {}) {
       app.post("/api/v1/trash/:id/restore", c => { owner(c.req.raw, true); return c.json({ record: store.restore(c.req.param("id")) }); });
       app.delete("/api/v1/trash/:id", c => { owner(c.req.raw, true); store.destroy(c.req.param("id")); narration.prune(); return c.body(null, 204); });
       app.delete("/api/v1/trash", c => { owner(c.req.raw, true); store.emptyTrash(); narration.prune(); return c.body(null, 204); });
+      /** Settings › Narration voices: the owner reads and saves the voices and speaking styles of the next narrations, and hears a voice first. */
+      app.get("/api/v1/narration/voices", c => { owner(c.req.raw, false); return c.json(narration.voices()); });
+      app.put("/api/v1/narration/voices", async c => { owner(c.req.raw, true); return c.json(narration.saveVoices(await json(c.req.raw))); });
+      app.get("/api/v1/narration/voices/:voice/preview", async c => { owner(c.req.raw, false); return serveAudio(c, await narration.preview(c.req.param("voice"))); });
       /** The owner, or an agent for a record in its read scope (agentCanRead); others get 404 like the record itself. */
       const narratable = (request: Request, id: string) => {
         const principal = auth.authenticate(request, false);
