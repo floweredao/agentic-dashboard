@@ -101,7 +101,18 @@ Mobile-first layout with a bottom tab bar, safe-area aware, installable as a hom
 
 ## Quick start
 
-You need [Bun](https://bun.sh) 1.3 or later.
+**One line** on macOS or Linux. It installs Bun when it's missing, puts the app in `~/.agentic-dashboard` and an `agentic-dashboard` command in `~/.local/bin`, then asks what this computer is for:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh
+```
+
+- **Host the dashboard here**: choose the port, the data folder and how you'll open it (only this computer, Tailscale, or your own HTTPS proxy), get the owner key, and optionally start it at login (launchd or `systemd --user`).
+- **Connect this computer's agents** to a dashboard elsewhere: enter its address and a one-time connection code. The key goes into the system keychain (or a file only you can read), and the agent skill is installed for Claude Code, Codex, OmO or `~/.agents`, whichever this computer has.
+
+Setup appears only the first time; later `agentic-dashboard` starts the dashboard or shows what's connected. Open it again with `agentic-dashboard setup`, `agentic-dashboard connect` or `agentic-dashboard onboard`, and see `agentic-dashboard help` for the rest. Running the line again updates the app and keeps your settings and data. Without a terminal, pass flags instead: `... | sh -s -- setup --yes --port 4310 --no-service`.
+
+**From a clone** you need [Bun](https://bun.sh) 1.3 or later.
 
 ```sh
 git clone https://github.com/floweredao/agentic-dashboard.git
@@ -128,10 +139,20 @@ The owner key for the demo is in `demo-data/credentials.json`. The seed refuses 
 
 ## Connect your agents
 
-Register each agent once. Its key is printed only this one time; the dashboard keeps a hash.
+**An agent on another computer:** on the dashboard host, issue a one-time connection code. It prints the line to run on the other computer:
 
 ```sh
-bun run agents add claude-code
+agentic-dashboard invite laptop-codex
+# On the agent's computer:
+curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh -s -- connect --url https://dashboard.example.com --code 7K2Q-M9XA-0C4D-PT3V
+```
+
+The code works once, for 15 minutes, and registers the agent when it is used. After that, `agentic-dashboard agent` on that computer takes every option of `bun run agent` below and needs no `DASHBOARD_TOKEN`.
+
+**Or register a key yourself.** It's printed only this one time; the dashboard keeps a hash.
+
+```sh
+bun run agents add claude-code          # or: agentic-dashboard agents add claude-code
 export DASHBOARD_TOKEN='<the key it printed>'
 ```
 

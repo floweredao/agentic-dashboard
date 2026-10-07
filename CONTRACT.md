@@ -11,6 +11,8 @@ This document describes what the server promises: the data model, the HTTP API, 
 
 Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key.
 
+A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
+
 Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
 
 ## Records
@@ -103,6 +105,7 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | `GET /api/v1/auth/session` | owner | `{ principal, csrfToken, expiresAt }` |
 | `DELETE /api/v1/auth/session` | owner | 204 |
 | `GET /api/v1/agents` | owner | `{ items }` registered agents |
+| `POST /api/v1/agents/connect` | anyone with a connection code | `{ code }`; 201 `{ agent, key }` once (the agent is registered then); unknown, used or expired codes 404 `invite_invalid`; not on the agent ingress; 403 in demo mode |
 
 ### Records
 

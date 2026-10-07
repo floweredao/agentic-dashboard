@@ -101,7 +101,18 @@ Agentic Dashboard는 에이전트마다 키를 하나씩 주고, 결과를 한�
 
 ## 빠른 시작
 
-[Bun](https://bun.sh) 1.3 이상이 필요합니다.
+macOS나 Linux에서 **한 줄로** 설치합니다. Bun이 없으면 설치하고, 앱을 `~/.agentic-dashboard`에, `agentic-dashboard` 명령을 `~/.local/bin`에 둔 뒤 이 컴퓨터를 어디에 쓸지 묻습니다.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh
+```
+
+- **여기서 대시보드 돌리기**: 포트, 데이터 폴더, 여는 방법(이 컴퓨터에서만, Tailscale, 내 HTTPS 프록시)을 고르고 소유자 키를 받습니다. 원하면 로그인할 때 자동으로 시작합니다(launchd 또는 `systemd --user`).
+- **이 컴퓨터의 에이전트 연결하기**: 다른 곳의 대시보드 주소와 1회용 연결 코드를 넣습니다. 키는 시스템 키체인(또는 나만 읽을 수 있는 파일)에 저장되고, 이 컴퓨터에 있는 Claude Code, Codex, OmO, `~/.agents`에 에이전트 스킬이 설치됩니다.
+
+설정 화면은 처음에만 뜹니다. 그다음부터 `agentic-dashboard`는 대시보드를 시작하거나 연결 상태를 보여 줍니다. `agentic-dashboard setup`, `agentic-dashboard connect`, `agentic-dashboard onboard`로 다시 열 수 있고, 나머지 명령은 `agentic-dashboard help`에 있습니다. 같은 줄을 다시 실행하면 설정과 데이터는 그대로 두고 앱만 새로 받습니다. 터미널이 없으면 옵션으로 줍니다: `... | sh -s -- setup --yes --port 4310 --no-service`.
+
+**저장소에서 직접** 띄우려면 [Bun](https://bun.sh) 1.3 이상이 필요합니다.
 
 ```sh
 git clone https://github.com/floweredao/agentic-dashboard.git
@@ -128,10 +139,20 @@ DATA_DIR=demo-data bun start
 
 ## 에이전트 연결하기
 
-에이전트마다 한 번 등록합니다. 키는 이때 한 번만 출력되고, 대시보드에는 해시만 남습니다.
+**다른 컴퓨터의 에이전트:** 대시보드 컴퓨터에서 1회용 연결 코드를 만듭니다. 다른 컴퓨터에서 실행할 줄이 함께 출력됩니다.
 
 ```sh
-bun run agents add claude-code
+agentic-dashboard invite laptop-codex
+# 에이전트를 쓸 컴퓨터에서:
+curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh -s -- connect --url https://dashboard.example.com --code 7K2Q-M9XA-0C4D-PT3V
+```
+
+코드는 15분 동안 한 번만 쓸 수 있고, 쓰는 순간 그 에이전트가 등록됩니다. 그다음 그 컴퓨터의 `agentic-dashboard agent`는 아래 `bun run agent`의 옵션을 모두 받고, `DASHBOARD_TOKEN` 없이 동작합니다.
+
+**키를 직접 등록할 수도 있습니다.** 키는 이때 한 번만 출력되고, 대시보드에는 해시만 남습니다.
+
+```sh
+bun run agents add claude-code          # 또는: agentic-dashboard agents add claude-code
 export DASHBOARD_TOKEN='<출력된 키>'
 ```
 

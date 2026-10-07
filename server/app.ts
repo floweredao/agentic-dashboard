@@ -10,6 +10,7 @@ import { systemTimeZone } from "../shared/time";
 import { Agents } from "./agents";
 import { Auth, hash, SESSION_COOKIE } from "./auth";
 import { Digests } from "./digests";
+import { Invites } from "./invites";
 import { digestPayload, createPush, replyPayload, reviewPayload, type PushOptions } from "./push";
 import { Comments } from "./comments";
 import { enrichCapture, type CaptureEnrichment } from "./capture-enrichment";
@@ -80,6 +81,7 @@ export function createApp(options: AppOptions = {}) {
   const demo = options.demo === true;
   const auth = new Auth(store, options.credentialsPath ?? "data/credentials.json", demo);
   const agents = new Agents(store);
+  const invites = new Invites(store, agents);
   const timeZone = options.timeZone ?? systemTimeZone();
   const pushOn = options.pushEnabled !== false;
   const digestOn = options.digestEnabled !== false;
@@ -246,6 +248,11 @@ export function createApp(options: AppOptions = {}) {
       app.get("/api/v1/agents", c => {
         if (auth.authenticate(c.req.raw, false).source !== "manual") throw new ApiError(403, "forbidden", "Owner session required");
         return c.json({ items: agents.list() });
+      });
+      // A one-time connection code issued on the host (agentic-dashboard invite) is the capability; it registers its agent once.
+      app.post("/api/v1/agents/connect", async c => {
+        const input = z.object({ code: z.string().trim().min(1).max(64) }).strict().parse(await json(c.req.raw));
+        return c.json(invites.redeem(input.code), 201);
       });
       app.post("/api/v1/auth/session", async c => {
         if (!origins.has(c.req.header("origin") ?? "")) throw new ApiError(403, "origin", "Allowed Origin required");
@@ -501,6 +508,6 @@ export function createApp(options: AppOptions = {}) {
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
     onCreate: id => { if (aiFillSources.has(mcpAgent)) aiFill?.enqueue(id); } });
   return { fetch: (request: Request) => privateApp.fetch(request), publicFetch: (request: Request) => publicApp.fetch(request),
-    mcpFetch, aiFill, narration, push, agents, timeZone, purgeTrash: () => { const purged = store.purgeTrash(); narration.prune(); return purged; },
+    mcpFetch, aiFill, narration, push, agents, invites, timeZone, purgeTrash: () => { const purged = store.purgeTrash(); narration.prune(); return purged; },
     close: () => store.close() };
 }
