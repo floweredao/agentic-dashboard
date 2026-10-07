@@ -58,7 +58,7 @@ test("DigestView shows sections in stored order under their own titles, filtered
   const allHtml = render("all");
   expect(await scan(allHtml, ".digest-section-label")).toEqual(["Local", "Inbox"]);
   expect(await scan(allHtml, ".reader-dates")).toEqual(["메시지 2건 · 기사 1건"]);
-  expect(await scan(allHtml, ".digest-jump .chip")).toEqual(["Local1", "Inbox2"]);
+  expect(await scan(allHtml, ".digest-jump .digest-tab")).toEqual(["Local1", "Inbox2"]);
   expect(allHtml).toContain('id="item-inbox-m2"');
 });
 
@@ -82,10 +82,20 @@ test("Items read as a list: an update prefix becomes one tag, the summary splits
   expect(html).not.toContain("digest-card-foot");
   expect(await scan(html, ".message-action")).toEqual(["바로 확인", "본인인지 확인"]);
   expect(await scan(html, ".digest-end")).toEqual(["다이제스트 끝 · 3건"]);
-  // The section bar holds the jump chips, the first one current, and the titles-only toggle (off).
-  expect(await scan(html, ".digest-bar .digest-jump .chip")).toEqual(["Local1", "Inbox2"]);
-  expect(await scan(html, '.digest-bar a.chip[aria-current="location"]')).toEqual(["Local1"]);
-  expect(html).toContain('<button type="button" class="chip digest-density" aria-pressed="false">제목만</button>');
+  // The section bar holds the section tabs, the first one current, and 제목만 보기 (off).
+  expect(await scan(html, ".digest-bar .digest-jump .digest-tab")).toEqual(["Local1", "Inbox2"]);
+  expect(await scan(html, '.digest-bar a.digest-tab[aria-current="location"]')).toEqual(["Local1"]);
+  expect(html).toContain('<button type="button" class="icon-btn digest-density" aria-pressed="false" aria-label="제목만 보기" title="제목만 보기">');
+});
+
+test("The section bar is one row: section tabs with a count badge, then 제목만 보기 as an icon toggle at its end", async () => {
+  const html = renderView();
+  // The bar holds exactly the tab strip and the toggle, in that order.
+  expect(html).toMatch(/<div class="digest-bar"><nav class="digest-jump" aria-label="[^"]+">(<a class="digest-tab"[^>]*>[^<]+<span class="digest-tab-count">\d+<\/span><\/a>)+<\/nav><button type="button" class="icon-btn digest-density"[^>]*><svg[^>]*>.*?<\/svg><\/button><\/div>/);
+  expect(await scan(html, ".digest-tab-count")).toEqual(["1", "2"]);
+  // The toggle shows only its icon; its name is in aria-label and the tooltip.
+  expect(await scan(html, ".digest-density")).toEqual([]);
+  expect(html).not.toContain('class="chip');
 });
 
 test("Titles only hides every summary and keeps titles, sources and what each message asks to do; the choice is kept on this device", async () => {
@@ -93,7 +103,7 @@ test("Titles only hides every summary and keeps titles, sources and what each me
   expect(await scan(html, ".digest-card-summary")).toEqual([]);
   expect(await scan(html, ".digest-card-title")).toEqual(["업데이트국내 첫 소식", "계정 확인", "접속 알림"]);
   expect(await scan(html, ".message-action")).toEqual(["바로 확인", "본인인지 확인"]);
-  expect(html).toContain('<button type="button" class="chip digest-density" aria-pressed="true">제목만</button>');
+  expect(html).toContain('<button type="button" class="icon-btn digest-density" aria-pressed="true" aria-label="제목만 보기" title="제목만 보기">');
   expect(html).toContain('class="reader digest titles"');
   expect(DENSITY_KEY).toBe("agentic:digest-density");
 });
@@ -103,7 +113,7 @@ test("The update tag, the titles-only toggle and the end line read in English wh
   try {
     const html = renderView();
     expect(await scan(html, "#item-local-a .digest-update")).toEqual(["Update"]);
-    expect(await scan(html, ".digest-density")).toEqual(["Titles only"]);
+    expect(html).toContain('class="icon-btn digest-density" aria-pressed="false" aria-label="Titles only" title="Titles only"');
     expect(await scan(html, ".digest-end")).toEqual(["End of digest · 3 items"]);
   } finally { applyLocale("ko"); }
 });
