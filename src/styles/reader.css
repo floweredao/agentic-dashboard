@@ -187,18 +187,21 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .inline-tag-add { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; }
 .inline-tag-add .input { width: min(200px, 100%); min-height: 28px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; }
 
-.prose { color: var(--text); font-size: 16px; line-height: 1.75; overflow-wrap: break-word; }
+/* Reading measure and spacing (WCAG 1.4.8): lines of at most 40 Korean characters, a paragraph gap well over the space
+   between lines, and list items apart like short paragraphs. */
+.prose { max-width: 40em; color: var(--text); font-size: 16px; line-height: 1.75; overflow-wrap: break-word; }
 .prose.compact { font-size: 15px; line-height: 1.65; }
-.prose > * + * { margin-top: 14px; }
+.prose > * + * { margin-top: 1.25em; }
 .prose h3 { margin-top: 32px; color: var(--ink); font-size: 19px; line-height: 1.4; font-weight: 700; letter-spacing: -0.2px; }
 .prose h4 { margin-top: 26px; color: var(--ink); font-size: 17px; line-height: 1.45; font-weight: 700; }
 .prose > :first-child { margin-top: 0; }
 .prose strong { color: var(--ink); font-weight: 700; }
 .prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; overflow-wrap: anywhere; }
-.prose ul, .prose ol { padding-left: 1.4em; display: grid; gap: 6px; }
+.prose ul, .prose ol { padding-left: 1.4em; }
+.prose li + li { margin-top: .75em; }
 .prose ul { list-style: disc; }
 .prose ol { list-style: decimal; }
-.prose li > ul, .prose li > ol { margin-top: 6px; }
+.prose li > ul, .prose li > ol { margin-top: .5em; }
 .prose li::marker { color: var(--faint); }
 .prose li.task { list-style: none; margin-left: -1.4em; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
 .prose li.task input { accent-color: var(--ink); }

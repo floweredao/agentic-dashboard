@@ -42,3 +42,15 @@ test("a document that names no font reads in the app's font, and one that names 
   expect(framed).toContain(`:where(html){font-family:${appFont}}`);
   expect(framed.indexOf(":where(html)")).toBeLessThan(framed.indexOf("<p>본문</p>"));
 });
+
+test("a document that sets no spacing gets reading leading and list item spacing, below any rule it sets itself", () => {
+  const style = /<style>(.*?)<\/style>/.exec(framedHtml("<ul><li>하나</li><li>둘</li></ul>"))?.[1] ?? "";
+  const rules = [...style.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(([, selector, body]) => ({ selector: selector?.trim() ?? "", body: body ?? "" }));
+  const find = (property: string) => rules.find(rule => new RegExp(`(^|;)${property}:`).test(rule.body));
+  // Line height 1.7 (klreq 160-180%, WCAG 1.4.12 >= 1.5) on the root, so a body or p rule in the document wins.
+  expect(find("line-height")?.body).toContain("line-height:1.7");
+  const item = rules.find(rule => /li\s*\+\s*li/.test(rule.selector));
+  expect(item?.body).toMatch(/margin-top:\.75em/);
+  // Every default is wrapped in :where(), so its specificity is zero.
+  for (const rule of rules.filter(entry => !entry.body.includes("overflow-y"))) expect(rule.selector).toMatch(/^:where\(.*\)$/);
+});

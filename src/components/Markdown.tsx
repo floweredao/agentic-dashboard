@@ -155,6 +155,22 @@ function lines(text: string, key: string, resolve?: ResolveRecord) {
     : [<br key={`${key}-br${index}`} />, ...inline(line, `${key}-${index}`, resolve)]);
 }
 
+/** A line that ends a sentence (closing quotes and brackets allowed after the mark). */
+const sentenceEnd = /[.!?。！？…]["'”’)\]」』]*$/;
+
+/**
+ * Agents often write one sentence per line with no blank line between them; each such line reads as its own paragraph.
+ * A line that stops mid-sentence (a hard wrap) stays a line break within its paragraph.
+ */
+function paragraphs(source: readonly string[]): string[][] {
+  const groups: string[][] = [[]];
+  for (const line of source) {
+    groups.at(-1)?.push(line);
+    if (sentenceEnd.test(line)) groups.push([]);
+  }
+  return groups.filter(group => group.length > 0);
+}
+
 function render(blocks: readonly Block[], key = "b", resolve?: ResolveRecord): ReactNode[] {
   return blocks.map((block, index) => {
     const id = `${key}-${index}`;
@@ -163,7 +179,8 @@ function render(blocks: readonly Block[], key = "b", resolve?: ResolveRecord): R
         const Tag = block.level <= 2 ? "h3" : "h4";
         return <Tag key={id}>{inline(block.text, id, resolve)}</Tag>;
       }
-      case "paragraph": return <p key={id}>{lines(block.lines.join("\n"), id, resolve)}</p>;
+      case "paragraph": return paragraphs(block.lines).map((group, part) =>
+        <p key={`${id}-${part}`}>{lines(group.join("\n"), `${id}-${part}`, resolve)}</p>);
       case "code": return <pre key={id} data-lang={block.lang || undefined}><code>{block.text}</code></pre>;
       case "quote": return <blockquote key={id}>{render(block.blocks, id, resolve)}</blockquote>;
       case "hr": return <hr key={id} />;
