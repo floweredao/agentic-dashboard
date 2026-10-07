@@ -14,11 +14,11 @@ import type { SwipeAction, SwipeAxis, SwipeSample } from "./swipe";
 const text = strings({
   en: {
     restore: "Restore", archive: "Archive", delete: "Delete", unread: "Unread ",
-    waiting: "Awaiting reply", revisit: "Revisit", due: "Due", starred: "Starred", archived: "Archived", aiFilled: "Auto-filled", sample: "Sample",
+    waiting: "Awaiting reply", revisit: "Revisit", due: "Due", starred: "Favorite", archived: "Archived", aiFilled: "Auto-filled", sample: "Sample",
   },
   ko: {
     restore: "복원", archive: "보관", delete: "삭제", unread: "미확인 ",
-    waiting: "답 대기", revisit: "다시 볼 날", due: "마감", starred: "별표", archived: "보관됨", aiFilled: "자동 작성", sample: "샘플",
+    waiting: "답 대기", revisit: "다시 볼 날", due: "마감", starred: "즐겨찾기", archived: "보관됨", aiFilled: "자동 작성", sample: "샘플",
   },
 });
 
