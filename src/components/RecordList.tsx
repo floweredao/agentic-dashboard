@@ -1,4 +1,4 @@
-import { Fragment, useRef } from "react";
+import { useRef } from "react";
 import type { MouseEvent, PointerEvent as RowPointerEvent, ReactNode } from "react";
 import { Archive, ArchiveRestore, BriefcaseBusiness, Library, Star, Trash2 } from "lucide-react";
 import type { DashboardRecord } from "../../shared/contracts";
@@ -169,22 +169,15 @@ export function RecordRow({ record, kinds = false }: { readonly record: Dashboar
   </li>;
 }
 
-/** A non-record row merged into a list by its time (`at`, ISO), such as a digest in the inbox. */
-export type ExtraRow = { readonly id: string; readonly at: string; readonly row: ReactNode };
-
-/** Rows with optional sticky day headers. Rows carry `id="row-<id>"` for keyboard selection. `extra` rows merge in newest first. */
-export function RecordList({ records, empty, emptyAction, grouped = false, extra = [], kinds = false }: {
+/** Rows with optional sticky day headers. Rows carry `id="row-<id>"` for keyboard selection. */
+export function RecordList({ records, empty, emptyAction, grouped = false, kinds = false }: {
   readonly records: readonly DashboardRecord[]; readonly empty: string; readonly emptyAction?: ReactNode; readonly grouped?: boolean;
-  readonly extra?: readonly ExtraRow[]; readonly kinds?: boolean;
+  readonly kinds?: boolean;
 }) {
-  if (!records.length && !extra.length) return <Empty action={emptyAction}>{empty}</Empty>;
-  const rows: readonly ExtraRow[] = extra.length
-    ? [...records.map(record => ({ id: record.id, at: record.createdAt, row: <RecordRow key={record.id} record={record} kinds={kinds} /> })), ...extra]
-      .sort((a, b) => b.at.localeCompare(a.at))
-    : records.map(record => ({ id: record.id, at: record.createdAt, row: <RecordRow key={record.id} record={record} kinds={kinds} /> }));
-  if (!grouped) return <ul className="record-list">{rows.map(item => <Fragment key={item.id}>{item.row}</Fragment>)}</ul>;
-  return <div className="record-groups">{groupByDay(rows.map(item => ({ ...item, createdAt: item.at }))).map(group => <section key={group.label} className="day-group" aria-label={group.label}>
+  if (!records.length) return <Empty action={emptyAction}>{empty}</Empty>;
+  if (!grouped) return <ul className="record-list">{records.map(record => <RecordRow key={record.id} record={record} kinds={kinds} />)}</ul>;
+  return <div className="record-groups">{groupByDay(records).map(group => <section key={group.label} className="day-group" aria-label={group.label}>
     <h2 className="day-label">{group.label}</h2>
-    <ul className="record-list">{group.items.map(item => <Fragment key={item.id}>{item.row}</Fragment>)}</ul>
+    <ul className="record-list">{group.items.map(record => <RecordRow key={record.id} record={record} kinds={kinds} />)}</ul>
   </section>)}</div>;
 }

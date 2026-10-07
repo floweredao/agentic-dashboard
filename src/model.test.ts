@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { DashboardRecordSchema, DigestSummarySchema } from "../shared/contracts";
 import { applyLocale } from "./i18n";
 import { aiFilled, aiFillRevert, channelOf, confirmationChanges, digest, viewRecords, weekBounds, excerpt, groupByDay, homeRouteOf, hostOf, inboxItems, inboxStateOf, inQueue, libraryItems, listedFor, nextInQueue, revisitDue } from "./model";
-import { dateLabel, digestCounts, digestUnread, inboxBadge, listedDigestsFor, withDigestReads } from "./model";
+import { dateLabel, inboxBadge } from "./model";
 
 test("date labels read the language at the moment they are formatted", () => {
   try {
@@ -249,49 +249,9 @@ const brief = (id: string, patch: Record<string, unknown> = {}) => DigestSummary
 const articlesOnly = (items: number) => ({ counts: { local: items }, outline: [{ key: "local", title: "Local", kind: "articles", items }] });
 const title = (slot: string) => slot === "morning" ? "아침 다이제스트" : "저녁 다이제스트";
 
-test("a digest is unread while any part with items is unread, and the read overlay wins over the summary", () => {
-  // Given: a morning digest with articles and messages, an articles-only evening whose articles are read, and one with an empty messages section.
-  const morning = brief("00000000-0000-4000-8000-0000000000e1");
-  const evening = brief("00000000-0000-4000-8000-0000000000e2", { slot: "evening", ...articlesOnly(3), articlesReadAt: "2026-09-21T13:00:00Z" });
-  const emptyMessages = brief("00000000-0000-4000-8000-0000000000e3", { counts: { inbox: 0, local: 1 },
-    outline: [{ key: "inbox", title: "Inbox", kind: "messages", items: 0 }, { key: "local", title: "Local", kind: "articles", items: 1 }], articlesReadAt: "2026-09-21T13:00:00Z" });
-  // Then: the morning waits, the read evening and the read articles with an empty messages section do not.
-  expect([morning, evening, emptyMessages].map(digestUnread)).toEqual([true, false, false]);
-  // When: the overlay marks the morning's articles read, the messages still wait; with both read it is done.
-  const articlesRead = new Map([[`${morning.id}:articles`, "2026-09-21T00:00:00Z"]]);
-  expect(digestUnread(withDigestReads(morning, articlesRead))).toBe(true);
-  expect(digestUnread(withDigestReads(morning, new Map([...articlesRead, [`${morning.id}:messages`, "2026-09-21T00:00:00Z"]])))).toBe(false);
-  // And: the meta counts list sections with items under their titles, in stored order.
-  expect(digestCounts(morning)).toBe("Inbox 2 · Local 2 · AI 7");
-});
-
-test("the inbox lists digests per 확인 filter newest first, keeps the open one under 미확인 and matches the search", () => {
-  // Given: an unread morning, a read evening of the day before, and an unread older morning.
-  const unread = brief("00000000-0000-4000-8000-0000000000f1", { scheduledAt: "2026-09-21T23:00:00Z", headlines: ["반도체 소식"] });
-  const read = brief("00000000-0000-4000-8000-0000000000f2", { slot: "evening", scheduledAt: "2026-09-21T12:00:00Z",
-    articlesReadAt: "2026-09-21T13:00:00Z", messagesReadAt: "2026-09-21T13:00:00Z" });
-  const older = brief("00000000-0000-4000-8000-0000000000f3", { scheduledAt: "2026-09-19T23:00:00Z", messageHeadline: "계약서 회신" });
-  const all = [older, read, unread];
-  const ids = (params: Record<string, string>, id: string | null = null) => listedDigestsFor({ view: "inbox", id, params }, all, title).map(item => item.id);
-  // Then: 전체 lists every digest newest first, 미확인 the unread ones, 확인함 the read one.
-  expect(ids({})).toEqual([unread.id, read.id, older.id]);
-  expect(ids({ state: "pending" })).toEqual([unread.id, older.id]);
-  expect(ids({ state: "approved" })).toEqual([read.id]);
-  // And: the open, read digest stays listed under 미확인 in its place.
-  expect(ids({ state: "pending" }, read.id)).toEqual([unread.id, read.id, older.id]);
-  // And: the search matches the slot title, an article headline and the message headline.
-  expect(ids({ q: "저녁" })).toEqual([read.id]);
-  expect(ids({ q: "반도체" })).toEqual([unread.id]);
-  expect(ids({ q: "계약서" })).toEqual([older.id]);
-  expect(ids({ state: "pending", q: "없는 말" }, read.id)).toEqual([]);
-});
-
-test("the 받은 항목 badge counts queued records plus digests with an unread part", () => {
-  // Given: one pending record, one approved record, one unread and one read digest.
+test("the inbox badge counts queued records only; unread digests count on the Digest tab", () => {
+  // Given: one pending record and one approved record.
   const records = [make("00000000-0000-4000-8000-0000000000f4", { reviewState: "pending" }), make("00000000-0000-4000-8000-0000000000f5", {})];
-  const digests = [brief("00000000-0000-4000-8000-0000000000f6"),
-    brief("00000000-0000-4000-8000-0000000000f7", { articlesReadAt: "2026-09-21T00:00:00Z", messagesReadAt: "2026-09-21T00:00:00Z" })];
-  // Then: the badge is 1 record + 1 digest.
-  expect(inboxBadge(records, digests, "2026-09-22")).toBe(2);
-  expect(inboxBadge(records, [], "2026-09-22")).toBe(1);
+  // Then: the badge is the one queued record.
+  expect(inboxBadge(records, "2026-09-22")).toBe(1);
 });

@@ -11,7 +11,7 @@ import { DOCK_MIN, SPLIT_MIN, SidebarContext, WIDE_MIN, layoutOf, readDocked, us
 import { config } from "./config";
 import { isTypingTarget } from "./hooks";
 import { formatClock, strings } from "./i18n";
-import { addDays, aiFillRevert, blankRecord, channelOf, channelLabel, channelsFor, confirmationChanges, homeViewOf, inboxBadge, inboxStateOf, isRecord, listedFor, localDate, nextInQueue, partReadAt, revisitDue, setChannelKeys, withDigestReads } from "./model";
+import { addDays, aiFillRevert, blankRecord, channelOf, channelLabel, channelsFor, confirmationChanges, homeViewOf, inboxBadge, inboxStateOf, isRecord, listedFor, localDate, nextInQueue, partReadAt, revisitDue, setChannelKeys } from "./model";
 import { backLabel, backOf, formatRoute, legacyRedirect, parseRoute, sectionOf, viewTitles } from "./router";
 import type { Back, Route, Trail, View } from "./router";
 import { DashboardContext } from "./state";
@@ -276,9 +276,8 @@ export function App() {
   // The digest list hidden while digests are off sends its address to the inbox.
   useEffect(() => { if (route.view === "digest" && !config.features.digest) navigate({ view: "inbox" }, { replace: true }); }, [route.view, navigate]);
 
-  // Pending records plus digests with an unread part, with the read overlay applied as the digest list does.
-  const inbox = useMemo(() => inboxBadge(records, (digests?.items ?? []).map(item => withDigestReads(item, digestReads))),
-    [records, digests, digestReads]);
+  // Pending records; unread digests count on the Digest tab.
+  const inbox = useMemo(() => inboxBadge(records), [records]);
   useEffect(() => {
     document.title = `${config.appName} · ${viewTitles[route.view]}${inbox ? ` (${inbox})` : ""}`;
   }, [route.view, inbox]);
@@ -524,8 +523,6 @@ export function App() {
   }, [dashboard]);
 
   const selected = route.id ? dashboard.byId.get(route.id) : undefined;
-  // A digest opened from the inbox reads there in full (articles and messages), so back returns to the inbox with its filters.
-  const inboxDigest = route.view === "inbox" && !selected && route.id !== null && digests?.items.some(item => item.id === route.id) ? route.id : null;
   const hasDetail = connected && !singlePane(route.view) && route.id !== null;
   const counts: Record<View, number> = {
     inbox,
@@ -630,7 +627,6 @@ export function App() {
               </section>
               <section className="pane reader-pane" aria-label={t.detail}>
                 {selected ? <Reader key={selected.id} record={selected} />
-                  : inboxDigest ? <DigestReader key={`inbox:${inboxDigest}`} id={inboxDigest} part="all" />
                   : <div className="reader-empty"><Empty>{route.id ? t.notFound : t.pickItem}</Empty></div>}
               </section>
             </>}
