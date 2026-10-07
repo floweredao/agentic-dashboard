@@ -67,7 +67,8 @@ export class Store {
         source TEXT NOT NULL, body TEXT NOT NULL, reply_to TEXT REFERENCES comments(id), status TEXT, created_at TEXT NOT NULL,
         seen_at TEXT, seen_by TEXT, done_at TEXT, done_by TEXT, request_id TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(author,request_id));
       CREATE INDEX IF NOT EXISTS comments_record ON comments(record_id, created_at);
-      CREATE TABLE IF NOT EXISTS documents(record_id TEXT PRIMARY KEY, html TEXT NOT NULL, bytes INTEGER NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS documents(record_id TEXT PRIMARY KEY, html TEXT NOT NULL, bytes INTEGER NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS agent_invites(code_hash TEXT PRIMARY KEY, agent TEXT NOT NULL, created_at TEXT NOT NULL, expires_at INTEGER NOT NULL);`);
   }
   get(id: string): DashboardRecord {
     const row = this.db.query("SELECT data FROM records WHERE id=?").get(id);

@@ -122,8 +122,12 @@ Set `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` to open an MCP endpoint a
 
 ## 8. Agents on other machines
 
-Agents reach the dashboard through the same HTTPS address you use (see [deploy.md](deploy.md)). If you want agents to reach only the record endpoints, turn on `ENABLE_AGENT_INGRESS`: a second loopback listener on `AGENT_PORT` (4312) that accepts only `POST /api/v1/records` and `GET /api/v1/records/:id`. Proxy that port instead of the main one, and set `PUBLIC_API_BASE_URL` to its public address.
+Agents reach the dashboard through the same HTTPS address you use (see [deploy.md](deploy.md)).
+
+The quickest way to connect one is a one-time connection code. On the dashboard host run `agentic-dashboard invite <name>` (from the [one-line install](../README.md#quick-start), or `bun cli/main.ts invite <name>` in a clone). It prints a code and the line to run on the agent's computer, `curl -fsSL .../install.sh | sh -s -- connect --url <address> --code <code>`. That installs the command there, trades the code for the agent's key through `POST /api/v1/agents/connect` (once, within 15 minutes), checks the key, stores it in the system keychain or a `0600` file, and installs the skill below for the agent tools it finds. From then on, `agentic-dashboard agent ...` on that computer takes the same options as `bun run agent` without `DASHBOARD_TOKEN`. `agentic-dashboard connect` without a code asks for an agent name and key instead; `agentic-dashboard status` checks the connection without printing the key.
+
+If you want agents to reach only the record endpoints, turn on `ENABLE_AGENT_INGRESS`: a second loopback listener on `AGENT_PORT` (4312) that accepts only `POST /api/v1/records` and `GET /api/v1/records/:id`. Proxy that port instead of the main one, and set `PUBLIC_API_BASE_URL` to its public address.
 
 ## Skill file
 
-Agents that load skills (Codex, Claude Code and others) can install [skills/agentic-dashboard/SKILL.md](../skills/agentic-dashboard/SKILL.md), which teaches them the format and both ways to save.
+Agents that load skills (Codex, Claude Code and others) can install [skills/agentic-dashboard/SKILL.md](../skills/agentic-dashboard/SKILL.md), which teaches them the format and both ways to save. `agentic-dashboard connect` installs it for you with that computer's own command path; `agentic-dashboard skills install [--target claude-code|codex|omo|agents]` writes it again, and never replaces a skill file it didn't write unless you pass `--force`.

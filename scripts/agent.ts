@@ -3,6 +3,7 @@ import { HTTPError } from "ky";
 import { z } from "zod";
 import { DocumentStateSchema, NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { NarrationState } from "../shared/contracts";
+import { storedConnection } from "../cli/client";
 import { getDocument, getNarration, getRecord, putDocument, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, updateRecord } from "./agent-client";
 
 let readingShared = false;
@@ -86,9 +87,18 @@ try {
       help: { type: "boolean" },
     },
   });
-  const base = values.url ?? process.env["DASHBOARD_URL"] ?? "http://127.0.0.1:4310";
+  const explicitUrl = values.url ?? (process.env["DASHBOARD_URL"] || undefined);
+  const explicitToken = values.token ?? (process.env["DASHBOARD_TOKEN"] || undefined);
+  // Without a key, use what `agentic-dashboard connect` stored on this computer, and only for the dashboard it was stored for.
+  const stored = explicitToken ? null : await storedConnection().catch((error: unknown) => {
+    console.error(`Couldn't read this computer's stored connection: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  });
+  const usable = stored && (explicitUrl === undefined || URL.canParse(explicitUrl) && new URL(explicitUrl).origin === stored.url) ? stored : null;
+  const base = explicitUrl ?? usable?.url ?? "http://127.0.0.1:4310";
   // The agent's own key: --token, or DASHBOARD_TOKEN (preferred; it keeps the key out of shell history and process lists).
-  const connect = async () => ({ url: base, token: z.string().trim().min(1, "Set DASHBOARD_TOKEN to this agent's key").parse(values.token ?? process.env["DASHBOARD_TOKEN"]) });
+  const connect = async () => ({ url: base, token: z.string().trim()
+    .min(1, "Set DASHBOARD_TOKEN to this agent's key, or connect this computer with agentic-dashboard connect").parse(explicitToken ?? usable?.token) });
   const requestId = () => z.string().min(1).max(128).parse(values["request-id"] ?? crypto.randomUUID());
   const status = () => values.status === undefined ? undefined : statusSchema.parse(values.status);
   /** --html <file>: the full document to attach; only its size and time are printed, never the HTML. */
@@ -100,7 +110,8 @@ try {
   };
   if (values.help) {
     console.log(
-      "Every command reads the agent's key from DASHBOARD_TOKEN (or --token) and the dashboard from DASHBOARD_URL (or --url; default http://127.0.0.1:4310).\n\n" +
+      "Every command reads the agent's key from DASHBOARD_TOKEN (or --token) and the dashboard from DASHBOARD_URL (or --url; default http://127.0.0.1:4310).\n" +
+      "On a computer connected with agentic-dashboard connect, both come from its own store and `agentic-dashboard agent` takes the same options.\n\n" +
       "Save:        bun run agent --file record.json --request-id unique-id [--html document.html]\n" +
         "Read:        bun run agent --get <record-id>   (with the attached document's size and time)\n" +
         "Update:      bun run agent --update <record-id> [--expected-version <n> --file changes.json] [--html document.html]\n" +
