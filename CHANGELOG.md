@@ -21,6 +21,7 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ### Fixed
 
+- English copy reads naturally: audio commands name the part inside the label ("Stop generating articles audio", "Generate messages audio") instead of putting it in front ("Articles Make audio"), audio is "generated" everywhere, push notifications use the same importance names as the digest (Act now, Review), and a few stiff labels and messages were rewritten.
 - A disabled primary button keeps its dimmed look on touch screens, where a tapped button kept its hover style and looked enabled.
 - A narration failure closed with x stays closed when a retry fails again for the same reason on the same audio.
 - When audio already exists, a failed remake keeps the player and shows a small status line with Retry and x instead of the alert that hid the audio.

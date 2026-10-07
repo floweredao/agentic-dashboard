@@ -5,11 +5,11 @@ const text = strings({
   en: {
     ready: "Ready",
     scripting: "Writing the script",
-    saving: "Saving the file",
-    speaking: "Creating audio",
-    speakingChunk: (done: number, total: number) => `Creating audio ${done + 1}/${total}`,
-    waiting: "Waiting for its turn",
-    busy: "Too many requests, resuming soon",
+    saving: "Saving the audio",
+    speaking: "Generating audio",
+    speakingChunk: (done: number, total: number) => `Generating audio ${done + 1}/${total}`,
+    waiting: "Waiting in line",
+    busy: "Rate-limited · resuming shortly",
     elapsed: (minutes: number, seconds: number) => ` · ${minutes > 0 ? `${minutes}m${seconds > 0 ? ` ${seconds}s` : ""}` : `${seconds}s`}`,
   },
   ko: {

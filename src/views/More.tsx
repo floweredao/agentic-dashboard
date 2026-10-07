@@ -9,10 +9,10 @@ import { useDashboard } from "../state";
 
 const text = strings({
   en: {
-    title: "More", keep: "Keep", archive: "Archive", trash: "Trash",
+    title: "More", keep: "Storage", archive: "Archive", trash: "Trash",
     trashNote: (days: number) => `Deleted items are kept for ${days} days`,
     channels: "Channels", manage: "Manage channels", manageNote: "Status by channel · Import JSON · Sign out",
-    records: (channel: string) => `${channel} records`,
+    records: (channel: string) => channel,
     settings: "Settings", notifications: "Language and notifications", notificationsNote: "Language · Digests · Needs review · Replies · Test",
   },
   ko: {

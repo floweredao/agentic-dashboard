@@ -18,7 +18,7 @@ const en = {
   /** Appended to the title when sections arrive after the digest itself. */
   digestAdded: " added",
   digestMore: (count: number) => ` +${count} more`,
-  importance: { urgent: "Urgent", todo: "To do", check: "Check", info: "FYI" } as Record<MessageImportance, string>,
+  importance: { urgent: "Act now", todo: "To do", check: "Review", info: "FYI" } as Record<MessageImportance, string>,
 };
 const ko: typeof en = {
   owner: "나",
