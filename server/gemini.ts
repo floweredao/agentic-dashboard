@@ -28,6 +28,63 @@ const responseSchema = z.object({
   }).passthrough()),
 }).passthrough();
 
+/** One server-sent event of a streamed interaction (https://ai.google.dev/gemini-api/docs/interactions/streaming). */
+const streamEventSchema = z.object({
+  event_type: z.string(), index: z.number().optional(),
+  step: z.object({ type: z.string() }).passthrough().optional(),
+  delta: z.object({ type: z.string(), text: z.string().optional() }).passthrough().optional(),
+}).passthrough();
+
+/**
+ * The model output's text from a streamed interaction, reporting the characters received after each text delta. An `error`
+ * event, or a stream that ends before `interaction.completed`, is a dropped connection and worth a retry.
+ */
+async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSignal, onText?: (chars: number) => void) {
+  const decoder = new TextDecoder();
+  const stepTypes = new Map<number, string>();
+  let buffer = "";
+  let text = "";
+  let completed = false;
+  const take = (block: string) => {
+    const data = block.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
+    if (!data || data === "[DONE]") return;
+    let parsed: z.infer<typeof streamEventSchema>;
+    try { parsed = streamEventSchema.parse(JSON.parse(data)); }
+    catch (error) {
+      if (error instanceof Error) throw new ProviderError("invalid_response", false);
+      throw error;
+    }
+    if (parsed.event_type === "error") throw new ProviderError("network", true);
+    if (parsed.event_type === "interaction.completed") completed = true;
+    if (parsed.event_type === "step.start" && parsed.index !== undefined && parsed.step) stepTypes.set(parsed.index, parsed.step.type);
+    const output = parsed.index === undefined || (stepTypes.get(parsed.index) ?? "model_output") === "model_output";
+    if (parsed.event_type === "step.delta" && output && parsed.delta?.type === "text" && parsed.delta.text) {
+      text += parsed.delta.text;
+      onText?.(text.length);
+    }
+  };
+  try {
+    const reader = body.getReader();
+    for (let read = await reader.read(); !read.done; read = await reader.read()) {
+      buffer += decoder.decode(read.value, { stream: true });
+      for (let end = buffer.search(/\r?\n\r?\n/); end >= 0; end = buffer.search(/\r?\n\r?\n/)) {
+        const block = buffer.slice(0, end);
+        buffer = buffer.slice(end).replace(/^\r?\n\r?\n/, "");
+        take(block);
+      }
+    }
+    buffer += decoder.decode();
+  } catch (error) {
+    if (error instanceof ProviderError) throw error;
+    if (signal.aborted) throw new ProviderError("timeout", true);
+    if (error instanceof Error) throw new ProviderError("network", true);
+    throw error;
+  }
+  if (buffer.trim()) take(buffer);
+  if (!completed) throw new ProviderError("network", true);
+  return text;
+}
+
 /** The parts of a Google error body that say how long to wait and which quota was hit; messages are never kept. */
 const errorSchema = z.object({ error: z.object({
   details: z.array(z.object({
@@ -60,8 +117,11 @@ export async function failureOf(response: Response): Promise<ProviderError> {
   const header = response.headers.get("retry-after");
   const retryAfterMs = delay ? Math.round(Number(delay[1]) * 1000)
     : header !== null && /^\d+$/.test(header.trim()) ? Number(header.trim()) * 1000 : undefined;
+  // A used-up daily quota can answer 429 with a Retry-After of hours and no quota details; a wait that long is the day's quota.
+  if (status === 429 && retryAfterMs !== undefined && retryAfterMs >= DAILY_WAIT_MS) return new ProviderError("quota_daily", false);
   return new ProviderError(`http_${status}`, true, retryAfterMs);
 }
+const DAILY_WAIT_MS = 60 * 60 * 1000;
 
 /** Strips a RIFF/WAVE header when the API answers WAV instead of the requested raw PCM. */
 export function pcmOf(bytes: Uint8Array): Uint8Array {
@@ -87,7 +147,7 @@ export function geminiProvider(options: {
   const fallbackScriptModel = options.fallbackScriptModel ?? GEMINI_SCRIPT_FALLBACK_MODEL;
   const voice = options.voice ?? GEMINI_VOICE;
   const hosts = [voice, options.podcastVoice ?? GEMINI_PODCAST_VOICE] as const;
-  async function output(body: unknown, signal: AbortSignal) {
+  async function post(body: unknown, signal: AbortSignal) {
     const key = await options.key();
     if (!key) throw new ProviderError("no_key", false);
     let response: Response;
@@ -100,6 +160,9 @@ export function geminiProvider(options: {
       throw error;
     }
     if (!response.ok) throw await failureOf(response);
+    return response;
+  }
+  async function contentOf(response: Response) {
     let json: unknown;
     try { json = await response.json(); }
     catch (error) {
@@ -111,12 +174,12 @@ export function geminiProvider(options: {
     return parsed.data.steps.filter(step => step.type === "model_output").flatMap(step => step.content ?? []);
   }
   async function audioOf(input: unknown, speechConfig: unknown, signal: AbortSignal) {
-    const content = await output({
+    const content = await contentOf(await post({
       model: ttsModel, input,
       response_format: { type: "audio", mime_type: "audio/l16", sample_rate: 24000 },
       generation_config: { speech_config: speechConfig },
       store: false,
-    }, signal);
+    }, signal));
     const audio = content.filter(part => part.type === "audio" && part.data).at(-1)?.data;
     if (!audio) throw new ProviderError("no_audio", false);
     return pcmOf(Buffer.from(audio, "base64"));
@@ -124,9 +187,13 @@ export function geminiProvider(options: {
   return {
     ttsModel, scriptModel, fallbackScriptModel, voice, hosts,
     available: async () => await options.key() !== null,
-    async script(system, prompt, signal, model = scriptModel) {
-      const content = await output({ model, system_instruction: system, input: prompt, store: false }, signal);
-      const script = content.filter(part => part.type === "text").map(part => part.text ?? "").join("");
+    // Streamed, so the job can report the script's characters as they arrive; a plain JSON answer is read whole.
+    async script(system, prompt, signal, model = scriptModel, onText) {
+      const response = await post({ model, system_instruction: system, input: prompt, stream: true, store: false }, signal);
+      const streamed = response.body !== null && (response.headers.get("content-type") ?? "").includes("text/event-stream");
+      const script = streamed && response.body ? await streamedText(response.body, signal, onText)
+        : (await contentOf(response)).filter(part => part.type === "text").map(part => part.text ?? "").join("");
+      if (!streamed) onText?.(script.length);
       if (!script.trim()) throw new ProviderError("empty_script", false);
       return script;
     },
