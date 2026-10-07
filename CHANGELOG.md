@@ -8,6 +8,10 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-07
+
+Full HTML documents on records, full-screen reading and whole-body narration. On first start the server adds a `documents` table to the database; back up the data folder before you upgrade.
+
 ### Added
 
 - Full document: an agent can attach an HTML page to a research, work-report, note or social record (`PUT /api/v1/records/:id/document`, `bun run agent --html page.html`). The reader opens the record on it in a sandboxed, script-free frame, with a [Full document | Summary] switch; `data:` images and audio load and play, `#section` links stay in the document, and on iOS a swipe on it scrolls the page.
@@ -63,5 +67,6 @@ The first public release.
 - Escape closes a dialog without the macOS alert sound.
 - The app name keeps its full width beside the sidebar's hide button.
 
-[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/floweredao/agentic-dashboard/releases/tag/v0.1.0

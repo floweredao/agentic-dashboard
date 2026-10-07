@@ -8,7 +8,7 @@ const LEGACY_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 const STATELESS_VERSION = "2026-07-28";
 const SUPPORTED_VERSIONS = [STATELESS_VERSION, ...LEGACY_VERSIONS];
 const VERSION_META = "io.modelcontextprotocol/protocolVersion";
-const SERVER_INFO = { name: "agentic-dashboard", version: "0.1.0" };
+const SERVER_INFO = { name: "agentic-dashboard", version: "0.2.0" };
 const CAPABILITIES = { tools: { listChanged: false } };
 const SEARCHABLE = AGENT_READABLE_KINDS;
 

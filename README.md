@@ -267,11 +267,11 @@ It is developed and verified on macOS with Bun. Linux should work the same way; 
 <details>
 <summary><b>Is there a Docker image?</b></summary>
 
-Yes. `ghcr.io/floweredao/agentic-dashboard` has `0.1.0` and `latest` for linux/amd64 and linux/arm64:
+Yes. `ghcr.io/floweredao/agentic-dashboard` has `0.2.0` and `latest` for linux/amd64 and linux/arm64:
 
 ```sh
 docker run -d --name agentic-dashboard -p 8080:8080 -v agentic-data:/app/data \
-  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.1.0
+  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.2.0
 docker exec agentic-dashboard cat /app/data/credentials.json   # the "owner" value is the owner key
 ```
 
