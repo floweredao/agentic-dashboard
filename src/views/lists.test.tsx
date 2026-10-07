@@ -109,8 +109,25 @@ test("InboxPane 확인함 lists confirmed records, presses its chip and counts e
   // Then: only the confirmed rows show, 확인함 is pressed, and 전체/미확인/확인함 count 3/1/2.
   expect(await scan(html, ".row-title")).toEqual({ count: 2, text: "확인한 항목 1확인한 항목 2" });
   expect((await scan(html, 'div[aria-label="확인 상태"] button[aria-pressed="true"]')).text).toBe("확인함2");
-  expect((await scan(html, 'div[aria-label="확인 상태"] .chip-count')).text).toBe("312");
+  expect((await scan(html, 'div[aria-label="확인 상태"] .chip-count')).text).toBe("3120");
   expect((await scan(html, ".pane-title .count")).text).toBe("2");
+});
+
+test("InboxPane Favorites lists only unarchived starred records, counts them and says so when there are none", async () => {
+  // Given: a pending favorite, a confirmed favorite, an archived favorite and a record that is not a favorite.
+  const records = [
+    make("00000000-0000-4000-8000-000000000018", { title: "즐겨찾기 1", reviewState: "pending", fields: { starred: true }, createdAt: "2026-09-21T00:00:00Z" }),
+    make("00000000-0000-4000-8000-000000000019", { title: "즐겨찾기 2", fields: { starred: true } }),
+    make("00000000-0000-4000-8000-000000000020", { title: "보관한 즐겨찾기", fields: { starred: true }, archivedAt: "2026-09-22T00:00:00Z" }),
+    make("00000000-0000-4000-8000-000000000021", { title: "보통 기록" }),
+  ];
+  const html = render(records, "inbox", { state: "starred" });
+  // Then: only the two live favorites show, newest first; Favorites is the pressed chip and counts 2; the title counts 2.
+  expect(await scan(html, ".row-title")).toEqual({ count: 2, text: "미확인 즐겨찾기 1즐겨찾기 2" });
+  expect((await scan(html, 'div[aria-label="확인 상태"] button[aria-pressed="true"]')).text).toBe("즐겨찾기2");
+  expect((await scan(html, ".pane-title .count")).text).toBe("2");
+  // And: without favorites the list says so in one line.
+  expect(render([records[3]!], "inbox", { state: "starred" })).toContain("즐겨찾기한 항목 없음");
 });
 
 test("InboxPane lists a revisit-due approved row with a 다시 볼 날 chip and no unread mark", async () => {
@@ -157,7 +174,7 @@ test("InboxPane mixes digests into the records by time, with unread marks, filte
   expect((await scan(html, `#row-${evening.id} .row-summary`)).text).toBe("메일만");
   expect(html).toContain(`href="#/inbox/${morning.id}"`);
   // And: 전체/미확인/확인함 count 3/2/1 and the title counts the current list.
-  expect((await scan(html, 'div[aria-label="확인 상태"] .chip-count')).text).toBe("321");
+  expect((await scan(html, 'div[aria-label="확인 상태"] .chip-count')).text).toBe("3210");
   expect((await scan(html, ".pane-title .count")).text).toBe("3");
   // And: 미확인 drops the read evening unless it is the open one; the search reaches digest headlines.
   expect((await scan(inbox({ state: "pending" }), ".row")).count).toBe(2);

@@ -14,14 +14,14 @@ import { slotTitle } from "./Digest";
 
 const text = strings({
   en: {
-    empty: { pending: "Nothing to review", approved: "Nothing reviewed yet", all: "No items" },
+    empty: { pending: "Nothing to review", approved: "Nothing reviewed yet", all: "No items", starred: "No favorites yet. Tap ☆ Favorite on a record to collect it here." },
     unread: "Unread ", digest: "Digest", inbox: "Inbox",
     revisits: (count: number) => `${count} to revisit`,
     search: "Search inbox", placeholder: "Title, content, summary, tags", state: "Review status",
     noResults: "No results", clearSearch: "Clear search",
   },
   ko: {
-    empty: { pending: "확인할 항목 없음", approved: "확인한 항목 없음", all: "항목 없음" },
+    empty: { pending: "확인할 항목 없음", approved: "확인한 항목 없음", all: "항목 없음", starred: "즐겨찾기한 항목 없음. 기록에서 ☆ 즐겨찾기를 누르면 여기에 모여요." },
     unread: "미확인 ", digest: "다이제스트", inbox: "받은 항목",
     revisits: (count: number) => `다시 볼 항목 ${count}`,
     search: "받은 항목 검색", placeholder: "제목, 내용, 요약, 태그", state: "확인 상태",
