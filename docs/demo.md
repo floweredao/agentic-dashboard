@@ -9,7 +9,7 @@ The live demo linked from the README is this repository running in **demo mode**
 - Anyone who opens the page browses as the owner, without a key or a sign-in. No session or cookie is created.
 - Every request other than `GET` or `HEAD` answers `403 demo_read_only`, whoever sends it and whatever key it carries. Records, comments, shares, digests, the trash and sign-out are all frozen.
 - Push and narration are forced off. The server refuses to start in demo mode together with `TRUSTED_USER_HEADER`, `ENABLE_MCP`, `ENABLE_AGENT_INGRESS` or `AI_FILL_COMMAND`.
-- The web app shows a "Demo" badge with the version it runs ("Demo · v0.1.0" in the sidebar), says once that changes aren't saved, and stops marking items read when you open them.
+- The web app shows a "Demo" badge with the version it runs ("Demo · v0.2.0" in the sidebar), says once that changes aren't saved, and stops marking items read when you open them.
 
 Never turn on demo mode for a database that holds real records: everything in it becomes readable by anyone who can reach the server.
 

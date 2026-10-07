@@ -267,11 +267,11 @@ macOS와 Bun 환경에서 개발하고 검증했습니다. Linux에서도 같은
 <details>
 <summary><b>Docker 이미지가 있나요?</b></summary>
 
-네. `ghcr.io/floweredao/agentic-dashboard`에 linux/amd64·linux/arm64용 `0.1.0`과 `latest`가 있습니다.
+네. `ghcr.io/floweredao/agentic-dashboard`에 linux/amd64·linux/arm64용 `0.2.0`과 `latest`가 있습니다.
 
 ```sh
 docker run -d --name agentic-dashboard -p 8080:8080 -v agentic-data:/app/data \
-  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.1.0
+  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.2.0
 docker exec agentic-dashboard cat /app/data/credentials.json   # "owner" 값이 소유자 키입니다
 ```
 
