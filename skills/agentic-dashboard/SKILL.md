@@ -9,7 +9,7 @@ The user runs an Agentic Dashboard. You save results there with your own agent k
 
 ## Setup
 
-<!-- connection: filled in by agentic-dashboard connect -->
+<!-- connection: filled in when this skill is installed on a connected computer -->
 
 On a computer connected with `agentic-dashboard connect`, `agentic-dashboard agent` reads the dashboard address and your key from that computer's own store (the system keychain or a file only the user can read). You need nothing else.
 

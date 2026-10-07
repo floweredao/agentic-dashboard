@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { APP_ROOT } from "./paths";
 
 export const SKILL_MARKER = "<!-- Installed by agentic-dashboard connect; `agentic-dashboard skills install` rewrites this file. -->";
-const CONNECTION_SLOT = "<!-- connection: filled in by agentic-dashboard connect -->";
+const CONNECTION_SLOT = "<!-- connection: filled in when this skill is installed on a connected computer -->";
 export const SKILL_SOURCE = join(APP_ROOT, "skills", "agentic-dashboard", "SKILL.md");
 
 export interface SkillTarget {
@@ -31,8 +31,8 @@ export function renderSkill(source: string, connection: { launcher: string; url:
   if (!source.includes(CONNECTION_SLOT)) throw new Error(`The skill source has no connection slot (${CONNECTION_SLOT})`);
   const command = connection.launcher;
   const body = source
-    .replace(CONNECTION_SLOT, `This computer is connected to ${connection.url} as the agent \`${connection.agent}\`; \`${command} agent\` already has its key.`)
-    .replace(/\bagentic-dashboard (agent|connect|skills|status)\b/g, `${command} $1`);
+    .replace(/\bagentic-dashboard (agent|connect|skills|status)\b/g, `${command} $1`)
+    .replace(CONNECTION_SLOT, `This computer is connected to ${connection.url} as the agent \`${connection.agent}\`; \`${command} agent\` already has its key.`);
   const end = body.indexOf("\n---\n", 4);
   return end === -1 ? `${SKILL_MARKER}\n${body}` : `${body.slice(0, end + 5)}${SKILL_MARKER}\n${body.slice(end + 5)}`;
 }

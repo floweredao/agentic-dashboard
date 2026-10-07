@@ -39,7 +39,8 @@ test("the shipped skill is rewritten for this computer and never replaces a file
   const rendered = renderSkill(readFileSync(SKILL_SOURCE, "utf8"), { launcher: "/home/u/.local/bin/agentic-dashboard", url: "https://desk.example.com", agent: "laptop" });
   expect(rendered.startsWith("---\nname: agentic-dashboard\n")).toBe(true);
   expect(rendered).toContain(`---\n${SKILL_MARKER}\n`);
-  expect(rendered).toContain("connected to https://desk.example.com as the agent `laptop`");
+  expect(rendered).toContain("connected to https://desk.example.com as the agent `laptop`; `/home/u/.local/bin/agentic-dashboard agent` already has its key.");
+  expect(rendered).not.toContain("bin//");
   expect(rendered).toContain("/home/u/.local/bin/agentic-dashboard agent --file record.json");
   expect(rendered).not.toMatch(/(?<!bin\/)agentic-dashboard (agent|connect) /);
   expect(rendered).not.toContain("<!-- connection:");
