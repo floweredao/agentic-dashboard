@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/i
 - **여기서 대시보드 돌리기**: 포트, 데이터 폴더, 여는 방법(이 컴퓨터에서만, Tailscale, 내 HTTPS 프록시)을 고르고 소유자 키를 받습니다. 원하면 로그인할 때 자동으로 시작합니다(launchd 또는 `systemd --user`).
 - **이 컴퓨터의 에이전트 연결하기**: 다른 곳의 대시보드 주소와 1회용 연결 코드를 넣습니다. 키는 시스템 키체인(또는 나만 읽을 수 있는 파일)에 저장되고, 이 컴퓨터에 있는 Claude Code, Codex, OmO, `~/.agents`에 에이전트 스킬이 설치됩니다.
 
-설정 화면은 처음에만 뜹니다. 그다음부터 `agentic-dashboard`는 대시보드를 시작하거나 연결 상태를 보여 줍니다. `agentic-dashboard setup`, `agentic-dashboard connect`, `agentic-dashboard onboard`로 다시 열 수 있고, 나머지 명령은 `agentic-dashboard help`에 있습니다. 같은 줄을 다시 실행하면 설정과 데이터는 그대로 두고 앱만 새로 받습니다. 터미널이 없으면 옵션으로 줍니다: `... | sh -s -- setup --yes --port 4310 --no-service`.
+설정 화면은 처음에만 뜹니다. 그다음부터 `agentic-dashboard`는 대시보드를 시작하거나 연결 상태를 보여 줍니다. `agentic-dashboard setup`, `agentic-dashboard connect`, `agentic-dashboard onboard`로 다시 열 수 있고, 나머지 명령은 `agentic-dashboard help`에 있습니다. 같은 줄을 다시 실행하면 설정과 데이터는 그대로 두고 앱만 새로 받습니다. 터미널이 없으면 옵션으로 줍니다: `... | sh -s -- setup --yes --port 4310 --no-service`. 이 줄은 최신 `main`을 설치합니다. 릴리스를 설치하려면 태그를 지정합니다: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.3.0/install.sh | AGENTIC_DASHBOARD_REF=v0.3.0 sh`.
 
 **저장소에서 직접** 띄우려면 [Bun](https://bun.sh) 1.3 이상이 필요합니다.
 
@@ -298,11 +298,11 @@ macOS와 Bun 환경에서 개발하고 검증했습니다. Linux에서도 같은
 <details>
 <summary><b>Docker 이미지가 있나요?</b></summary>
 
-네. `ghcr.io/floweredao/agentic-dashboard`에 linux/amd64·linux/arm64용 `0.2.0`과 `latest`가 있습니다.
+네. `ghcr.io/floweredao/agentic-dashboard`에 linux/amd64·linux/arm64용 `0.3.0`과 `latest`가 있습니다.
 
 ```sh
 docker run -d --name agentic-dashboard -p 8080:8080 -v agentic-data:/app/data \
-  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.2.0
+  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.3.0
 docker exec agentic-dashboard cat /app/data/credentials.json   # "owner" 값이 소유자 키입니다
 ```
 

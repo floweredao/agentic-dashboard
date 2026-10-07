@@ -5,7 +5,7 @@ Two ways are supported. Both were verified on a real machine, and neither needs 
 1. **`bun start` on your own machine or a VM**, behind an HTTPS reverse proxy.
 2. **A single binary** built with `bun run build:binary`, which needs no runtime on the target.
 
-A `Dockerfile` is included too. It serves on port 8080 with `HOST=0.0.0.0` and keeps data in `/app/data`, so mount a volume there and set `APP_ORIGIN`. A prebuilt image for linux/amd64 and linux/arm64 is `ghcr.io/floweredao/agentic-dashboard:0.2.0` (also `:latest`); or build one with `docker build -t agentic-dashboard .`. The public demo is that image on Cloud Run in read-only demo mode; see [demo.md](demo.md).
+A `Dockerfile` is included too. It serves on port 8080 with `HOST=0.0.0.0` and keeps data in `/app/data`, so mount a volume there and set `APP_ORIGIN`. A prebuilt image for linux/amd64 and linux/arm64 is `ghcr.io/floweredao/agentic-dashboard:0.3.0` (also `:latest`); or build one with `docker build -t agentic-dashboard .`. The public demo is that image on Cloud Run in read-only demo mode; see [demo.md](demo.md).
 
 Whichever you pick, read [security.md](security.md) first. The dashboard listens on `127.0.0.1` by default, and you should keep it that way and put HTTPS in front.
 

@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/i
 - **Host the dashboard here**: choose the port, the data folder and how you'll open it (only this computer, Tailscale, or your own HTTPS proxy), get the owner key, and optionally start it at login (launchd or `systemd --user`).
 - **Connect this computer's agents** to a dashboard elsewhere: enter its address and a one-time connection code. The key goes into the system keychain (or a file only you can read), and the agent skill is installed for Claude Code, Codex, OmO or `~/.agents`, whichever this computer has.
 
-Setup appears only the first time; later `agentic-dashboard` starts the dashboard or shows what's connected. Open it again with `agentic-dashboard setup`, `agentic-dashboard connect` or `agentic-dashboard onboard`, and see `agentic-dashboard help` for the rest. Running the line again updates the app and keeps your settings and data. Without a terminal, pass flags instead: `... | sh -s -- setup --yes --port 4310 --no-service`.
+Setup appears only the first time; later `agentic-dashboard` starts the dashboard or shows what's connected. Open it again with `agentic-dashboard setup`, `agentic-dashboard connect` or `agentic-dashboard onboard`, and see `agentic-dashboard help` for the rest. Running the line again updates the app and keeps your settings and data. Without a terminal, pass flags instead: `... | sh -s -- setup --yes --port 4310 --no-service`. The line installs the latest `main`; to install a release instead, name its tag: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.3.0/install.sh | AGENTIC_DASHBOARD_REF=v0.3.0 sh`.
 
 **From a clone** you need [Bun](https://bun.sh) 1.3 or later.
 
@@ -298,11 +298,11 @@ It is developed and verified on macOS with Bun. Linux should work the same way; 
 <details>
 <summary><b>Is there a Docker image?</b></summary>
 
-Yes. `ghcr.io/floweredao/agentic-dashboard` has `0.2.0` and `latest` for linux/amd64 and linux/arm64:
+Yes. `ghcr.io/floweredao/agentic-dashboard` has `0.3.0` and `latest` for linux/amd64 and linux/arm64:
 
 ```sh
 docker run -d --name agentic-dashboard -p 8080:8080 -v agentic-data:/app/data \
-  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.2.0
+  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.3.0
 docker exec agentic-dashboard cat /app/data/credentials.json   # the "owner" value is the owner key
 ```
 
