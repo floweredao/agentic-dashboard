@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
-import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, normalizeScript, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
+import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
 import type { NarrationOptions, NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
@@ -430,6 +430,51 @@ test("a Korean script mixing 해요체 and 습니다체 has no plain sentence an
   expect(tts.calls.script).toBe(1);
   expect(tts.calls.systems).toEqual([korean(SCRIPT_SYSTEM)]);
   expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", script: mixed });
+});
+
+const HAEYO_ONLY = "10월 3일 저녁 다이제스트이에요. 국내 2건이에요.\n\n서울시가 지하철을 늘린다고 밝혔어요. 한국은행은 금리를 유지했어요.\n\n해외 소식이에요. 엔화 약세가 이어지고 있어요.";
+const HAMNIDA_ONLY = "10월 3일 저녁 다이제스트입니다. 국내 2건입니다.\n\n서울시가 지하철을 늘린다고 밝혔습니다. 한국은행은 금리를 유지했습니다.\n\n해외 소식입니다. 엔화 약세가 이어지고 있습니다.";
+
+test("a script of six or more polite sentences with under a fifth in 습니다체 or in 해요체 is one-sided; a mixed or short one is not", () => {
+  expect(oneSidedTone(HAEYO_ONLY)).toBe("haeyo");
+  expect(oneSidedTone(HAMNIDA_ONLY)).toBe("hamnida");
+  // Like the briefing of 2026-10-02: only the count sentence in 습니다체 among nine others in 해요체.
+  expect(oneSidedTone(`${HAEYO_ONLY} 국내 3건입니다. 메일이 왔어요. 확인하셨나요? 그렇죠.`)).toBe("haeyo");
+  expect(oneSidedTone("A: 오늘은 금리 이야기예요. 한국은행이 금리를 동결했습니다.\n\nB: 왜 동결했죠? A: 물가가 아직 높습니다. B: 그렇군요. A: 다음 회의는 11월입니다.")).toBeNull();
+  expect(oneSidedTone("다이제스트이에요. 국내 1건이에요. 서울 소식이에요. 날씨가 맑아요. 끝이에요.")).toBeNull();
+});
+
+test("a one-sided script is written once more with a reminder for the missing tone; a mixed one costs one call", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const mixed = "10월 3일 저녁 다이제스트이에요. 국내 2건입니다.\n\n서울시가 지하철을 늘린다고 밝혔습니다. 출근길이 조금 나아질 것 같아요.\n\n해외 소식이에요. 엔화 약세가 이어지고 있습니다.";
+  expect(oneSidedTone(mixed)).toBeNull();
+  // Given: the model first answers in 해요체 only, then mixes both.
+  tts.scriptTexts = [HAEYO_ONLY, mixed];
+  const first = await research(f, owner);
+  await f.call(narration(first.id), "POST", {}, owner);
+  await idle();
+  // Then: a second call carries the same instructions plus a reminder, and the mixed script is kept.
+  expect(tts.calls.script).toBe(2);
+  expect(tts.calls.systems[1]?.startsWith(korean(SCRIPT_SYSTEM))).toBe(true);
+  const haeyoReminder = tts.calls.systems[1]?.slice(korean(SCRIPT_SYSTEM).length) ?? "";
+  expect(haeyoReminder.trim().length).toBeGreaterThan(0);
+  expect((await read(await f.call(narration(first.id), "GET", undefined, owner))).narration?.script).toBe(mixed);
+  // And: a 습니다체-only script is written again with a different reminder; a second one-sided script is kept rather than paid for again.
+  tts.scriptTexts = [HAMNIDA_ONLY, HAMNIDA_ONLY];
+  const second = await research(f, owner);
+  await f.call(narration(second.id), "POST", {}, owner);
+  await idle();
+  expect(tts.calls.script).toBe(4);
+  const hamnidaReminder = tts.calls.systems[3]?.slice(korean(SCRIPT_SYSTEM).length) ?? "";
+  expect(hamnidaReminder.trim().length).toBeGreaterThan(0);
+  expect(hamnidaReminder).not.toBe(haeyoReminder);
+  expect((await read(await f.call(narration(second.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", script: HAMNIDA_ONLY });
+  // And: a mixed script costs one call.
+  tts.scriptTexts = [mixed];
+  await f.call(narration((await research(f, owner)).id), "POST", {}, owner);
+  await idle();
+  expect(tts.calls.script).toBe(5);
 });
 
 test("a Korean script with 반말 endings is written once more with a polite-speech reminder; the second script is used even if it slips again", async () => {

@@ -76,10 +76,19 @@ export const SCRIPT_SYSTEM = [
 ].join("\n");
 /**
  * Added to the instructions only when the source is Korean: polite speech (존댓말) that mixes 해요체 and 습니다체, never 반말.
- * Script models drift into plain '~다' endings, so a Korean script with such endings is written once more (see `plainSentences`).
+ * Script models drift into plain '~다' endings and into 해요체 throughout, so a Korean script with plain endings
+ * (`plainSentences`) or in one tone (`oneSidedTone`) is written once more.
  */
-export const KOREAN_POLITE = "한국어 원고의 말투는 존댓말로 쓰되 해요체('~예요', '~했어요')와 습니다체('~입니다', '~했습니다')를 자연스럽게 섞는다. 사실을 전하는 문장은 습니다체를 주로, 연결·안내·마무리 문장은 해요체를 주로 쓰고, 한 가지로만 통일하지 않는다. '~다', '~이다', '~한다', '~했다' 같은 평서 종결과 '~해', '~야' 같은 반말은 쓰지 않는다.";
+export const KOREAN_POLITE = "한국어 원고의 말투는 존댓말로, 습니다체('~입니다', '~했습니다')와 해요체('~예요', '~했어요')를 섞어 쓴다. 사실·수치·사건을 전하는 문장은 습니다체로, 화제를 넘기거나 안내·덧붙임·마무리하는 문장은 해요체로 끝낸다. 문단마다 두 말투가 함께 나오게 하고, 원고 전체에서 어느 한쪽도 3분의 1 아래로 내려가지 않게 한다. 예: '한국은행이 기준금리를 연 2.5퍼센트로 동결했습니다. 물가가 아직 높다는 이유입니다. 다음 결정은 11월이에요. 이어서 환율 소식이에요.' 대화체에서는 사실·수치를 설명하는 말을 습니다체로, 묻고 맞장구치고 넘기는 말을 '~요', '~죠'로 끝내고, 두 사람 모두 두 말투를 섞는다. '~다', '~이다', '~한다', '~했다' 같은 평서 종결과 '~해', '~야' 같은 반말은 쓰지 않는다.";
 const KOREAN_POLITE_AGAIN = "직전에 쓴 원고에 반말이나 '~다'로 끝난 문장이 있었다. 이번에는 모든 문장을 해요체나 습니다체 존댓말로 끝낸다.";
+/** The reminder for a Korean script written almost entirely in one tone, keyed by that tone. */
+const KOREAN_TONE_AGAIN = {
+  haeyo: "직전에 쓴 원고는 거의 모든 문장이 해요체였다. 이번에는 사실·수치·사건을 전하는 문장을 습니다체('~입니다', '~했습니다')로 써서 습니다체와 해요체가 고르게 섞이게 한다.",
+  hamnida: "직전에 쓴 원고는 거의 모든 문장이 습니다체였다. 이번에는 화제를 넘기거나 안내·덧붙임·마무리하는 문장을 해요체('~예요', '~했어요')로 써서 습니다체와 해요체가 고르게 섞이게 한다.",
+} as const;
+/** A one-sided script has at least this many polite sentences and less than this share in the rarer tone. */
+const TONE_MIN_SENTENCES = 6;
+const TONE_MIN_SHARE = 0.2;
 
 /** A digest (articles and messages): a one- or two-sentence opening, then straight into every item. */
 export const DIGEST_SCRIPT_SYSTEM = [
@@ -166,15 +175,30 @@ function isKorean(record: DashboardRecord) {
   const latin = content.match(/[A-Za-z]/g)?.length ?? 0;
   return hangul > 0 && hangul * 5 >= hangul + latin;
 }
-/** Korean sentences ending in a plain (반말 or written) form instead of 해요체 or 습니다체; lines without a closing mark are ignored. */
-export function plainSentences(script: string): string[] {
+/** The script's sentences ending in Hangul, with their closing marks; podcast labels and lines without a closing mark are ignored. */
+function hangulSentences(script: string) {
   return script.split(/\n+/)
     .flatMap(line => line.replace(/(^|\s)[AB]\s*[:：]\s*/g, "$1").match(/[^.!?]+[.!?]+/g) ?? [])
-    .map(sentence => sentence.trim())
-    .filter(sentence => {
-      const end = sentence.replace(/[.!?'"”’)\]\s]+$/, "");
-      return /[가-힣]$/.test(end) && !/(?:요|죠|니다|니까)$/.test(end);
-    });
+    .map(sentence => ({ sentence: sentence.trim(), end: sentence.trim().replace(/[.!?'"”’)\]\s]+$/, "") }))
+    .filter(({ end }) => /[가-힣]$/.test(end));
+}
+/** Korean sentences ending in a plain (반말 or written) form instead of 해요체 or 습니다체; lines without a closing mark are ignored. */
+export function plainSentences(script: string): string[] {
+  return hangulSentences(script).filter(({ end }) => !/(?:요|죠|니다|니까)$/.test(end)).map(({ sentence }) => sentence);
+}
+/** The tone a Korean script is almost entirely written in (해요체 or 습니다체), or null when it mixes both or is too short to tell. */
+export function oneSidedTone(script: string): keyof typeof KOREAN_TONE_AGAIN | null {
+  let haeyo = 0;
+  let hamnida = 0;
+  for (const { end } of hangulSentences(script)) {
+    if (/(?:니다|니까)$/.test(end)) hamnida += 1;
+    else if (/(?:요|죠)$/.test(end)) haeyo += 1;
+  }
+  const total = haeyo + hamnida;
+  if (total < TONE_MIN_SENTENCES) return null;
+  if (hamnida < total * TONE_MIN_SHARE) return "haeyo";
+  if (haeyo < total * TONE_MIN_SHARE) return "hamnida";
+  return null;
 }
 
 /** Removes what a listener should not hear (URLs, Markdown, code) and keeps the script within the length cap. */
@@ -460,10 +484,12 @@ export function createNarration(options: NarrationOptions) {
         const system = korean ? `${base}\n${KOREAN_POLITE}` : base;
         const prompt = scriptPrompt(record, label);
         script = normalizeScript(await writeScript(provider, system, prompt, cancel));
-        // One more script when a Korean script slipped into 반말; a second slip is kept rather than paid for again.
-        if (korean && plainSentences(script).length > 0) {
+        // One more script when a Korean script slipped into 반말 or into one tone; a second slip is kept rather than paid for again.
+        const tone = korean ? oneSidedTone(script) : null;
+        const again = korean ? [plainSentences(script).length > 0 ? KOREAN_POLITE_AGAIN : "", tone ? KOREAN_TONE_AGAIN[tone] : ""].filter(Boolean) : [];
+        if (again.length > 0) {
           check();
-          script = normalizeScript(await writeScript(provider, `${system}\n${KOREAN_POLITE_AGAIN}`, prompt, cancel)) || script;
+          script = normalizeScript(await writeScript(provider, `${system}\n${again.join("\n")}`, prompt, cancel)) || script;
         }
         if (!script) throw new ProviderError("empty_script", false);
         // Kept even when cancelled meanwhile: it is paid for, and a later request reuses it.
