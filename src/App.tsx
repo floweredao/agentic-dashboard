@@ -6,6 +6,7 @@ import type { DigestPage } from "./api";
 import { syncPush } from "./push";
 import { Empty, ChannelMark, DialogToast } from "./components/primitives";
 import { ShareDialog } from "./components/ShareDialog";
+import { MiniPlayer, useMiniPlayerShown } from "./components/playback";
 import { DOCK_MIN, SPLIT_MIN, SidebarContext, WIDE_MIN, layoutOf, readDocked, useSidebarDrag, writeDocked } from "./components/sidebar";
 import { config } from "./config";
 import { isTypingTarget } from "./hooks";
@@ -551,6 +552,7 @@ export function App() {
     </a></li>;
   };
   const locked = !connected && !loading;
+  const mini = useMiniPlayerShown() && connected;
   const demoBadge = config.features.demo && <span className="demo-badge" title={t.demoNotice}>{t.demo}</span>;
   // The sidebar foot has room to name the release the demo runs; the phone app bar keeps the short badge beside the app name.
   const demoReleaseBadge = config.features.demo && <span className="demo-badge" title={t.demoNotice}>{config.version ? `${t.demo} · v${config.version}` : t.demo}</span>;
@@ -563,7 +565,7 @@ export function App() {
   return <DashboardContext.Provider value={dashboard}><SidebarContext.Provider value={sidebarState}>
     <a href="#main" className="skip-link" onClick={event => { event.preventDefault(); document.getElementById("main")?.focus(); }}>{t.skip}</a>
     {loading && <div className="loading-line" role="status" aria-label={t.loading} />}
-    <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}`} data-sidebar={sidebar}>
+    <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}${mini ? " has-mini" : ""}`} data-sidebar={sidebar}>
       <nav id="sidebar" className="sidebar" aria-label={t.mainMenu} inert={sidebar === "hidden"}>
         <div className="sidebar-head">
           <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
@@ -640,6 +642,7 @@ export function App() {
         {(["work", "more"] as const).map(view => <TabLink key={view} view={view} current={route.view}
           count={view === "work" && connected ? records.filter(record => record.kind === "task" && !record.archivedAt && record.status === "review").length : 0} />)}
       </nav>
+      {connected && <MiniPlayer />}
     </div>
 
     <DialogToast.Provider value={modal ? toastView : null}>

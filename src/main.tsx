@@ -18,8 +18,9 @@ async function start() {
   applyLocale(detectLocale());
   followSystemLanguage();
   // The app loads after the language is known, so labels built when its modules load are in that language.
-  const [{ App }, { registerWorker }] = await Promise.all([import("./App"), import("./push")]);
-  createRoot(root).render(<App />);
+  const [{ App }, { registerWorker }, { PlaybackProvider }] = await Promise.all([import("./App"), import("./push"), import("./components/playback")]);
+  // The one audio element lives beside the app, outside its routes, so listening goes on across screens.
+  createRoot(root).render(<PlaybackProvider><App /></PlaybackProvider>);
   registerWorker();
 }
 
