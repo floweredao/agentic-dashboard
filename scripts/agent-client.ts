@@ -59,6 +59,16 @@ export async function updateRecord(
     .json<unknown>();
 }
 
+/** DELETE /api/v1/records/:id: moves a record this agent created to the owner's trash (204), where the owner can restore it. */
+export async function trashRecord(connection: AgentConnection, id: string, expectedVersion: number): Promise<void> {
+  await ky.delete(new URL(`/api/v1/records/${encodeURIComponent(id)}`, connection.url), {
+    headers: { authorization: `Bearer ${connection.token}` },
+    json: { expectedVersion },
+    timeout: 15_000,
+    retry: 0,
+  });
+}
+
 /** PUT /api/v1/records/:id/document: attaches or replaces the record's HTML full document (only on records this agent created). */
 export async function putDocument(connection: AgentConnection, id: string, html: string): Promise<unknown> {
   return ky

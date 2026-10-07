@@ -115,7 +115,7 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | `POST /api/v1/records` | owner, agent | 201 `{ record, replayed: false }` |
 | `GET /api/v1/records/:id` | owner, agent | `{ record }` |
 | `PATCH /api/v1/records/:id` | owner, agent (own records) | `{ record }` |
-| `DELETE /api/v1/records/:id` | owner | body `{ expectedVersion }`; moves the record to the trash, 204 |
+| `DELETE /api/v1/records/:id` | owner, or the agent that created the record | body `{ expectedVersion }`; moves the record to the trash, 204 (another agent's or the owner's record 403) |
 | `GET /api/v1/trash` | owner | `{ items }` with `deletedAt` and `purgeAt` |
 | `POST /api/v1/trash/:id/restore` | owner | `{ record }` |
 | `DELETE /api/v1/trash/:id`, `DELETE /api/v1/trash` | owner | permanent delete, 204 |
