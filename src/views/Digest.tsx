@@ -18,7 +18,7 @@ import { useDashboard } from "../state";
 
 const text = strings({
   en: {
-    parts: { articles: "Articles", messages: "Messages" },
+    parts: { articles: "Articles", messages: "Messages" }, social: "Social",
     importance: { urgent: "Act now", todo: "To do", check: "Review", info: "FYI" },
     all: "All", today: "Today", yesterday: "Yesterday", morning: "Morning", evening: "Evening",
     digestOf: (name: string) => `${name} digest`,
@@ -41,7 +41,7 @@ const text = strings({
     updateTag: "Update", titlesOnly: "Titles only", end: (n: number) => `End of digest · ${n} ${n === 1 ? "item" : "items"}`,
   },
   ko: {
-    parts: { articles: "기사", messages: "메시지" },
+    parts: { articles: "기사", messages: "메시지" }, social: "소셜",
     importance: { urgent: "즉시 조치", todo: "할 일", check: "확인", info: "참고" },
     all: "전체", today: "오늘", yesterday: "어제", morning: "아침", evening: "저녁",
     digestOf: (name: string) => `${name} 다이제스트`,
@@ -66,6 +66,8 @@ const text = strings({
 });
 const partLabel = (part: DigestPart) => text().parts[part];
 const importanceLabel = (level: MessageImportance) => text().importance[level];
+/** A section's name: the `social` section (posts from social networks) reads Social / 소셜 in the app's language, any other its own title. */
+export const sectionTitle = (section: { readonly key: string; readonly title: string }) => section.key === "social" ? text().social : section.title;
 /** A calendar day (YYYY-MM-DD) has no time zone: format it at noon UTC, read back in UTC. */
 const noon = (date: string) => new Date(`${date}T12:00:00Z`);
 const calendarDay = (date: string, options: Intl.DateTimeFormatOptions) => formatDateTime(noon(date), { ...options, timeZone: "UTC" });
@@ -98,7 +100,7 @@ export const filterParts = (filter: DigestFilter): readonly DigestPart[] => filt
 const inFilter = (filter: DigestFilter, kind: DigestPart) => filter === "all" || filter === kind;
 
 const countsLine = (summary: DigestSummary, filter: DigestFilter) =>
-  summary.outline.filter(section => inFilter(filter, section.kind) && section.items > 0).map(section => `${section.title} ${section.items}`).join(" · ")
+  summary.outline.filter(section => inFilter(filter, section.kind) && section.items > 0).map(section => `${sectionTitle(section)} ${section.items}`).join(" · ")
   || (filter === "messages" ? text().noNewMessages : text().noContent);
 const sortedMessages = (items: readonly DigestMessage[]) => [...items].sort((a, b) => MESSAGE_IMPORTANCE.indexOf(a.importance) - MESSAGE_IMPORTANCE.indexOf(b.importance));
 
@@ -362,7 +364,7 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
               // A collapsed section opens first, so the jump lands on its items.
               if (collapsed.has(section.key)) flushSync(() => onExpand?.(section.key, true));
               jumpTo(section.key);
-            }}>{section.title}<span className="digest-tab-count">{section.items.length}</span></a>)}
+            }}>{sectionTitle(section)}<span className="digest-tab-count">{section.items.length}</span></a>)}
         </nav>}
         <button type="button" className="icon-btn digest-density" aria-pressed={titles} aria-label={t.titlesOnly} title={t.titlesOnly}
           onClick={() => onDensity?.(titles ? "summary" : "titles")}><List size={18} aria-hidden="true" /></button>
@@ -380,7 +382,7 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
                 onClick={() => onExpand?.(key, !expanded)}>
                 <ChevronRight className="digest-chevron" size={16} aria-hidden="true" />
                 <span className="digest-section-icon" aria-hidden="true"><Icon size={15} /></span>
-                <span className="digest-section-label">{section.title}</span>
+                <span className="digest-section-label">{sectionTitle(section)}</span>
                 <span className="count">{section.items.length}</span>
               </button>
             </h3>
@@ -644,7 +646,7 @@ export function DigestPane() {
             <a className="digest-hit" href={formatRoute({ view: "digest", id: hit.digestId, params: { ...route.params, focus: focusKey } })}
               aria-current={route.id === hit.digestId && route.params.focus === focusKey ? "true" : undefined}
               onClick={open(hit.digestId, { focus: focusKey })}>
-              <span className="digest-hit-meta">{dayTitle(hit.date)} {slotName(hit.slot)} · {hit.sectionTitle}{"from" in hit.item ? ` · ${hit.item.from}` : ""}</span>
+              <span className="digest-hit-meta">{dayTitle(hit.date)} {slotName(hit.slot)} · {sectionTitle({ key: hit.section, title: hit.sectionTitle })}{"from" in hit.item ? ` · ${hit.item.from}` : ""}</span>
               <span className="digest-hit-title">{title}</span>
               {hit.item.summary && <span className="digest-hit-summary">{splitUpdate(hit.item.summary).text}</span>}
             </a>

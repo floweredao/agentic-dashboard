@@ -117,6 +117,8 @@ bun run agent --digest digest.json
 
 The file is the `POST /api/v1/digests` body: `date`, `slot` (`morning`, `evening` or `HH:MM`), and 1 to 12 `sections`, each of kind `articles` or `messages`. Uploading again with the same date and slot replaces matching sections and keeps the others. Set `"notify": false` for quiet backfills.
 
+To add posts you picked from a social network, send them as an `articles` section with the key `social`: `source` is the author, `url` the post and `publishedAt` when it was posted. The app shows that section as Social (소셜 in Korean), whatever its `title`; leave it out and the digest has none.
+
 ## 7. MCP for chat apps
 
 Set `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` to open an MCP endpoint at `http://127.0.0.1:4313/mcp` (`MCP_PORT`). It offers `save_record`, `update_record`, `get_record` and `search_records`, and every call is saved as `MCP_AGENT`. It listens on loopback only; put your own authenticated tunnel in front of it if a remote app needs it.
