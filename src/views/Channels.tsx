@@ -22,7 +22,7 @@ const text = strings({
     noAgentsAfter: "and give it the key that command prints.",
     total: "All", pending: "To review", latest: "Latest", none: "None", view: "View records",
     importSummary: "Advanced · Import JSON",
-    importNote: "Paste one record JSON made by an agent to save it as a record you wrote.",
+    importNote: "Paste a record's JSON from an agent to save it as your own record.",
     importField: "Record JSON", importButton: "Import", badJson: "That isn't valid JSON.",
     session: "Session", signedIn: "Signed in as the owner", logout: "Sign out",
     calendar: (zone: string) => `Dates use the ${zone} time zone, and weeks start on Sunday.`,

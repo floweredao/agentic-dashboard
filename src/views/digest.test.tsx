@@ -155,7 +155,7 @@ test("One Make audio asks which audio as radio cards, the whole digest first: a 
   try {
     const english = renderToStaticMarkup(<VoiceChoice options={options} onSubmit={() => undefined} onClose={() => undefined} />);
     expect(await scan(english, ".listen-style-note")).toEqual(["Audio is ready · listen from More"]);
-    expect(await scan(english, "button[type=submit]")).toEqual(["Make"]);
+    expect(await scan(english, "button[type=submit]")).toEqual(["Generate"]);
   } finally { applyLocale("ko"); }
 });
 
@@ -258,7 +258,7 @@ test("DigestView and DigestRow render in English when the locale is en", async (
     expect(await scan(html, "#digest-title")).toEqual(["Thursday, October 1"]);
     expect(html).toContain("Morning digest · 08:00");
     expect(html).toContain("Jump to section");
-    expect(html).toContain("2 merged");
+    expect(html).toContain("2 stories combined");
     const summary = DigestSummarySchema.parse({ ...rest, counts: { local: 1, inbox: 2 }, outline, headlines: ["x"], messageHeadline: null, urgent: 1, todo: 0 });
     const row = renderToStaticMarkup(<ul><DigestRow summary={summary} part="all" selected={false} href="#/digest" onOpen={() => {}} /></ul>);
     expect(await scan(row, ".digest-row-title")).toEqual(["Unread Morning digest"]);

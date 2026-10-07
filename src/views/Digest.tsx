@@ -23,7 +23,7 @@ const text = strings({
     all: "All", today: "Today", yesterday: "Yesterday", morning: "Morning", evening: "Evening",
     digestOf: (name: string) => `${name} digest`,
     count: (n: number) => `${n}`, countedIn: (label: string, n: number) => `${label} ${n}`,
-    noNewMessages: "No new messages", noContent: "Nothing here", unread: "Unread ", merged: (n: number) => `${n} merged`,
+    noNewMessages: "No new messages", noContent: "Nothing here", unread: "Unread ", merged: (n: number) => `${n} stories combined`,
     openOriginal: "Open original", updated: "Updated", toolbar: "Tools", jumpTo: "Jump to section",
     emptyPart: { all: "This digest has no content", articles: "This digest has no articles", messages: "This digest has no messages" },
     nothingThisTime: "None this time", loading: "Loading", markRead: "Mark as read", markUnread: "Mark as unread", more: "More",
@@ -33,11 +33,11 @@ const text = strings({
     searching: "Searching", clearSearch: "Clear search", noResults: "No results", showLast2Weeks: "Show last 2 weeks",
     noneOnDate: { all: "No digests on this date", articles: "No article digests on this date", messages: "No message digests on this date" },
     noneYet: { all: "No digests yet", articles: "No article digests yet", messages: "No message digests yet" },
-    earlier2Weeks: "Show earlier 2 weeks",
-    wholeDigest: "Whole digest", makeAudio: "Make audio", voiceLegend: "Audio to make", cancel: "Cancel", create: "Make",
+    earlier2Weeks: "Show the 2 weeks before",
+    wholeDigest: "Whole digest", digestAudio: "Digest", makeAudio: "Generate audio", voiceLegend: "Audio to generate", cancel: "Cancel", create: "Generate",
     voiceHints: { all: "Reads the articles, then the messages, in one audio.", messages: "Reads only the messages.", articles: "Reads only the articles." },
-    voiceNotes: { cannotNow: "Can't be made right now", keyNeeded: "Needs a Gemini key", ready: "Audio is ready · listen from More",
-      failed: "Couldn't make it · try again from More", making: "Being made" },
+    voiceNotes: { cannotNow: "Can't generate it right now", keyNeeded: "Needs a Gemini key", ready: "Audio is ready · listen from More",
+      failed: "Couldn't generate it · try again from More", making: "Generating audio…" },
     updateTag: "Update", titlesOnly: "Titles only", end: (n: number) => `End of digest · ${n} ${n === 1 ? "item" : "items"}`,
   },
   ko: {
@@ -57,7 +57,7 @@ const text = strings({
     noneOnDate: { all: "이 날짜의 다이제스트 없음", articles: "이 날짜의 기사 다이제스트 없음", messages: "이 날짜의 메시지 다이제스트 없음" },
     noneYet: { all: "아직 다이제스트 없음", articles: "아직 기사 다이제스트 없음", messages: "아직 메시지 다이제스트 없음" },
     earlier2Weeks: "이전 2주 보기",
-    wholeDigest: "전체", makeAudio: "음성 만들기", voiceLegend: "만들 음성", cancel: "취소", create: "만들기",
+    wholeDigest: "전체", digestAudio: "전체", makeAudio: "음성 만들기", voiceLegend: "만들 음성", cancel: "취소", create: "만들기",
     voiceHints: { all: "기사와 메시지를 한 번에 이어서 읽어요.", messages: "메시지만 읽어요.", articles: "기사만 읽어요." },
     voiceNotes: { cannotNow: "지금은 만들 수 없어요", keyNeeded: "Gemini 키가 필요해요", ready: "만들어 둔 음성이 있어요 · 더보기에서 듣기",
       failed: "만들지 못했어요 · 더보기에서 다시 시도", making: "만드는 중이에요" },
@@ -471,7 +471,7 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
   const narrationOf = (each: DigestNarration) => digest && narrated(each)
     ? { id: digestPartId(id, each), title: `${dayTitle(digest.date)} ${slotTitle(digest.slot)}${each === "all" ? "" : ` · ${partLabel(each)}`}`, version: digest.version }
     : null;
-  const label = (each: DigestNarration) => part === "all" ? each === "all" ? t.wholeDigest : partLabel(each) : undefined;
+  const label = (each: DigestNarration) => part === "all" ? each === "all" ? t.digestAudio : partLabel(each) : undefined;
   const allNarration = useNarration({ record: narrationOf("all"), collection: "digests", label: label("all") });
   const messagesNarration = useNarration({ record: narrationOf("messages"), collection: "digests", label: label("messages") });
   const articlesNarration = useNarration({ record: narrationOf("articles"), collection: "digests", label: label("articles") });

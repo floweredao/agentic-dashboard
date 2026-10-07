@@ -11,10 +11,10 @@ const copy = strings({
   en: {
     link: "Link", note: "Note", task: "Task",
     discard: "Discard what you've written?",
-    title: "Save new", recordKind: "Record type",
+    title: "New item", recordKind: "Record type",
     content: "URL or text", placeholder: "Paste a link or write something",
     titleField: "Title", optional: "optional",
-    details: "Write more", saving: "Saving…", save: "Save",
+    details: "More options", saving: "Saving…", save: "Save",
   },
   ko: {
     link: "링크", note: "메모", task: "할 일",
