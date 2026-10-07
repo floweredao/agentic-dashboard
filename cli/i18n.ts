@@ -171,7 +171,7 @@ export const ko: Record<MessageKey, string> = {
   connectUrl: "대시보드 주소",
   connectNeedUrl: "대시보드 주소를 --url로 주거나, 터미널에서 connect를 실행하세요.",
   connectUnreachable: "{url}에서 대시보드를 찾지 못했어요({detail}). 주소와 이 컴퓨터에서 접속할 수 있는지(예: Tailscale이 켜져 있는지) 확인하세요.",
-  connectFound: "{url}에서 {name}을 찾았어요.",
+  connectFound: "{url}에서 대시보드를 찾았어요({name}).",
   connectAlready: "이 컴퓨터는 이미 {url}에 \"{agent}\"로 연결돼 있어요. 다시 연결할까요?",
   connectCode: "대시보드 컴퓨터에서 'agentic-dashboard invite'로 받은 연결 코드(비워 두면 에이전트 이름과 키를 직접 입력해요)",
   connectBadCode: "모르는 코드이거나, 이미 썼거나, 만료된 코드예요. 대시보드 컴퓨터에서 새로 받으세요: agentic-dashboard invite <이름>",
