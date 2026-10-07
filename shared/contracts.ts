@@ -190,7 +190,7 @@ export const NARRATABLE_KINDS = ["research", "work-report", "note", "social"] as
  * Cost guards for narration: script length, TTS chunk length, model input, queued jobs, generations started per Seoul day,
  * and failed generations per content version before only the owner may try again.
  */
-export const NARRATION_LIMITS = { scriptChars: 6000, chunkChars: 1500, sourceChars: 20000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
+export const NARRATION_LIMITS = { scriptChars: 6000, digestScriptChars: 10000, chunkChars: 1500, sourceChars: 20000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
 /** queued -> scripting (listening script) -> speaking (TTS chunks) -> ready | failed. */
 export const NarrationStatusSchema = z.enum(["queued", "scripting", "speaking", "ready", "failed"]);
 export type NarrationStatus = z.infer<typeof NarrationStatusSchema>;

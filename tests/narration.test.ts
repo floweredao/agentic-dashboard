@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
-import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
+import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, missingFigures, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
 import type { NarrationOptions, NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
@@ -486,7 +486,7 @@ const HAMNIDA_ONLY = "10월 3일 저녁 다이제스트입니다. 국내 2건입
 test("a script of six or more polite sentences with under a fifth in 습니다체 or in 해요체 is one-sided; a mixed or short one is not", () => {
   expect(oneSidedTone(HAEYO_ONLY)).toBe("haeyo");
   expect(oneSidedTone(HAMNIDA_ONLY)).toBe("hamnida");
-  // Like the briefing of 2026-10-02: only the count sentence in 습니다체 among nine others in 해요체.
+  // Only the count sentence in 습니다체 among nine others in 해요체.
   expect(oneSidedTone(`${HAEYO_ONLY} 국내 3건입니다. 메일이 왔어요. 확인하셨나요? 그렇죠.`)).toBe("haeyo");
   expect(oneSidedTone("A: 오늘은 금리 이야기예요. 한국은행이 금리를 동결했습니다.\n\nB: 왜 동결했죠? A: 물가가 아직 높습니다. B: 그렇군요. A: 다음 회의는 11월입니다.")).toBeNull();
   expect(oneSidedTone("다이제스트이에요. 국내 1건이에요. 서울 소식이에요. 날씨가 맑아요. 끝이에요.")).toBeNull();
@@ -560,6 +560,68 @@ test("an English record gets no Korean rule and is never asked twice", async () 
   await idle();
   expect(tts.calls.systems).toEqual([SCRIPT_SYSTEM]);
   expect(tts.calls.script).toBe(1);
+});
+
+/** The middle sentence carries the time, and the first script reads only the first and last. */
+const KYIV = { key: "k", title: "러 드론, 키이우 남부교 타격", source: "예시뉴스", url: "https://news.example.com/k",
+  summary: "러시아군이 키이우 남부교를 이틀 사이 4번 공격했다. 키이우 시장은 오후 5시 40분께 네 번째 타격이 있었다고 밝혔다. 시내 교통 혼잡이 커졌다." };
+const KYIV_SHORT = "10월 4일 아침 다이제스트예요. 국내 1건입니다.\n\n러시아군이 키이우 남부교를 이틀 사이 4번 공격했습니다. 시내 교통 혼잡이 커졌어요.";
+const KYIV_FULL = "10월 4일 아침 다이제스트예요. 국내 1건입니다.\n\n러시아군이 키이우 남부교를 이틀 사이 4번 공격했습니다. 네 번째 타격은 오후 5시 40분께였습니다. 시내 교통 혼잡이 커졌어요.";
+
+test("the article numbers a digest script never says are found, as digits or as read; messages and model names are not checked", () => {
+  const body = `## 국내\n- ${KYIV.title} (${KYIV.source}): ${KYIV.summary}\n- G7 합의 (예시뉴스): G7이 5곳에 1억 배럴을 풀기로 했다.\n\n## 메일\n- [info] 예시은행: 거래내역. 생년월일 6자리로 엽니다.`;
+  expect(missingFigures(body, `${KYIV_SHORT} G7이 다섯 곳에 일억 배럴을 풀기로 했습니다.`)).toEqual([{ title: KYIV.title, figures: ["5시", "40분"] }]);
+  expect(missingFigures(body, `${KYIV_FULL} G7이 5곳에 1억 배럴을 풀기로 했습니다.`)).toEqual([]);
+});
+
+test("a Korean digest script that drops a summary's middle sentence is written once more naming what it lost; a full one costs one call", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const digest = async (date: string) => {
+    const created = await f.call("/api/v1/digests", "POST", { date, slot: "morning", notify: false,
+      sections: [{ key: "domestic", title: "국내", kind: "articles", items: [KYIV] }] }, bearer("omo"));
+    return (await created.json() as { digest: { id: string } }).digest.id;
+  };
+  // Given: the model first reads the first and last sentences only, then the whole summary.
+  tts.scriptTexts = [KYIV_SHORT, KYIV_FULL];
+  const first = await digest("2026-10-04");
+  await f.call(`/api/v1/digests/${first}/narration`, "POST", {}, owner);
+  await idle();
+  // Then: the second call carries the digest instructions plus the item and the time it lost, and its script is kept.
+  expect(tts.calls.script).toBe(2);
+  expect(tts.calls.systems[1]?.startsWith(korean(DIGEST_SCRIPT_SYSTEM))).toBe(true);
+  expect(tts.calls.systems[1]?.slice(korean(DIGEST_SCRIPT_SYSTEM).length)).toContain(`'${KYIV.title}'의 5시, 40분`);
+  expect((await read(await f.call(`/api/v1/digests/${first}/narration`, "GET", undefined, owner))).narration?.script).toBe(KYIV_FULL);
+  // And: a script with every fact costs one call.
+  tts.scriptTexts = [KYIV_FULL];
+  await f.call(`/api/v1/digests/${await digest("2026-10-05")}/narration`, "POST", {}, owner);
+  await idle();
+  expect(tts.calls.script).toBe(3);
+});
+
+test("what is spoken reads each number by its unit, while the saved script keeps the digits", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  tts.scriptText = "올해 5곳의 전셋값이 10% 넘게 올랐습니다. 다음 발표는 6월 3일 오후 12시예요.";
+  const record = await research(f, owner);
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  expect(tts.calls.speak).toEqual(["올해 다섯 곳의 전셋값이 십 퍼센트 넘게 올랐습니다. 다음 발표는 유월 삼 일 오후 열두 시예요."]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.script).toBe(tts.scriptText);
+  // And: a podcast turn is read the same way.
+  tts.scriptText = "A: 후보는 3곳입니다.\n\nB: 2명이 골랐죠?";
+  const podcast = await research(f, owner);
+  await f.call(narration(podcast.id), "POST", { style: "podcast" }, owner);
+  await idle();
+  expect(tts.calls.converse.at(-1)).toEqual([{ speaker: "A", text: "후보는 세 곳입니다." }, { speaker: "B", text: "두 명이 골랐죠?" }]);
+});
+
+test("a digest script may run past a record's cap up to the digest cap", () => {
+  const long = Array.from({ length: 80 }, (_, index) => `${index}번 항목의 사실을 빠짐없이 전합니다. ${"가".repeat(90)}.`).join("\n\n");
+  expect(normalizeScript(long).length).toBeLessThanOrEqual(NARRATION_LIMITS.scriptChars);
+  const digest = normalizeScript(long, NARRATION_LIMITS.digestScriptChars);
+  expect(digest.length).toBeGreaterThan(NARRATION_LIMITS.scriptChars);
+  expect(digest.length).toBeLessThanOrEqual(NARRATION_LIMITS.digestScriptChars);
 });
 
 test("a failed TTS reuses the saved script, retries each chunk, and stops after the attempt limit", async () => {
