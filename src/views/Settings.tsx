@@ -10,6 +10,7 @@ import type { Preference } from "../i18n";
 import { deviceState, disablePush, enablePush, pushSupport, syncPushLocale, testPush } from "../push";
 import { useDashboard } from "../state";
 import { viewTitles } from "../router";
+import { VoiceSettings } from "./VoiceSettings";
 
 type KindText = { readonly label: string; readonly note: string };
 const text = strings({
@@ -194,6 +195,7 @@ function PushSettings() {
   const kinds = (Object.keys(kindIcons) as (keyof PushKinds)[]).filter(key => key !== "digest" || config.features.digest);
 
   return <>
+    {config.features.narration && <VoiceSettings />}
     {support === "ios-browser" && <p className="settings-notice" role="note">{t.iosNotice}</p>}
     <section className="more-group" aria-labelledby="settings-device">
       <h2 id="settings-device" className="more-heading">{t.device}</h2>

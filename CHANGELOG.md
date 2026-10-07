@@ -10,6 +10,7 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ### Added
 
+- Narration voices in Settings: pick the read-aloud voice and the two podcast hosts (Male | Female, then a voice from the 117 Korean voices of the Gemini TTS library, with a Listen sample made once per voice), and edit both speaking styles. The choice is saved on the server and used from the next audio; audio already made keeps its voice. New routes `GET`/`PUT /api/v1/narration/voices` and `GET /api/v1/narration/voices/:voice/preview`; on first start the server adds a `narration_settings` table.
 - Speech through Vertex AI: with `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT`, Listen audio is made by Gemini TTS on Vertex AI (`global`), signed in with Application Default Credentials and billed to the Google Cloud project; the script still uses the Gemini API key. Expired logins, switched-off billing or API, and the Vertex quota fail as `vertex_auth`, `vertex_disabled` and `vertex_quota` with a message saying what to do. The default stays the Gemini API key.
 - Favorites in the inbox: a Favorites chip (`#/inbox?state=starred`) lists the starred records, with its count and an empty-state hint.
 
@@ -19,6 +20,7 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ### Fixed
 
+- A disabled primary button keeps its dimmed look on touch screens, where a tapped button kept its hover style and looked enabled.
 - A narration failure closed with x stays closed when a retry fails again for the same reason on the same audio.
 - When audio already exists, a failed remake keeps the player and shows a small status line with Retry and x instead of the alert that hid the audio.
 

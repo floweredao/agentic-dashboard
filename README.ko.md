@@ -203,7 +203,7 @@ bun run agent --digest digest.json       # { date, slot, sections: [{ key, title
 |---|---|
 | 웹 푸시 | `PUSH` (기본 켜짐, 키 자동 생성) |
 | 다이제스트 | `DIGEST` (기본 켜짐) |
-| 듣기(음성 합성) | `GEMINI_API_KEY`, 또는 `server/narration.ts`의 `NarrationProvider`로 직접 구현. 목소리는 설정입니다: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`, 바쁠 때 쓰는 `NARRATION_SCRIPT_FALLBACK_MODEL`. 음성 요금을 키의 한도 대신 Google Cloud 프로젝트로 내려면 `NARRATION_TTS_PROVIDER=vertex`와 `NARRATION_VERTEX_PROJECT`를 설정하고 ADC로 로그인합니다(아래 참고) |
+| 듣기(음성 합성) | `GEMINI_API_KEY`, 또는 `server/narration.ts`의 `NarrationProvider`로 직접 구현. 기본 목소리는 설정입니다: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`(소유자는 앱의 설정 › 낭독 목소리에서 다른 목소리와 말투를 고를 수 있음), 바쁠 때 쓰는 `NARRATION_SCRIPT_FALLBACK_MODEL`. 음성 요금을 키의 한도 대신 Google Cloud 프로젝트로 내려면 `NARRATION_TTS_PROVIDER=vertex`와 `NARRATION_VERTEX_PROJECT`를 설정하고 ADC로 로그인합니다(아래 참고) |
 | 저장한 링크의 AI 제목 채우기 | `AI_FILL_COMMAND`: 표준 입력으로 프롬프트를 받아 JSON을 출력하는 아무 CLI |
 | 채팅 앱용 MCP | `ENABLE_MCP=on`과 `MCP_AGENT=<등록한 에이전트>` |
 | 에이전트 전용 리스너 | `ENABLE_AGENT_INGRESS=on` |
