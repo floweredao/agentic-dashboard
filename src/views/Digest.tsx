@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { ArrowRight, CalendarDays, ChevronRight, CircleCheck, CircleDot, Clock3, ExternalLink, Headphones, Layers, Mail, Moon, Newspaper, Sun } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronRight, CircleCheck, CircleDot, Clock3, ExternalLink, Headphones, Layers, List, Mail, Moon, Newspaper, Sun } from "lucide-react";
 import { DigestSectionKeySchema, digestPartId, MESSAGE_IMPORTANCE } from "../../shared/contracts";
 import type { Digest, DigestArticle, DigestHit, DigestMessage, DigestNarration, DigestPart, DigestSummary, MessageImportance } from "../../shared/contracts";
 import { errorMessage, loadDigest, loadDigests, searchDigests } from "../api";
@@ -61,7 +61,7 @@ const text = strings({
     voiceHints: { all: "기사와 메시지를 한 번에 이어서 읽어요.", messages: "메시지만 읽어요.", articles: "기사만 읽어요." },
     voiceNotes: { cannotNow: "지금은 만들 수 없어요", keyNeeded: "Gemini 키가 필요해요", ready: "만들어 둔 음성이 있어요 · 더보기에서 듣기",
       failed: "만들지 못했어요 · 더보기에서 다시 시도", making: "만드는 중이에요" },
-    updateTag: "업데이트", titlesOnly: "제목만", end: (n: number) => `다이제스트 끝 · ${n}건`,
+    updateTag: "업데이트", titlesOnly: "제목만 보기", end: (n: number) => `다이제스트 끝 · ${n}건`,
   },
 });
 const partLabel = (part: DigestPart) => text().parts[part];
@@ -177,6 +177,35 @@ function jumpTo(key: string) {
   if (scroller === document.scrollingElement) window.scrollBy({ top, behavior }); else scroller.scrollBy({ top, behavior });
 }
 /** The section being read: the last one whose head has reached the stuck bar, the last one once the end is reached. */
+/** The section tab strip: keeps the current section's tab in view and marks which edges hide more tabs (`data-more`, they fade). */
+function useTabStrip(current: string | undefined, keys: string) {
+  const strip = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const element = strip.current;
+    if (!element) return;
+    const mark = () => {
+      const max = element.scrollWidth - element.clientWidth;
+      element.dataset["more"] = max <= 1 ? "" : element.scrollLeft <= 1 ? "end" : element.scrollLeft >= max - 1 ? "start" : "both";
+    };
+    mark();
+    element.addEventListener("scroll", mark, { passive: true });
+    const observer = new ResizeObserver(mark);
+    observer.observe(element);
+    return () => { element.removeEventListener("scroll", mark); observer.disconnect(); };
+  }, [keys]);
+  useEffect(() => {
+    const element = strip.current;
+    const tab = element?.querySelector<HTMLElement>('[aria-current="location"]');
+    if (!element || !tab) return;
+    const box = element.getBoundingClientRect(), place = tab.getBoundingClientRect();
+    // Room for the fade, so the tab is fully readable once scrolled to.
+    const edge = 28;
+    const left = place.left < box.left + edge ? place.left - box.left - edge : place.right > box.right - edge ? place.right - box.right + edge : 0;
+    if (left) element.scrollBy({ left, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, [current, keys]);
+  return strip;
+}
+
 function useCurrentSection(keys: readonly string[], layout: unknown) {
   const [current, setCurrent] = useState<string | undefined>(keys[0]);
   const joined = keys.join(",");
@@ -306,6 +335,7 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
   const sections = digest.sections.filter(section => inFilter(part, section.kind));
   const titles = density === "titles";
   const current = useCurrentSection(sections.map(section => section.key), `${[...collapsed].join()}|${density}`);
+  const strip = useTabStrip(current, sections.map(section => section.key).join());
   const shown = sections.reduce((sum, section) => sum + section.items.length, 0);
   const present = filterParts(part).filter(each => digest.sections.some(section => section.kind === each));
   const totals = part === "all" ? present.map(each => t.countedIn(partLabel(each), digestPartItems(digest, each))).join(" · ") || t.count(0)
@@ -325,16 +355,17 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
       {listen}
       {sections.length === 0 && <p className="digest-empty-section digest-part-empty">{t.emptyPart[part]}</p>}
       {sections.length > 0 && <div className="digest-bar">
-        {sections.length > 1 && <nav className="digest-jump" aria-label={t.jumpTo}>
-          {sections.map(section => <a key={section.key} className="chip" href={`#section-${section.key}`}
+        {sections.length > 1 && <nav ref={strip} className="digest-jump" aria-label={t.jumpTo}>
+          {sections.map(section => <a key={section.key} className="digest-tab" href={`#section-${section.key}`}
             aria-current={current === section.key ? "location" : undefined} onClick={event => {
               event.preventDefault();
               // A collapsed section opens first, so the jump lands on its items.
               if (collapsed.has(section.key)) flushSync(() => onExpand?.(section.key, true));
               jumpTo(section.key);
-            }}>{section.title}<span className="chip-count">{section.items.length}</span></a>)}
+            }}>{section.title}<span className="digest-tab-count">{section.items.length}</span></a>)}
         </nav>}
-        <button type="button" className="chip digest-density" aria-pressed={titles} onClick={() => onDensity?.(titles ? "summary" : "titles")}>{t.titlesOnly}</button>
+        <button type="button" className="icon-btn digest-density" aria-pressed={titles} aria-label={t.titlesOnly} title={t.titlesOnly}
+          onClick={() => onDensity?.(titles ? "summary" : "titles")}><List size={18} aria-hidden="true" /></button>
       </div>}
       {sections.map(section => {
         const { key } = section;

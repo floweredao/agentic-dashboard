@@ -75,14 +75,35 @@
 .listen-style.is-disabled:hover { background: transparent; }
 .listen-style-text .listen-style-note { color: var(--faint); font-size: 12.5px; }
 /* Section bar: jump chips and titles only, stuck to the top of the reader pane (under the app bar on phones). */
+/* Section bar, stuck to the top of the reader pane (under the app bar on phones), one row at every width: section tabs
+   that scroll sideways when they do not fit (the edge hiding more fades), the current one underlined on the bar's hairline,
+   each count a small badge; then Titles only as an icon toggle. Tab text lines up with the content edge. */
 .digest-bar {
-  position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; gap: 6px 8px; margin: 18px -8px 0; padding: 8px;
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 4px; margin: 18px -10px 0; padding: 0 10px 0 0;
   background: var(--surface); border-bottom: 1px solid var(--line);
 }
-.digest-jump { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
-.digest-jump .chip[aria-current="location"] { background: var(--selected); border-color: transparent; color: var(--ink); font-weight: 650; }
-.digest-jump .chip[aria-current="location"] .chip-count { color: var(--muted); }
-.digest-density { margin-left: auto; }
+.digest-jump {
+  display: flex; flex: 1; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+}
+.digest-jump::-webkit-scrollbar { display: none; }
+.digest-jump[data-more="end"] { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.digest-jump[data-more="start"] { mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+.digest-jump[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+.digest-tab {
+  display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px;
+  border-block: 2px solid transparent; border-radius: 6px 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 600;
+  white-space: nowrap; user-select: none; -webkit-user-select: none; transition: color 120ms var(--ease), border-color 120ms var(--ease);
+}
+.digest-tab:focus-visible { outline-offset: -2px; }
+@media (hover: hover) { .digest-tab:hover { color: var(--ink); } }
+.digest-tab[aria-current="location"] { border-bottom-color: var(--ink); color: var(--ink); font-weight: 650; }
+.digest-tab-count {
+  display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px;
+  background: var(--selected); color: var(--muted); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.digest-tab[aria-current="location"] .digest-tab-count { color: var(--ink); }
+.digest-density { flex: none; margin-left: auto; }
+.digest-density[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
 .digest-section { margin-top: 36px; scroll-margin-top: 72px; }
 .digest-bar + .digest-section { margin-top: 20px; }
 /* Section head: one row, every child centered; the disclosure button covers chevron, icon (fixed 18px slot), label and count. */
@@ -181,12 +202,12 @@
   .date-chip input { inset: -6px 0; height: auto; }
   .digest-list, .digest-hits { padding: 0; gap: 0; }
   .digest-row, .digest-hit { padding: 14px 16px; border-radius: 0; border-bottom: 1px solid var(--line); }
-  .digest-bar { top: calc(var(--appbar) + var(--safe-top)); margin: 14px -20px 0; padding: 8px 20px; }
+  .digest-bar { top: calc(var(--appbar) + var(--safe-top)); margin: 14px -20px 0; padding: 0 12px 0 10px; }
   .digest-section-label { font-size: 18px; }
   .digest-section-toggle { min-height: 44px; }
   .digest-section-note { flex-basis: 100%; margin-left: 0; }
   .digest-section { scroll-margin-top: calc(var(--appbar) + var(--safe-top) + 72px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .digest-row, .digest-hit, .digest-card, .switch, .switch-thumb, .segmented button, .digest-section-toggle, .digest-chevron { transition: none; }
+  .digest-row, .digest-hit, .digest-card, .switch, .switch-thumb, .segmented button, .digest-section-toggle, .digest-chevron, .digest-tab { transition: none; }
 }
