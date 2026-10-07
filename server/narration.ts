@@ -1,9 +1,10 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { NARRATABLE_KINDS, NARRATION_LIMITS, NarrationStatusSchema, NarrationStyleSchema } from "../shared/contracts";
+import { NARRATABLE_KINDS, NARRATION_LIMITS, NarrationStatusSchema, NarrationStyleSchema, NarrationVoicesSchema } from "../shared/contracts";
 import { startOfZonedDay } from "../shared/time";
-import type { DashboardRecord, Narration, NarrationState, NarrationStatus, NarrationStyle } from "../shared/contracts";
+import type { DashboardRecord, Narration, NarrationState, NarrationStatus, NarrationStyle, NarrationVoiceSettings, NarrationVoices } from "../shared/contracts";
+import { KOREAN_VOICES } from "../shared/voices";
 import { ApiError } from "./errors";
 import { spokenNumbers, statedFigures } from "./spoken-numbers";
 import type { Principal, Store } from "./store";
@@ -23,10 +24,10 @@ export interface NarrationProvider {
   available(): Promise<boolean>;
   /** Writes the script with `model`, else `scriptModel`, telling `onText` how many characters have arrived so far. */
   script(system: string, prompt: string, signal: AbortSignal, model?: string, onText?: (chars: number) => void): Promise<string>;
-  /** Speaks one chunk as 24 kHz mono 16-bit little-endian PCM. */
-  speak(text: string, style: string, signal: AbortSignal): Promise<Uint8Array>;
-  /** Speaks a run of podcast turns in one request, each in its host's voice, as the same PCM. */
-  converse(turns: readonly SpeechTurn[], style: string, signal: AbortSignal): Promise<Uint8Array>;
+  /** Speaks one chunk as 24 kHz mono 16-bit little-endian PCM, in `voice` or else `voice` above. */
+  speak(text: string, style: string, signal: AbortSignal, voice?: string): Promise<Uint8Array>;
+  /** Speaks a run of podcast turns in one request, each in its host's voice (`hosts`, else `hosts` above), as the same PCM. */
+  converse(turns: readonly SpeechTurn[], style: string, signal: AbortSignal, hosts?: readonly [string, string]): Promise<Uint8Array>;
 }
 /**
  * A provider failure reduced to a code; `transient` failures (429, 5xx, network, timeout) are retried with backoff, waiting
@@ -143,6 +144,9 @@ export const PODCAST_SCRIPT_SYSTEM = [
   `You may write up to ${NARRATION_LIMITS.partScriptChars - 500} characters, so do not cut the body's content. Spend the length on the body's explanations and questions and answers rather than on the hosts' back-and-forth.`,
   "Answer with the script text only.",
 ].join("\n");
+/** What a voice preview says: Korean for a Korean voice, English otherwise. */
+export const previewText = (voice: string) => voice.startsWith("ko-kr-") ? "안녕하세요. 이 목소리로 기록을 읽어 드릴게요."
+  : "Hello. This is how this voice reads your records.";
 export const PODCAST_STYLE = "A relaxed back-and-forth conversation at a natural pace, with short pauses between turns";
 
 const ACTIVE: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
@@ -435,6 +439,8 @@ export function createNarration(options: NarrationOptions) {
   for (const column of ["style", "script_style", "audio_style"]) {
     if (!columns.has(column)) store.db.exec(`ALTER TABLE narrations ADD COLUMN ${column} TEXT NOT NULL DEFAULT 'read'`);
   }
+  store.db.exec(`CREATE TABLE IF NOT EXISTS narration_settings(id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL CHECK(json_valid(data)),
+    updated_at TEXT NOT NULL)`);
   let chain: Promise<void> = Promise.resolve();
   /** The job being run, with its own controller: a cancel aborts only this run, never a later request for the same id. */
   let running: { id: string; controller: AbortController; waitUntil: number | null; stepAt: number | null } | null = null;
@@ -603,6 +609,8 @@ export function createNarration(options: NarrationOptions) {
     const hash = sourceHash(record);
     const style = job.style;
     const podcast = style === "podcast";
+    const voices = voiceSettings();
+    const hosts = [voices.hostA, voices.hostB] as const;
     const part = join(audioDir, `${id}.part.wav`);
     try {
       const scriptKey = `${hash}:${SCRIPT_RULES}`;
@@ -659,8 +667,8 @@ export function createNarration(options: NarrationOptions) {
       // A Korean script is spoken with each number before a known unit written out as it is read; the saved script keeps the digits.
       const read = isKorean(record) ? spokenNumbers : (value: string) => value;
       const speeches: ((signal: AbortSignal) => Promise<Uint8Array>)[] = podcast
-        ? dialogueChunks(text).map(turns => signal => provider.converse(turns.map(turn => ({ ...turn, text: read(turn.text) })), PODCAST_STYLE, signal))
-        : splitChunks(text).map(chunk => signal => provider.speak(read(chunk), SPEECH_STYLE, signal));
+        ? dialogueChunks(text).map(turns => signal => provider.converse(turns.map(turn => ({ ...turn, text: read(turn.text) })), voices.podcastStyle, signal, hosts))
+        : splitChunks(text).map(chunk => signal => provider.speak(read(chunk), voices.readStyle, signal, voices.readVoice));
       if (speeches.length === 0) throw new ProviderError("empty_script", false);
       const pcm: Uint8Array[] = [];
       set(id, { status: "speaking", job_hash: hash, progress_done: 0, progress_total: speeches.length });
@@ -687,7 +695,7 @@ export function createNarration(options: NarrationOptions) {
       if (!row(id)) { removeFile(name); return; }
       set(id, { status: "ready", attempts: 0, error: null, progress_done: null, progress_total: null, audio_file: name, audio_hash: hash,
         audio_mime: encoded.mime, audio_bytes: Bun.file(join(audioDir, name)).size, audio_ms: Math.round(body.byteLength / BYTES_PER_MS),
-        audio_model: provider.ttsModel, audio_voice: podcast ? provider.hosts.join(", ") : provider.voice, audio_style: style, audio_at: now() });
+        audio_model: provider.ttsModel, audio_voice: podcast ? hosts.join(", ") : voices.readVoice, audio_style: style, audio_at: now() });
       if (previous !== name) removeFile(previous);
     } catch (error) {
       rmSync(part, { force: true });
@@ -760,5 +768,70 @@ export function createNarration(options: NarrationOptions) {
     let current: Promise<void>;
     do { current = chain; await current; } while (current !== chain);
   }
-  return { state, available, request, cancel, remove, prune, resume, audioFile, idle };
+  /** The provider's voices and the built-in speaking styles; what narration uses until the owner saves a choice. */
+  function voiceDefaults(): NarrationVoices {
+    if (!provider) throw new ApiError(503, "narration_unavailable", "No TTS key is configured on the dashboard server");
+    return { readVoice: provider.voice, hostA: provider.hosts[0], hostB: provider.hosts[1], readStyle: SPEECH_STYLE, podcastStyle: PODCAST_STYLE };
+  }
+  /** The Korean voice list, then the provider's own voices it does not name (their gender unknown). */
+  function voiceChoices(): NarrationVoiceSettings["voices"] {
+    const listed = KOREAN_VOICES.map(voice => ({ ...voice }));
+    const own = provider ? [...new Set([provider.voice, ...provider.hosts])].filter(id => !listed.some(voice => voice.id === id)) : [];
+    return [...listed, ...own.map(id => ({ id, name: id, gender: "neutral" as const, pitch: null }))];
+  }
+  /** The saved choice, or the defaults when none is saved or a saved voice is no longer offered. */
+  function voiceSettings(): NarrationVoices {
+    const defaults = voiceDefaults();
+    const value = store.db.query("SELECT data FROM narration_settings WHERE id=1").get();
+    if (!value) return defaults;
+    const parsed = NarrationVoicesSchema.safeParse(JSON.parse(z.object({ data: z.string() }).parse(value).data));
+    const ids = new Set(voiceChoices().map(voice => voice.id));
+    if (!parsed.success || ![parsed.data.readVoice, parsed.data.hostA, parsed.data.hostB].every(id => ids.has(id))) return defaults;
+    return parsed.data;
+  }
+  const voiceView = (): NarrationVoiceSettings => ({ settings: voiceSettings(), defaults: voiceDefaults(), voices: voiceChoices() });
+  /** Saves the owner's choice for the next narrations; audio already made keeps its voice. */
+  function saveVoices(input: unknown): NarrationVoiceSettings {
+    const parsed = NarrationVoicesSchema.safeParse(input);
+    if (!parsed.success) throw new ApiError(400, "invalid_input", parsed.error.issues.map(issue => issue.message).join("; "));
+    const ids = new Set(voiceChoices().map(voice => voice.id));
+    const unknown = [parsed.data.readVoice, parsed.data.hostA, parsed.data.hostB].filter(id => !ids.has(id));
+    if (unknown.length > 0) throw new ApiError(400, "invalid_voice", `Not an offered voice: ${unknown.join(", ")}`);
+    store.db.query("INSERT INTO narration_settings(id,data,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at")
+      .run(JSON.stringify(parsed.data), now());
+    return voiceView();
+  }
+  const previewDir = join(audioDir, "previews");
+  const previews = new Map<string, Promise<{ path: string; mime: string }>>();
+  /**
+   * A short sample of `voice` in the read-aloud style, spoken once (a few seconds of audio, a paid call) and then served from
+   * `audio/previews/`; concurrent requests for one voice share the call.
+   */
+  function preview(voice: string): Promise<{ path: string; mime: string }> {
+    if (!voiceChoices().some(choice => choice.id === voice)) throw new ApiError(404, "not_found", "No such voice");
+    for (const [extension, mime] of [["m4a", "audio/mp4"], ["wav", "audio/wav"]] as const) {
+      const path = join(previewDir, `${voice}.${extension}`);
+      if (existsSync(path)) return Promise.resolve({ path, mime });
+    }
+    const pending = previews.get(voice);
+    if (pending) return pending;
+    const made = (async () => {
+      if (!provider || !await available()) throw new ApiError(503, "narration_unavailable", "No TTS key is configured on the dashboard server");
+      let pcm: Uint8Array;
+      try { pcm = await provider.speak(previewText(voice), voiceSettings().readStyle, AbortSignal.timeout(timeoutMs), voice); }
+      catch (error) {
+        if (error instanceof ProviderError) throw new ApiError(502, "narration_preview_failed", `The voice sample could not be made (${error.code})`);
+        throw error;
+      }
+      mkdirSync(previewDir, { recursive: true, mode: 0o700 });
+      const part = join(previewDir, `${voice}.wav`);
+      writeFileSync(part, wav(pcm), { mode: 0o600 });
+      const encoded = await encode(part, AbortSignal.timeout(timeoutMs));
+      chmodSync(encoded.path, 0o600);
+      return encoded;
+    })().finally(() => previews.delete(voice));
+    previews.set(voice, made);
+    return made;
+  }
+  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, voices: voiceView, saveVoices, preview };
 }

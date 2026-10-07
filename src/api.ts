@@ -17,6 +17,9 @@ import {
   DocumentStateSchema,
   type RecordDocument,
   NarrationStateSchema as narrationStateSchema,
+  NarrationVoiceSettingsSchema,
+  type NarrationVoiceSettings,
+  type NarrationVoices,
   RecordInputSchema as recordInputSchema,
   TrashItemSchema as trashItemSchema,
   type Comment,
@@ -169,6 +172,19 @@ export async function requestNarration(recordId: string, force: boolean, csrfTok
     headers: { "X-CSRF-Token": csrfToken },
   }).json());
 }
+
+/** Settings › Narration voices (owner): the voices and speaking styles in use, the defaults and the voices to choose from. */
+export async function loadVoiceSettings(): Promise<NarrationVoiceSettings> {
+  return NarrationVoiceSettingsSchema.parse(await http.get("narration/voices").json());
+}
+
+/** Saves the voices and styles the next narrations use; audio already made keeps its voice. */
+export async function saveVoiceSettings(voices: NarrationVoices, csrfToken: string): Promise<NarrationVoiceSettings> {
+  return NarrationVoiceSettingsSchema.parse(await http.put("narration/voices", { json: voices, headers: { "X-CSRF-Token": csrfToken } }).json());
+}
+
+/** A few seconds of `voice` reading a sample sentence; made once on the server (a small paid call), then served from its file. */
+export const voicePreviewUrl = (voice: string) => `/api/v1/narration/voices/${encodeURIComponent(voice)}/preview`;
 
 /** Stops a narration that is waiting or being made, so no further paid call starts; the state after it (the earlier audio, if any). */
 export async function cancelNarration(recordId: string, csrfToken: string, collection: NarrationCollection = "records"): Promise<NarrationState> {

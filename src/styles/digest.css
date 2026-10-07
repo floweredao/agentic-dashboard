@@ -211,3 +211,19 @@
 @media (prefers-reduced-motion: reduce) {
   .digest-row, .digest-hit, .digest-card, .switch, .switch-thumb, .segmented button, .digest-section-toggle, .digest-chevron, .digest-tab { transition: none; }
 }
+
+/* Narration voices: one card row per voice (name, a Male | Female segmented control, the voice list and Listen), then the two styles and Save. */
+.voice-settings-note { margin: 0 4px 4px; }
+.voice-role { display: grid; gap: 10px; padding: 12px 14px; }
+.voice-role-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.voice-role-head .more-label { color: var(--ink); font-size: 15px; font-weight: 500; }
+.segmented.voice-gender { grid-template-columns: repeat(2, minmax(64px, 1fr)); }
+.voice-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.voice-pick select { min-height: 40px; }
+.voice-pick select[aria-invalid="true"] { border-color: var(--danger); }
+.voice-listen { min-height: 40px; }
+.voice-error { margin: 0; }
+.voice-style { padding: 6px 4px 0; }
+.voice-style textarea { min-height: 64px; }
+.voice-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 6px 0 0; }
+.voice-actions .btn { min-height: 40px; }

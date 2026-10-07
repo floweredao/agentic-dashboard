@@ -78,7 +78,7 @@ img, svg { display: block; flex-shrink: 0; }
 .btn-outline { border-color: var(--line-strong); background: var(--surface); }
 .btn-primary { background: var(--ink); color: var(--on-ink); }
 .btn-primary:hover { background: var(--ink); color: var(--on-ink); opacity: .88; }
-.btn-primary:disabled { background: var(--ink); }
+.btn-primary:disabled { background: var(--ink); opacity: .45; }
 .btn-quiet { color: var(--muted); }
 .btn[aria-pressed="true"] { background: var(--selected); }
 .btn-danger { color: var(--danger); }

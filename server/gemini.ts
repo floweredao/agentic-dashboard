@@ -281,18 +281,18 @@ export function geminiProvider(options: {
       if (!script.trim()) throw new ProviderError("empty_script", false);
       return script;
     },
-    speak: (text, style, signal) => options.vertex
-      ? vertexAudioOf(options.vertex, [{ text, speechMetadata: { style } }], { voiceConfig: { voice } }, signal)
+    speak: (text, style, signal, chosen = voice) => options.vertex
+      ? vertexAudioOf(options.vertex, [{ text, speechMetadata: { style } }], { voiceConfig: { voice: chosen } }, signal)
       : audioOf([{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style }] }] }],
-        [{ voice }], signal),
+        [{ voice: chosen }], signal),
     // https://ai.google.dev/gemini-api/docs/speech-generation#multi-speaker: speakers as an object, every turn names its speaker.
-    converse: (turns, style, signal) => options.vertex
+    converse: (turns, style, signal, [hostA, hostB] = hosts) => options.vertex
       ? vertexAudioOf(options.vertex, turns.map(turn => ({ text: turn.text, speechMetadata: { speaker: turn.speaker, style } })),
         { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
-          { speaker: "A", voiceConfig: { voice: hosts[0] } }, { speaker: "B", voiceConfig: { voice: hosts[1] } }] } }, signal)
+          { speaker: "A", voiceConfig: { voice: hostA } }, { speaker: "B", voiceConfig: { voice: hostB } }] } }, signal)
       : audioOf(
       [{ type: "user_input", content: turns.map(turn => ({ type: "text", text: turn.text,
         annotations: [{ type: "speech_metadata", speaker: turn.speaker, style }] })) }],
-      { mode: "conversational", speakers: [{ speaker: "A", voice: hosts[0] }, { speaker: "B", voice: hosts[1] }] }, signal),
+      { mode: "conversational", speakers: [{ speaker: "A", voice: hostA }, { speaker: "B", voice: hostB }] }, signal),
   };
 }
