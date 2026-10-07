@@ -79,7 +79,7 @@ test("a failed remake keeps the audio that exists playable, with a small note, �
   const state = { narration: { ...base, status: "failed" as const, attempts: 2, error: "quota_daily", audio }, available: true };
   const html = bar(state);
   // Then the player is there and the failure is a status note, not an alert
-  expect(html).toContain(`src="${audio.url}"`);
+  expect(html).toContain('class="listen-folded"');
   expect(html).not.toContain('role="alert"');
   expect(html).toMatch(/class="listen-note" role="status"/);
   expect(text(html)).toContain("새 음성을 만들지 못했어요");
@@ -88,7 +88,7 @@ test("a failed remake keeps the audio that exists playable, with a small note, �
   // And once closed only the player is left
   const closed = renderToStaticMarkup(<NarrationBar record={record} state={parse(state)} pending={false} cancelling={false} dismissed={true} open={false}
     finishing={false} playNonce={0} onCancel={noop} onRetry={noop} onDismiss={noop} onOpen={noop} onFold={noop} onRemove={noop} />);
-  expect(closed).toContain(`src="${audio.url}"`);
+  expect(closed).toContain('class="listen-folded"');
   expect(closed).not.toContain("listen-note");
 });
 
@@ -106,8 +106,8 @@ test("a job that just finished holds the row at 100% before the player takes its
   const html = bar(state, { finishing: true });
   expect(percentOf(html)).toBe(100);
   expect(text(html)).toContain("다 만들었어요 100%");
-  expect(html).not.toContain("<audio");
-  expect(bar(state)).toContain("<audio");
+  expect(html).not.toContain("listen-folded");
+  expect(bar(state)).toContain('class="listen-folded"');
 });
 
 test("finished audio shows a folded player, and the menu offers 듣기, 다시 만들기, 원고 보기 and 음성 삭제", () => {
@@ -119,7 +119,7 @@ test("finished audio shows a folded player, and the menu offers 듣기, 다시 �
   // Then folded is a button with the length; open is one row with seek, time, rate and fold
   expect(text(folded)).toContain("듣기 · 13분");
   expect(folded).not.toContain('type="range"');
-  expect(folded).toContain(`src="${audio.url}"`);
+  expect(folded).toContain('class="listen-folded"');
   expect(folded).not.toContain("예전 내용");
   expect(open).toContain('class="listen-bar listen-player"');
   expect(open).toContain('type="range"');

@@ -10,15 +10,12 @@ import { strings } from "../i18n";
 import { useDashboard } from "../state";
 import type { MenuItem } from "./Menu";
 import { narrationStage } from "./narration-progress";
+import { clock, forgetPosition, nextRate, rememberPosition, savedPosition, usePlayback } from "./playback";
 import { Dialog, Tag } from "./primitives";
 
+export { clock, initialRate } from "./playback";
+
 const WORKING: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
-const RATES = [1, 1.25, 1.5, 2, 0.8] as const;
-const DEFAULT_RATE = 1;
-const RATE_KEY = "agentic:listen-rate-v2";
-/** The first player's key, written on every mount; a rate stored there was still the owner's last choice. */
-const OLD_RATE_KEY = "agentic:listen-rate";
-const positionKey = (recordId: string) => `agentic:listen:${recordId}`;
 /** The failure (its updatedAt) the owner closed with x for this record or digest part, on this device. */
 const dismissKey = (recordId: string) => `agentic:listen-dismissed:${recordId}`;
 const POLL_MS = 3000;
@@ -124,25 +121,12 @@ export function narrationFailure(code: string | null): string {
   return text().failed;
 }
 
-export function clock(seconds: number): string {
-  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  return hours ? `${hours}:${pad(minutes)}:${pad(total % 60)}` : `${minutes}:${pad(total % 60)}`;
-}
 const spoken = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
   return text().spoken(Math.floor(total / 60), total % 60);
 };
 const minutesLabel = (ms: number) => ms < 60_000 ? text().seconds(Math.max(1, Math.round(ms / 1000))) : text().minutes(Math.round(ms / 60_000));
 const stored = (key: string) => typeof localStorage === "undefined" ? null : localStorage.getItem(key);
-const knownRate = (value: string | null) => RATES.find(item => value !== null && item === Number(value)) ?? null;
-
-/** The rate the owner last picked, else 1x. */
-export function initialRate(read: (key: string) => string | null = stored): number {
-  return knownRate(read(RATE_KEY)) ?? knownRate(read(OLD_RATE_KEY)) ?? DEFAULT_RATE;
-}
 
 type Failure = Pick<NonNullable<NarrationState["narration"]>, "updatedAt" | "error" | "audio">;
 /** A failure is the same one while its reason and the audio it left are: a retry that fails again the same way is not new. */
@@ -166,66 +150,39 @@ const failedFor = (state: NarrationState | null) => state?.narration?.status ===
 
 /**
  * Folded: a round play button with `Listen · 13 min`. Playing unfolds it in place into one row: play/pause, seek, time, rate, fold.
- * Resumes where the owner stopped this audio (per record and file); the audio element stays mounted across folding.
+ * It shows and drives the app's one playback (see playback.tsx), so leaving the screen keeps it playing in the mini player and
+ * coming back shows it here again. Resumes where the owner stopped this audio (per record and file).
  */
 function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open, playNonce, pending, onOpen, onFold, onRemove }: {
   readonly recordId: string; readonly title: string; readonly src: string; readonly durationMs: number; readonly stale: boolean; readonly podcast: boolean;
   readonly prefix: string; readonly open: boolean; readonly playNonce: number; readonly pending: boolean;
   readonly onOpen: () => void; readonly onFold: () => void; readonly onRemove: () => void;
 }) {
-  // Delete audio beside the player in both states (the same command as the menu's, with its confirmation).
+  // 음성 삭제 beside the player in both states (the same command as the menu's, with its confirmation).
   const remove = <button type="button" className="icon-btn listen-icon listen-remove" aria-label={`${prefix}${text().deleteAudio}`} title={text().deleteAudio}
     disabled={pending} onClick={onRemove}><Trash2 size={15} aria-hidden="true" /></button>;
-  const audio = useRef<HTMLAudioElement>(null);
+  const { store, snapshot } = usePlayback();
   const playButton = useRef<HTMLButtonElement>(null);
   const openButton = useRef<HTMLButtonElement>(null);
   const moveFocus = useRef(false);
-  const savedAt = useRef(0);
-  const [playing, setPlaying] = useState(false);
-  const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(durationMs / 1000);
-  const [rate, setRate] = useState<number>(() => initialRate());
-  useEffect(() => {
-    if (audio.current) audio.current.playbackRate = rate;
-  }, [rate]);
-  useEffect(() => { if (playNonce > 0) void audio.current?.play(); }, [playNonce]);
+  /** The position shown while another audio (or none) is loaded: where this one was left. */
+  const [idle, setIdle] = useState(() => savedPosition(recordId, src, stored));
+  const active = snapshot.track?.src === src;
+  const playing = active && snapshot.playing;
+  const time = active ? snapshot.time : idle;
+  const duration = active && snapshot.duration > 0 ? snapshot.duration : durationMs / 1000;
+  const rate = snapshot.rate;
+  useEffect(() => store.mount(src), [store, src]);
+  useEffect(() => { if (!active) setIdle(savedPosition(recordId, src, stored)); }, [active, recordId, src]);
+  const start = () => store.start({ src, recordId, title, durationMs, back: location.hash }, { play: true });
+  useEffect(() => { if (playNonce > 0) start(); }, [playNonce]);
   // The button pressed to unfold or fold disappears; focus moves to its counterpart.
   useEffect(() => {
     if (!moveFocus.current) return;
     moveFocus.current = false;
     (open ? playButton : openButton).current?.focus();
   }, [open]);
-  const save = (seconds: number) => {
-    savedAt.current = seconds;
-    localStorage.setItem(positionKey(recordId), JSON.stringify({ src, t: Math.floor(seconds) }));
-  };
-  const restore = () => {
-    const element = audio.current;
-    if (!element) return;
-    if (Number.isFinite(element.duration) && element.duration > 0) setDuration(element.duration);
-    element.playbackRate = rate;
-    const saved: unknown = JSON.parse(stored(positionKey(recordId)) ?? "null");
-    if (saved && typeof saved === "object" && "src" in saved && "t" in saved && saved.src === src && typeof saved.t === "number"
-      && saved.t > 0 && saved.t < element.duration - 3) {
-      element.currentTime = saved.t;
-      setTime(saved.t);
-    }
-  };
-  const toggle = () => {
-    const element = audio.current;
-    if (!element) return;
-    if (element.paused) void element.play();
-    else element.pause();
-  };
-  const onPlay = () => {
-    setPlaying(true);
-    if ("mediaSession" in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title, artist: config.appName });
-  };
-  const nextRate = () => {
-    const next = RATES[(RATES.findIndex(item => item === rate) + 1) % RATES.length] ?? DEFAULT_RATE;
-    localStorage.setItem(RATE_KEY, String(next));
-    setRate(next);
-  };
+  const toggle = () => { if (active) store.toggle(); else start(); };
   const max = Math.max(1, Math.round(duration));
   return <div className={open ? "listen-bar listen-player" : "listen-folded"}>
     {open ? <>
@@ -236,11 +193,12 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
         aria-label={`${prefix}${text().position}`} aria-valuetext={`${spoken(time)} / ${spoken(duration)}`}
         onChange={event => {
           const value = Number(event.currentTarget.value);
-          if (audio.current) audio.current.currentTime = value;
-          setTime(value);
+          if (active) { store.seek(value); return; }
+          rememberPosition(recordId, src, value);
+          setIdle(value);
         }} />
       <span className="listen-time" aria-hidden="true">{clock(time)} / {clock(duration)}</span>
-      <button type="button" className="btn btn-ghost listen-rate" onClick={nextRate} aria-label={text().speed(rate)}>{rate}×</button>
+      <button type="button" className="btn btn-ghost listen-rate" onClick={() => store.setRate(nextRate(rate))} aria-label={text().speed(rate)}>{rate}×</button>
       {remove}
       <button type="button" className="icon-btn listen-icon" aria-label={text().fold} onClick={() => { moveFocus.current = true; onFold(); }}>
         <ChevronUp size={16} aria-hidden="true" />
@@ -252,14 +210,6 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
       {stale && <Tag>{text().outdated}</Tag>}
     </button>}
     {!open && remove}
-    <audio ref={audio} src={src} preload="metadata" onLoadedMetadata={restore} onPlay={onPlay}
-      onPause={event => { setPlaying(false); save(event.currentTarget.currentTime); }}
-      onTimeUpdate={event => {
-        const seconds = event.currentTarget.currentTime;
-        setTime(seconds);
-        if (Math.abs(seconds - savedAt.current) >= 5) save(seconds);
-      }}
-      onEnded={() => { setPlaying(false); localStorage.removeItem(positionKey(recordId)); savedAt.current = 0; }} />
   </div>;
 }
 
@@ -409,6 +359,7 @@ export function useNarration({ record, collection = "records", label }: {
   readonly record: Pick<DashboardRecord, "id" | "title" | "version"> | null; readonly collection?: NarrationCollection; readonly label?: string | undefined;
 }): { items: NarrationMenuItem[]; bar: ReactNode; state: NarrationState | null; renew: () => void } {
   const d = useDashboard();
+  const { store: playback } = usePlayback();
   const id = record?.id ?? null;
   const [loaded, setLoaded] = useState<{ id: string; state: NarrationState } | null>(null);
   const [pending, setPending] = useState(false);
@@ -428,6 +379,9 @@ export function useNarration({ record, collection = "records", label }: {
     wasWorking.current = false;
   }, [id]);
   const state = id && loaded?.id === id ? loaded.state : null;
+  const audioUrl = state?.narration?.audio?.url ?? null;
+  // Back on the record that kept playing elsewhere, its player opens unfolded on that playback.
+  useEffect(() => { if (audioUrl && playback.snapshot().track?.src === audioUrl) setOpen(true); }, [id, audioUrl, playback]);
   useEffect(() => {
     const now = working(state);
     if (wasWorking.current && !now && state?.narration?.status === "ready") {
@@ -476,7 +430,8 @@ export function useNarration({ record, collection = "records", label }: {
     setPending(true);
     try {
       await deleteNarration(forId, d.csrfToken, collection);
-      localStorage.removeItem(positionKey(forId));
+      if (audioUrl) playback.stop(audioUrl);
+      forgetPosition(forId);
       put(forId, { narration: null, available: state.available });
       setOpen(false);
       d.notify(text().deleted);

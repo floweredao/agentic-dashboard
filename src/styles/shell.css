@@ -126,6 +126,25 @@
   background: var(--accent); color: var(--on-ink); font-size: 10px; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
 }
 
+/* The playback that goes on while its record's player is off screen: above the phone's tab bar, in the corner on wider screens. */
+.mini-player {
+  position: fixed; left: calc(8px + var(--safe-left)); right: calc(8px + var(--safe-right)); bottom: calc(var(--tabbar) + var(--safe-bottom) + 8px); z-index: 20;
+  display: flex; align-items: center; gap: 4px; height: var(--mini); padding: 0 4px 0 14px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-float);
+  animation: toast-in 160ms var(--ease);
+}
+.mini-progress { position: absolute; inset: auto 0 0 0; height: 2px; background: var(--line); }
+.mini-fill { position: absolute; inset: 0; background: var(--ink); transform-origin: left center; }
+.mini-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--ink); text-decoration: none; }
+.mini-title > svg { flex: none; color: var(--muted); }
+.mini-text { display: grid; min-width: 0; line-height: 1.3; }
+.mini-text strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.mini-text span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.mini-player .mini-toggle { width: 36px; height: 36px; }
+.mini-close { flex: none; width: 44px; min-height: 44px; color: var(--muted); }
+.has-mini ~ .toast { bottom: calc(var(--tabbar) + var(--safe-bottom) + var(--mini) + 24px); }
+@media (prefers-reduced-motion: reduce) { .mini-player { animation: none; } }
+
 /* Inset on both sides and shrink-wrapped, so a short message stays on one line on a narrow phone. */
 .toast {
   position: fixed; left: calc(16px + var(--safe-left)); right: calc(16px + var(--safe-right)); bottom: calc(var(--tabbar) + 16px + var(--safe-bottom)); z-index: 60;
@@ -152,6 +171,7 @@
 
 @media (max-width: 767px) {
   .workspace { padding-bottom: calc(var(--tabbar) + var(--safe-bottom)); }
+  .has-mini .workspace { padding-bottom: calc(var(--tabbar) + var(--safe-bottom) + var(--mini) + 8px); }
   /* Logged out there is no tab bar, so nothing reserves its band. */
   .locked .workspace { padding-bottom: 0; }
   .locked .pane { min-height: calc(100dvh - var(--appbar) - var(--safe-top)); }
@@ -185,6 +205,10 @@
   .appbar, .tabbar { display: none; }
   .app { display: flex; height: 100dvh; overflow: hidden; }
   .toast { bottom: calc(24px + var(--safe-bottom)); }
+  .mini-player { left: auto; right: calc(16px + var(--safe-right)); bottom: calc(16px + var(--safe-bottom)); width: min(360px, calc(100vw - 32px)); }
+  .has-mini ~ .toast { bottom: calc(var(--mini) + 40px + var(--safe-bottom)); }
+  /* The pane under the corner card scrolls its last lines clear of it. */
+  .has-mini .pane:last-child { padding-bottom: calc(var(--mini) + 32px + var(--safe-bottom)); }
   /* The list narrows with the window (300px at a 2/3 iPad split, 400px from 1334px) and the reader takes the rest. */
   .workspace {
     flex: 1; min-width: 0; display: grid; grid-template-columns: clamp(300px, 30vw, var(--list)) minmax(0, 1fr);
