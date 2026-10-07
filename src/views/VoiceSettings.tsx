@@ -14,11 +14,11 @@ const ROLES: readonly Role[] = ["readVoice", "hostA", "hostB"];
 const text = strings({
   en: {
     heading: "Narration voices",
-    note: "Used from the next audio you make. Audio already made keeps its voice.",
+    note: "New audio uses these voices. Existing audio keeps its own.",
     roles: { readVoice: "Read aloud", hostA: "Podcast host A (main)", hostB: "Podcast host B" } satisfies Record<Role, string>,
     male: "Male", female: "Female", gender: (role: string) => `${role} gender`, voice: (role: string) => `${role} voice`,
     pitch: { low: "low voice", medium: "medium voice", high: "high voice" },
-    listen: "Listen", stop: "Stop", loading: "Making a sample",
+    listen: "Listen", stop: "Stop", loading: "Generating a sample…",
     listenTo: (name: string) => `Listen to ${name}`,
     sameHost: "Pick a voice different from host A.",
     readStyle: "Read-aloud speaking style", podcastStyle: "Podcast speaking style",

@@ -45,7 +45,7 @@ const text = strings({
     showSidebar: "Show sidebar", hideSidebar: "Hide sidebar", showSidebarShortcut: "Show sidebar (⌘\\)", hideSidebarShortcut: "Hide sidebar (⌘\\)",
     digestList: "Digest list", detail: "Details", pickDigest: "Pick a digest from the list to read it here",
     list: (title: string) => `${title} list`, notFound: "Item not found", pickItem: "Pick an item from the list to read it here",
-    count: (count: number) => `${count} items`,
+    count: (count: number) => `${count} ${count === 1 ? "item" : "items"}`,
     demo: "Demo", demoNotice: "A read-only demo with sample data. Look around freely; changes aren't saved.",
   },
   ko: {

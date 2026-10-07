@@ -15,6 +15,11 @@ import { Dialog, Tag } from "./primitives";
 
 export { clock, initialRate } from "./playback";
 
+/** A part's name ("Articles") inside an English command: "articles audio", or just "audio" without a part. */
+const audioOf = (part: string) => part ? `${String(part).toLowerCase()} audio` : "audio";
+/** A part's name in front of a Korean command, as Korean word order puts it. */
+const prefixOf = (part: string) => part ? `${part} ` : "";
+
 const WORKING: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
 /** The failure (its updatedAt) the owner closed with x for this record or digest part, on this device. */
 const dismissKey = (recordId: string) => `agentic:listen-dismissed:${recordId}`;
@@ -35,41 +40,45 @@ const text = strings({
       http_400: "Gemini rejected the request.",
       http_401: "Gemini rejected the API key.",
       http_403: "Gemini rejected the API key.",
-      http_402: "Gemini's prepaid credits ran out, so the audio couldn't be made.",
+      http_402: "Gemini's prepaid credits ran out, so the audio couldn't be generated.",
       http_429: "Gemini's per-minute limit was reached. Please try again in about a minute.",
       quota_daily: "Today's free Gemini quota is used up. Please try again tomorrow.",
       vertex_auth: "The Vertex AI login has expired or is missing. Run gcloud auth application-default login on the server again.",
       vertex_disabled: "Billing or the Vertex AI API is off for the Google Cloud project. Check them in the Google Cloud console.",
       vertex_quota: "The Vertex AI usage limit was reached. Please try again in a few minutes.",
-      timeout: "It took too long.",
+      timeout: "Generating the audio took too long.",
       stalled: "Gemini stopped responding while writing the script. Try again shortly.",
       network: "Couldn't connect to Gemini.",
-      record_missing: "The record was deleted, so the audio couldn't be made.",
+      record_missing: "The record was deleted, so the audio couldn't be generated.",
     },
     serverError: "Gemini's servers were busy and several retries didn't get through. Please try again in a moment.",
-    failed: "Couldn't make the audio.",
+    failed: "Couldn't generate the audio.",
     requests: {
-      narration_unavailable: "No Gemini API key is set, so audio can't be made.",
+      narration_unavailable: "No Gemini API key is set, so audio can't be generated.",
       narration_daily_limit: "You've used today's audio limit. Try again tomorrow.",
       narration_queue_full: "Many audio jobs are waiting. Please try again in a moment.",
       narration_attempts_exhausted: "This content has failed several times.",
-      narration_busy: "Audio is being made, so it can't be deleted right now.",
+      narration_busy: "The audio is still being generated, so it can't be deleted yet.",
       narration_style_unsupported: "Digests can only be read aloud.",
     },
     spoken: (minutes: number, seconds: number) => `${minutes} min ${seconds} sec`,
     seconds: (value: number) => `${value} sec`, minutes: (value: number) => `${value} min`,
-    pause: "Pause", play: "Play", position: "Playback position", speed: (rate: number) => `Playback speed ${rate}x`,
-    fold: "Collapse player", listen: "Listen", outdated: "Outdated",
-    cancelMake: "Cancel audio", retry: "Try again", make: "Make audio", keyNeeded: " · key needed",
-    makeNew: "Make new", makeAgain: "Make again", viewScript: "View script", deleteAudio: "Delete audio",
-    cancelling: "Cancelling", progress: "Audio progress", dismiss: "Dismiss", remakeFailed: "Couldn't make new audio",
-    confirmRemake: "Making the audio again costs another Gemini charge. Make it again?",
-    confirmDelete: "Delete the audio file and script? You'll need to make it again to listen.",
-    cancelled: "Audio cancelled.", deleted: "Audio deleted.", script: "Script",
+    pause: "Pause", play: "Play", position: (part: string) => part ? `${part} playback position` : "Playback position", speed: (rate: number) => `Playback speed ${rate}x`,
+    fold: "Collapse player", listen: (part: string) => part ? `${part} audio` : "Listen", outdated: "Outdated",
+    listenTo: (part: string) => part ? `Play ${audioOf(part)}` : "Listen",
+    cancelMake: (part: string) => `Stop generating ${audioOf(part)}`, retry: "Try again", retryAudio: (part: string) => `Retry ${audioOf(part)}`,
+    make: (part: string) => `Generate ${audioOf(part)}`, keyNeeded: " · key needed",
+    makeNew: (part: string) => `Update ${audioOf(part)}`, makeAgain: (part: string) => `Regenerate ${audioOf(part)}`,
+    viewScript: (part: string) => part ? `View ${String(part).toLowerCase()} script` : "View script",
+    deleteAudio: "Delete audio", deleteAudioOf: (part: string) => `Delete ${audioOf(part)}`,
+    cancelling: "Cancelling…", progress: (part: string) => part ? `${part} audio progress` : "Audio progress", dismiss: "Dismiss", remakeFailed: "Couldn't regenerate the audio",
+    confirmRemake: "Regenerating the audio costs another Gemini charge. Regenerate it?",
+    confirmDelete: "Delete the audio and its script? To listen again, you'll need to generate it again.",
+    cancelled: "Stopped generating the audio.", deleted: "Audio deleted.", script: "Script",
     read: "Read aloud", readHint: "One voice reads the record clearly.",
     podcast: "Podcast", podcastHint: "Two hosts talk it through like a conversation.",
-    styleLegend: "Audio style", remakeCost: "Making it again costs another Gemini charge.",
-    cancel: "Cancel", create: "Make", makeTitle: "Make audio", remakeTitle: "Make audio again",
+    styleLegend: "Audio style", remakeCost: "Regenerating costs another Gemini charge.",
+    cancel: "Cancel", create: "Generate", makeTitle: "Generate audio", remakeTitle: "Regenerate audio",
   },
   ko: {
     failures: {
@@ -100,11 +109,15 @@ const text = strings({
     },
     spoken: (minutes: number, seconds: number) => `${minutes}분 ${seconds}초`,
     seconds: (value: number) => `${value}초`, minutes: (value: number) => `${value}분`,
-    pause: "일시정지", play: "재생", position: "재생 위치", speed: (rate: number) => `재생 속도 ${rate}배`,
-    fold: "플레이어 접기", listen: "듣기", outdated: "예전 내용",
-    cancelMake: "음성 만들기 취소", retry: "다시 시도", make: "음성 만들기", keyNeeded: " · 키 필요",
-    makeNew: "새로 만들기", makeAgain: "다시 만들기", viewScript: "원고 보기", deleteAudio: "음성 삭제",
-    cancelling: "취소하고 있어요", progress: "음성 만드는 진행", dismiss: "알림 닫기", remakeFailed: "새 음성을 만들지 못했어요",
+    pause: "일시정지", play: "재생", position: (part: string) => `${prefixOf(part)}재생 위치`, speed: (rate: number) => `재생 속도 ${rate}배`,
+    fold: "플레이어 접기", listen: (part: string) => `${prefixOf(part)}듣기`, outdated: "예전 내용",
+    listenTo: (part: string) => `${prefixOf(part)}듣기`,
+    cancelMake: (part: string) => `${prefixOf(part)}음성 만들기 취소`, retry: "다시 시도", retryAudio: (part: string) => `${prefixOf(part)}다시 시도`,
+    make: (part: string) => `${prefixOf(part)}음성 만들기`, keyNeeded: " · 키 필요",
+    makeNew: (part: string) => `${prefixOf(part)}새로 만들기`, makeAgain: (part: string) => `${prefixOf(part)}다시 만들기`,
+    viewScript: (part: string) => `${prefixOf(part)}원고 보기`,
+    deleteAudio: "음성 삭제", deleteAudioOf: (part: string) => `${prefixOf(part)}음성 삭제`,
+    cancelling: "취소하고 있어요", progress: (part: string) => `${prefixOf(part)}음성 만드는 진행`, dismiss: "알림 닫기", remakeFailed: "새 음성을 만들지 못했어요",
     confirmRemake: "음성을 다시 만들면 Gemini 요금이 한 번 더 들어요. 다시 만들까요?",
     confirmDelete: "음성 파일과 원고를 삭제할까요? 다시 들으려면 새로 만들어야 해요.",
     cancelled: "음성 만들기를 취소했어요.", deleted: "음성을 삭제했어요.", script: "원고",
@@ -155,13 +168,13 @@ const failedFor = (state: NarrationState | null) => state?.narration?.status ===
  * It shows and drives the app's one playback (see playback.tsx), so leaving the screen keeps it playing in the mini player and
  * coming back shows it here again. Resumes where the owner stopped this audio (per record and file).
  */
-function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open, playNonce, pending, onOpen, onFold, onRemove }: {
+function Player({ recordId, title, src, durationMs, stale, podcast, part, open, playNonce, pending, onOpen, onFold, onRemove }: {
   readonly recordId: string; readonly title: string; readonly src: string; readonly durationMs: number; readonly stale: boolean; readonly podcast: boolean;
-  readonly prefix: string; readonly open: boolean; readonly playNonce: number; readonly pending: boolean;
+  readonly part: string; readonly open: boolean; readonly playNonce: number; readonly pending: boolean;
   readonly onOpen: () => void; readonly onFold: () => void; readonly onRemove: () => void;
 }) {
   // 음성 삭제 beside the player in both states (the same command as the menu's, with its confirmation).
-  const remove = <button type="button" className="icon-btn listen-icon listen-remove" aria-label={`${prefix}${text().deleteAudio}`} title={text().deleteAudio}
+  const remove = <button type="button" className="icon-btn listen-icon listen-remove" aria-label={text().deleteAudioOf(part)} title={text().deleteAudio}
     disabled={pending} onClick={onRemove}><Trash2 size={15} aria-hidden="true" /></button>;
   const { store, snapshot } = usePlayback();
   const playButton = useRef<HTMLButtonElement>(null);
@@ -192,7 +205,7 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
         {playing ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
       </button>
       <input type="range" className="listen-seek" min={0} max={max} step={1} value={Math.min(Math.floor(time), max)}
-        aria-label={`${prefix}${text().position}`} aria-valuetext={`${spoken(time)} / ${spoken(duration)}`}
+        aria-label={text().position(part)} aria-valuetext={`${spoken(time)} / ${spoken(duration)}`}
         onChange={event => {
           const value = Number(event.currentTarget.value);
           if (active) { store.seek(value); return; }
@@ -207,7 +220,7 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
       </button>
     </> : <button ref={openButton} type="button" className="listen-open" onClick={() => { moveFocus.current = true; onOpen(); toggle(); }}>
       <span className="listen-play" aria-hidden="true">{playing ? <Pause size={15} /> : <Play size={15} />}</span>
-      <span>{prefix}{text().listen} · {minutesLabel(durationMs)}</span>
+      <span>{text().listen(part)} · {minutesLabel(durationMs)}</span>
       {podcast && <Tag>{text().podcast}</Tag>}
       {stale && <Tag>{text().outdated}</Tag>}
     </button>}
@@ -220,7 +233,7 @@ function Player({ recordId, title, src, durationMs, stale, podcast, prefix, open
  * never moves back (a script written again counts from zero), a newly reported value slides in over 300 ms (CSS `.listen-fill`,
  * none with reduced motion), and a once-a-second tick only renews the elapsed time in the label.
  */
-function NarrationProgress({ narration, prefix, lead }: { readonly narration: Narration; readonly prefix: string; readonly lead: string }) {
+function NarrationProgress({ narration, part, lead }: { readonly narration: Narration; readonly part: string; readonly lead: string }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -233,7 +246,7 @@ function NarrationProgress({ narration, prefix, lead }: { readonly narration: Na
   const percent = Math.floor(shown.current.value);
   return <>
     <span className="listen-stage">{lead}{label}</span>
-    <span className="listen-track" role="progressbar" aria-label={`${prefix}${text().progress}`} aria-valuemin={0} aria-valuemax={100}
+    <span className="listen-track" role="progressbar" aria-label={text().progress(part)} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={percent} aria-valuetext={`${label} ${percent}%`}>
       <span className="listen-fill" style={{ transform: `scaleX(${shown.current.value / 100})` }} />
     </span>
@@ -242,7 +255,7 @@ function NarrationProgress({ narration, prefix, lead }: { readonly narration: Na
 }
 
 /**
- * The narration commands for a reader's More menu; `label` (e.g. Mail, News) prefixes each when one screen holds several.
+ * The narration commands for a reader's More menu; `label` (e.g. Articles, Messages) names the part in each when one screen holds several.
  * Make audio, Make again and Make new go through `onMake` (where a record's style is chosen); Try again repeats the failed job with `onRequest`.
  */
 export function narrationItems(state: NarrationState | null, { pending, cancelling, label, onRequest, onMake, onCancel, onListen, onScript, onRemove }: {
@@ -251,27 +264,27 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
   readonly onScript: () => void; readonly onRemove: () => void;
 }): NarrationMenuItem[] {
   if (!state) return [];
-  const prefix = label ? `${label} ` : "";
+  const part = label ?? "";
   const narration = state.narration;
   const blocked = pending || !state.available;
   const icon = (Icon: typeof Play) => <Icon size={16} aria-hidden="true" />;
-  if (working(state)) return [{ label: `${prefix}${text().cancelMake}`, icon: icon(X), disabled: cancelling, onSelect: onCancel }];
+  if (working(state)) return [{ label: text().cancelMake(part), icon: icon(X), disabled: cancelling, onSelect: onCancel }];
   const items: NarrationMenuItem[] = [];
   if (failedFor(state)) {
     const exhausted = (narration?.attempts ?? 0) >= NARRATION_LIMITS.attempts;
-    items.push({ label: `${prefix}${text().retry}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(exhausted) });
+    items.push({ label: text().retryAudio(part), icon: icon(RefreshCw), disabled: blocked, onSelect: () => onRequest(exhausted) });
   }
   const audio = narration?.audio ?? null;
   if (!audio) {
-    if (items.length === 0) items.push({ label: `${prefix}${text().make}${state.available ? "" : text().keyNeeded}`, icon: icon(Headphones), disabled: blocked, make: true, onSelect: () => onMake(false) });
+    if (items.length === 0) items.push({ label: `${text().make(part)}${state.available ? "" : text().keyNeeded}`, icon: icon(Headphones), disabled: blocked, make: true, onSelect: () => onMake(false) });
     return items;
   }
-  items.push({ label: `${prefix}${text().listen}`, icon: icon(Play), onSelect: onListen });
+  items.push({ label: text().listenTo(part), icon: icon(Play), onSelect: onListen });
   if (!failedFor(state)) items.push(narration?.stale
-    ? { label: `${prefix}${text().makeNew}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onMake(false) }
-    : { label: `${prefix}${text().makeAgain}`, icon: icon(RefreshCw), disabled: blocked, onSelect: () => onMake(true) });
-  if (narration?.script) items.push({ label: `${prefix}${text().viewScript}`, icon: icon(FileText), onSelect: onScript });
-  items.push({ label: `${prefix}${text().deleteAudio}`, icon: icon(Trash2), danger: true, disabled: pending, onSelect: onRemove });
+    ? { label: text().makeNew(part), icon: icon(RefreshCw), disabled: blocked, onSelect: () => onMake(false) }
+    : { label: text().makeAgain(part), icon: icon(RefreshCw), disabled: blocked, onSelect: () => onMake(true) });
+  if (narration?.script) items.push({ label: text().viewScript(part), icon: icon(FileText), onSelect: onScript });
+  items.push({ label: text().deleteAudioOf(part), icon: icon(Trash2), danger: true, disabled: pending, onSelect: onRemove });
   return items;
 }
 
@@ -288,15 +301,15 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
   readonly onOpen: () => void; readonly onFold: () => void; readonly onRemove: () => void;
 }): ReactNode {
   const narration = state.narration;
-  const prefix = label ? `${label} ` : "";
+  const part = label ?? "";
   // The row's sentence is set off from the part's name (뉴스 · …), so the two never read as one clause.
   const lead = label ? `${label} · ` : "";
   const done = finishing && narration?.status === "ready";
   if (narration && (working(state) || done)) {
     return <div className="listen-bar listen-working" role="status">
       <Headphones size={15} aria-hidden="true" />
-      {cancelling ? <span className="listen-stage">{lead}{text().cancelling}</span> : <NarrationProgress narration={narration} prefix={prefix} lead={lead} />}
-      {!done && <button type="button" className="icon-btn listen-icon" aria-label={`${prefix}${text().cancelMake}`} disabled={cancelling} onClick={onCancel}>
+      {cancelling ? <span className="listen-stage">{lead}{text().cancelling}</span> : <NarrationProgress narration={narration} part={part} lead={lead} />}
+      {!done && <button type="button" className="icon-btn listen-icon" aria-label={text().cancelMake(part)} disabled={cancelling} onClick={onCancel}>
         <X size={16} aria-hidden="true" />
       </button>}
     </div>;
@@ -320,7 +333,7 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
   // The player keeps its place in the tree, so closing the note does not restart what is playing.
   return <>
     <Player key={audio.url} recordId={record.id} title={record.title} src={audio.url} durationMs={audio.durationMs} stale={narration?.stale ?? false}
-      podcast={audio.style === "podcast"} prefix={prefix} open={open} playNonce={playNonce} pending={pending} onOpen={onOpen} onFold={onFold} onRemove={onRemove} />
+      podcast={audio.style === "podcast"} part={part} open={open} playNonce={playNonce} pending={pending} onOpen={onOpen} onFold={onFold} onRemove={onRemove} />
     {note}
   </>;
 }

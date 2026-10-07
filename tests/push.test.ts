@@ -115,7 +115,7 @@ test("A new digest notifies devices that want digests, with its first headlines 
   // Then: one push to the device that wants digests.
   expect(id.notified).toBe(true);
   expect(sent).toEqual([{ endpoint: wants.endpoint, payload: { kind: "digest", title: "Morning digest · 2 messages · 4 articles",
-    body: "Urgent · 계정 확인 +1 more\n· 국내 첫 소식\n· 해외 첫 소식\n· AI 첫 소식", url: `/#/digest/${id.digest.id}`, tag: `digest-${id.digest.id}` } }]);
+    body: "Act now · 계정 확인 +1 more\n· 국내 첫 소식\n· 해외 첫 소식\n· AI 첫 소식", url: `/#/digest/${id.digest.id}`, tag: `digest-${id.digest.id}` } }]);
   // When: the same digest is sent again, a filled section is corrected, and a quiet backfill arrives.
   sent = [];
   await upload(morning([articles("domestic", "Domestic", [article("a", "국내 첫 소식"), article("b", "국내 둘째")])]));
@@ -168,7 +168,7 @@ test("A digest alert fits a lock screen in each language: the most important mes
   // Then: the title names the slot and the counts; the body has one item per line, the most important first, four lines at most.
   const cut = "· 아주 긴 해외 뉴스 제목이 잠금 화면 한 줄…\n· A very long world headline that runs past…\n· 짧은 소식";
   expect(of(en.endpoint)).toEqual([
-    ["Morning digest · 4 messages", "Urgent · 계정 확인 +3 more\n· To do · 서류 제출\n· Check · 접속 알림\n· FYI · 뉴스레터"],
+    ["Morning digest · 4 messages", "Act now · 계정 확인 +3 more\n· To do · 서류 제출\n· Review · 접속 알림\n· FYI · 뉴스레터"],
     ["Evening digest · 3 articles", cut],
   ]);
   expect(of(ko.endpoint)).toEqual([
@@ -308,7 +308,7 @@ test("Each device is told in its own language; a device that never said gets the
   const id = z.object({ digest: z.object({ id: z.string() }) }).parse(await response.json()).digest.id;
   await settle();
   const digest = (title: string, body: string): PushPayload => ({ kind: "digest", title, body, url: `/#/digest/${id}`, tag: `digest-${id}` });
-  const english = digest("Morning digest · 2 messages · 1 article", "Urgent · 계정 확인 +1 more\n· 국내 첫 소식");
+  const english = digest("Morning digest · 2 messages · 1 article", "Act now · 계정 확인 +1 more\n· 국내 첫 소식");
   expect(byEndpoint(sent)).toEqual({ [en.endpoint]: english, [unset.endpoint]: english,
     [ko.endpoint]: digest("아침 다이제스트 · 메시지 2 · 기사 1", "즉시 조치 · 계정 확인 외 1건\n· 국내 첫 소식") });
   // A late section is announced as an addition in each language.

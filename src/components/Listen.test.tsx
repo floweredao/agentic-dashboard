@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NarrationStateSchema } from "../../shared/contracts";
+import { applyLocale } from "../i18n";
 import type { NarrationState } from "../../shared/contracts";
 import { clock, failureDismissed, initialRate, NarrationBar, narrationFailure, narrationItems, rememberDismissed, StyleChoice } from "./Listen";
 
@@ -256,4 +257,21 @@ test("podcast audio is tagged 팟캐스트 on the folded player", () => {
 
 test("clock formats seconds as m:ss and h:mm:ss", () => {
   expect([clock(0), clock(65.9), clock(3725), clock(Number.NaN)]).toEqual(["0:00", "1:05", "1:02:05", "0:00"]);
+});
+
+test("in English a part's name goes inside each command and row label instead of in front of it", () => {
+  // Given the digest's Articles part, with no audio, with audio, and while it is being made
+  const ready = { narration: { ...base, status: "ready" as const, audio, script: "script" }, available: true };
+  applyLocale("en");
+  try {
+    const all = [...labels({ narration: null, available: true }, "Articles"), ...labels(ready, "Articles"),
+      ...labels({ narration: { ...base, status: "queued" }, available: true }, "Articles")];
+    const html = bar({ narration: { ...base, status: "queued" }, available: true }, { label: "Articles" }) + bar(ready, { label: "Articles" });
+    const ariaLabels = [...html.matchAll(/aria-label="([^"]*)"/g)].map(match => match[1]!);
+    // Then no label starts with the bare part name followed by a capitalized verb ("Articles Make audio"), and each names the part
+    for (const label of [...all, ...ariaLabels.filter(label => /articles/i.test(label))]) expect(label).not.toMatch(/^Articles [A-Z]/);
+    expect(all.every(label => /articles/i.test(label))).toBe(true);
+  } finally {
+    applyLocale("ko");
+  }
 });
