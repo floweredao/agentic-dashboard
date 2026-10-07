@@ -103,6 +103,23 @@ test("a stream that reports an error or stops before the interaction completes f
   }
 });
 
+test("a script model that answers nothing, or goes quiet mid-stream, fails as stalled after the stall limit instead of the call's timeout", async () => {
+  // 2026-10-07: gemini-3.8-flash sent no response headers for minutes while the lighter model answered in a second.
+  const silent = geminiProvider({ key: async () => KEY, firstByteMs: 30, idleMs: 30, fetch: async (_url, init) => await new Promise<Response>((_resolve, reject) => {
+    init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+  }) });
+  const quiet = geminiProvider({ key: async () => KEY, firstByteMs: 30, idleMs: 30, fetch: async () => new Response(new ReadableStream<Uint8Array>({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(opening.map(event => `event: ${event.event_type}\ndata: ${JSON.stringify(event)}\n\n`).join("")));
+  } }), { headers: { "content-type": "text/event-stream" } }) });
+  for (const gemini of [silent, quiet]) {
+    const started = Date.now();
+    const error = await gemini.script("", "", signal()).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({ code: "stalled", transient: true });
+    expect(Date.now() - started).toBeLessThan(2000);
+  }
+});
+
 test("HTTP failures become codes: 429 and 5xx are transient, and the key never appears in the error", async () => {
   for (const [status, transient] of [[429, true], [503, true], [400, false], [402, false], [403, false]] as const) {
     const { gemini } = provider(() => new Response(`{"error":"bad key ${KEY}"}`, { status }));

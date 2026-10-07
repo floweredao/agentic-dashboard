@@ -41,7 +41,7 @@ const streamEventSchema = z.object({
  * The model output's text from a streamed interaction, reporting the characters received after each text delta. An `error`
  * event, or a stream that ends before `interaction.completed`, is a dropped connection and worth a retry.
  */
-async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSignal, onText?: (chars: number) => void) {
+async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSignal, idleMs: number, stop: () => void, onText?: (chars: number) => void) {
   const decoder = new TextDecoder();
   const stepTypes = new Map<number, string>();
   let buffer = "";
@@ -67,7 +67,16 @@ async function streamedText(body: ReadableStream<Uint8Array>, signal: AbortSigna
   };
   try {
     const reader = body.getReader();
-    for (let read = await reader.read(); !read.done; read = await reader.read()) {
+    // A stream that goes quiet for `idleMs` is a stuck model: the connection is dropped and the call fails as `stalled`.
+    const next = () => new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new ProviderError("stalled", true));
+        stop();
+        reader.cancel().catch(() => undefined);
+      }, idleMs);
+      reader.read().then(read => { clearTimeout(timer); resolve(read); }, (error: unknown) => { clearTimeout(timer); reject(error); });
+    });
+    for (let read = await next(); !read.done; read = await next()) {
       buffer += decoder.decode(read.value, { stream: true });
       for (let end = buffer.search(/\r?\n\r?\n/); end >= 0; end = buffer.search(/\r?\n\r?\n/)) {
         const block = buffer.slice(0, end);
@@ -124,6 +133,12 @@ export async function failureOf(response: Response): Promise<ProviderError> {
   return new ProviderError(`http_${status}`, true, retryAfterMs);
 }
 const DAILY_WAIT_MS = 60 * 60 * 1000;
+/**
+ * How long a script call may wait for the response to start, and then for the next piece of its stream. A streamed answer starts
+ * within about a second; on 2026-10-07 gemini-3.8-flash sent nothing for minutes, so each try sat out the whole call timeout.
+ */
+export const SCRIPT_FIRST_BYTE_MS = 30_000;
+export const SCRIPT_IDLE_MS = 90_000;
 
 const vertexErrorSchema = z.object({ error: z.object({
   details: z.array(z.object({ reason: z.string().optional() }).passthrough()).optional(),
@@ -187,6 +202,8 @@ export function geminiProvider(options: {
   readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly fallbackScriptModel?: string;
   readonly voice?: string; readonly podcastVoice?: string; readonly vertex?: VertexSpeech;
   readonly fetch?: (input: string, init: RequestInit) => Promise<Response>;
+  /** Script calls only: the wait for the response to start and the longest quiet gap in its stream before it fails as `stalled`. */
+  readonly firstByteMs?: number; readonly idleMs?: number;
 }): NarrationProvider {
   const send = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   const ttsModel = options.ttsModel ?? GEMINI_TTS_MODEL;
@@ -194,17 +211,24 @@ export function geminiProvider(options: {
   const fallbackScriptModel = options.fallbackScriptModel ?? GEMINI_SCRIPT_FALLBACK_MODEL;
   const voice = options.voice ?? GEMINI_VOICE;
   const hosts = [voice, options.podcastVoice ?? GEMINI_PODCAST_VOICE] as const;
-  async function post(body: unknown, signal: AbortSignal) {
+  const firstByteMs = options.firstByteMs ?? SCRIPT_FIRST_BYTE_MS;
+  const idleMs = options.idleMs ?? SCRIPT_IDLE_MS;
+  /** `stall` aborts the request early when the response has not started by then (script calls; speech may take longer). */
+  async function post(body: unknown, signal: AbortSignal, stall?: { readonly ms: number; readonly controller: AbortController }) {
     const key = await options.key();
     if (!key) throw new ProviderError("no_key", false);
     let response: Response;
+    const timer = stall ? setTimeout(() => stall.controller.abort(), stall.ms) : undefined;
     try {
-      response = await send(ENDPOINT, { method: "POST", signal, body: JSON.stringify(body),
-        headers: { "content-type": "application/json", "x-goog-api-key": key } });
+      response = await send(ENDPOINT, { method: "POST", signal: stall ? AbortSignal.any([signal, stall.controller.signal]) : signal,
+        body: JSON.stringify(body), headers: { "content-type": "application/json", "x-goog-api-key": key } });
     } catch (error) {
       if (signal.aborted) throw new ProviderError("timeout", true);
+      if (stall?.controller.signal.aborted) throw new ProviderError("stalled", true);
       if (error instanceof Error) throw new ProviderError("network", true);
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
     if (!response.ok) throw await failureOf(response);
     return response;
@@ -273,9 +297,10 @@ export function geminiProvider(options: {
     available: async () => await options.key() !== null && (!options.vertex || await options.vertex.credentials.exists()),
     // Streamed, so the job can report the script's characters as they arrive; a plain JSON answer is read whole.
     async script(system, prompt, signal, model = scriptModel, onText) {
-      const response = await post({ model, system_instruction: system, input: prompt, stream: true, store: false }, signal);
+      const controller = new AbortController();
+      const response = await post({ model, system_instruction: system, input: prompt, stream: true, store: false }, signal, { ms: firstByteMs, controller });
       const streamed = response.body !== null && (response.headers.get("content-type") ?? "").includes("text/event-stream");
-      const script = streamed && response.body ? await streamedText(response.body, signal, onText)
+      const script = streamed && response.body ? await streamedText(response.body, signal, idleMs, () => controller.abort(), onText)
         : (await contentOf(response)).filter(part => part.type === "text").map(part => part.text ?? "").join("");
       if (!streamed) onText?.(script.length);
       if (!script.trim()) throw new ProviderError("empty_script", false);
