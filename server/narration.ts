@@ -543,12 +543,13 @@ export function createNarration(options: NarrationOptions) {
    * One provider call, retried up to NARRATION_LIMITS.retries times on a transient failure: after the wait the provider asked
    * for (also reported to `pace`), else after exponential backoff with jitter (https://ai.google.dev/gemini-api/docs/troubleshooting).
    */
-  async function retrying<T>(work: (signal: AbortSignal) => Promise<T>, cancel: AbortSignal, pace?: (ms: number) => void): Promise<T> {
+  async function retrying<T>(work: (signal: AbortSignal) => Promise<T>, cancel: AbortSignal, pace?: (ms: number) => void,
+    final?: (error: ProviderError) => boolean): Promise<T> {
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await call(work, cancel);
       } catch (error) {
-        if (!(error instanceof ProviderError) || !error.transient || attempt >= NARRATION_LIMITS.retries) throw error;
+        if (!(error instanceof ProviderError) || !error.transient || attempt >= NARRATION_LIMITS.retries || final?.(error)) throw error;
         const asked = error.retryAfterMs;
         if (asked !== undefined && asked > MAX_WAIT_MS) throw error;
         if (asked !== undefined) pace?.(Math.min(asked, PACE_CAP_MS));
@@ -558,13 +559,19 @@ export function createNarration(options: NarrationOptions) {
       }
     }
   }
-  /** The script from the main model, or from the lighter one when the main one stays busy or is out of today's quota. */
+  /**
+   * The script from the main model, or from the lighter one when the main one stays busy, is out of today's quota, or hangs: a
+   * main model that stalls or times out moves to the lighter one at once, since a stuck model stays stuck (2026-10-07: retrying
+   * it sat out about 15 minutes with no visible progress).
+   */
   async function writeScript(source: NarrationProvider, system: string, prompt: string, cancel: AbortSignal, onText: (chars: number) => void) {
+    const fallback = source.fallbackScriptModel;
     try {
-      return await retrying(signal => source.script(system, prompt, signal, undefined, onText), cancel);
+      return await retrying(signal => source.script(system, prompt, signal, undefined, onText), cancel, undefined,
+        error => fallback !== undefined && (error.code === "stalled" || error.code === "timeout"));
     } catch (error) {
-      const fallback = source.fallbackScriptModel;
       if (!(error instanceof ProviderError) || !fallback || !(error.transient || error.code === "quota_daily")) throw error;
+      stepStarted();
       return await retrying(signal => source.script(system, prompt, signal, fallback, onText), cancel);
     }
   }

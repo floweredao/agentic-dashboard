@@ -385,6 +385,21 @@ test("a busy script model is retried with growing waits, then the lighter model 
   expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
 });
 
+for (const code of ["stalled", "timeout"]) test(`a script model that ${code === "stalled" ? "stalls" : "times out"} is not retried: the lighter model writes the script at once`, async () => {
+  const clock = waits();
+  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  const owner = await f.login();
+  const record = await research(f, owner);
+  // Given: the main script model hangs (2026-10-07: no answer for minutes, retried 4 times before the fallback).
+  tts.scriptErrors = [new ProviderError(code, true)];
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  // Then: no waits and no further tries of the stuck model; the lighter one wrote the script and the audio is ready.
+  expect(clock.slept).toEqual([]);
+  expect(tts.calls.models).toEqual(["fake-script", "fake-lite"]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
+});
+
 test("a used-up daily quota is not retried: the script moves to the lighter model, and speech fails as quota_daily", async () => {
   const clock = waits();
   const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
