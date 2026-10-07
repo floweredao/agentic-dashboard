@@ -48,6 +48,7 @@ Other CLI commands, from `bun run agent --help`:
 |---|---|
 | `--get <record-id>` | Read a record |
 | `--update <record-id> [--expected-version <n> --file changes.json] [--html page.html]` | Patch one of your records, or attach or replace its full HTML document |
+| `--trash <record-id> [--expected-version <n>]` | Move one of your records to the owner's trash, where the owner can restore it for 30 days (someone else's record: 403) |
 | `--search "words" [--kind ...] [--limit 1-50] [--cursor ...]` | Search records you may read |
 | `--shared <code or share-url>` | Read a record the owner shared |
 | `--new-task "Title" --tags a,b [--text ...] [--status ...]` | Create a task |

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { getRecord, listComments, markComment, postComment, readShared, searchRecords, sendRecord, updateRecord } from "./agent-client";
+import { getRecord, listComments, markComment, postComment, readShared, searchRecords, sendRecord, trashRecord, updateRecord } from "./agent-client";
 
 test("agent comment calls reach the comment routes with their credential, query and body", async () => {
   // Given: a real local HTTP boundary that records each request.
@@ -229,6 +229,35 @@ test("agent read and update reject HTTP errors instead of claiming success", asy
     await expect(
       updateRecord(connection, "rec-1", { expectedVersion: 1, changes: {} }),
     ).rejects.toThrow();
+  } finally {
+    await server.stop(true);
+  }
+});
+
+test("agent trash sends DELETE with expectedVersion and its credential, and rejects a refusal", async () => {
+  // Given: a real local HTTP boundary that trashes one id and refuses another.
+  const received: { method: string; path: string; body: unknown; authorization: string | null }[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url);
+      received.push({ method: request.method, path: url.pathname, body: await request.json(), authorization: request.headers.get("authorization") });
+      return url.pathname.endsWith("/mine") ? new Response(null, { status: 204 })
+        : Response.json({ error: { code: "forbidden", message: "Agents move only records they created to the trash" } }, { status: 403 });
+    },
+  });
+  const connection = { url: `http://127.0.0.1:${server.port}`, token: "test-credential" };
+  try {
+    // When: the agent trashes its own record, then one it did not create.
+    await trashRecord(connection, "mine", 3);
+    const refused = await trashRecord(connection, "theirs", 1).then(() => null, (error: unknown) => error);
+    // Then: both reach DELETE /api/v1/records/:id with the version and credential, and the refusal is an error, not a success.
+    expect(received).toEqual([
+      { method: "DELETE", path: "/api/v1/records/mine", body: { expectedVersion: 3 }, authorization: "Bearer test-credential" },
+      { method: "DELETE", path: "/api/v1/records/theirs", body: { expectedVersion: 1 }, authorization: "Bearer test-credential" },
+    ]);
+    expect(refused).toBeInstanceOf(Error);
   } finally {
     await server.stop(true);
   }

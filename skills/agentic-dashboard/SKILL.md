@@ -56,6 +56,8 @@ Inside a clone of the dashboard repository, `bun run agent` takes the same optio
 
 Write the full findings in `body`, not a summary. If you made an HTML page of the research, attach it with `--html`; the reader shows it as the record's full document (no scripts run; inline CSS and `data:` images and audio work; at most 1 MiB). `agentic-dashboard agent --update <record-id> --html page.html` replaces it.
 
+When the owner asks you to remove a record you saved, `agentic-dashboard agent --trash <record-id>` moves it to the owner's trash, where they can restore it for 30 days; records you did not create answer 403.
+
 Find earlier records with `agentic-dashboard agent --search "words"` and read one with `agentic-dashboard agent --get <record-id>`.
 
 ## Save with HTTP (with DASHBOARD_TOKEN)

@@ -297,9 +297,11 @@ export function createApp(options: AppOptions = {}) {
         notifyReview(before, record);
         return c.json({ record });
       });
+      /** Moves a record to the trash: the owner (CSRF) any record, an agent only one it created; the owner restores it from the trash. */
       app.delete("/api/v1/records/:id", async c => {
-        if (auth.authenticate(c.req.raw, false).source !== "manual") throw new ApiError(403, "forbidden", "Owner session required");
-        auth.csrf(c.req.raw, origins);
+        const principal = auth.authenticate(c.req.raw, false);
+        if (principal.source === "manual") auth.csrf(c.req.raw, origins);
+        else if (store.get(c.req.param("id")).createdBy !== principal.id) throw new ApiError(403, "forbidden", "Agents move only records they created to the trash");
         const input = z.object({ expectedVersion: z.number().int().positive() }).strict().parse(await json(c.req.raw));
         store.delete(c.req.param("id"), input.expectedVersion);
         return c.body(null, 204);
