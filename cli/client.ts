@@ -49,10 +49,18 @@ async function request(url: string, init: RequestInit = {}) {
   return await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 }
 
+/** The dashboard's name and version; a dashboard without the config route (an older or customized build) is named by its health check alone. */
 async function probe(url: string) {
   const response = await request(`${url}/api/v1/config`);
+  if (response.status === 404) {
+    const health = await request(`${url}/api/v1/health`);
+    if (!health.ok) throw new Error(`HTTP ${health.status}`);
+    z.object({ status: z.literal("ok") }).parse(await health.json());
+    return "Agentic Dashboard";
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return z.object({ appName: z.string(), version: z.string() }).passthrough().parse(await response.json());
+  const config = z.object({ appName: z.string(), version: z.string() }).passthrough().parse(await response.json());
+  return `${config.appName} ${config.version}`;
 }
 
 export async function checkKey(url: string, key: string) {
@@ -91,7 +99,7 @@ export async function connect(p: Paths, flags: ConnectFlags) {
   const current = readClient(p);
   if (current && prompting && !flags.url && !flags.code && !await confirm(t("connectAlready", { url: current.url, agent: current.agent }), false)) return;
   let url = "";
-  let found: { appName: string; version: string } | null = null;
+  let found: string | null = null;
   while (!found) {
     const raw = flags.url ?? (prompting ? await ask(t("connectUrl"), current?.url ?? "http://127.0.0.1:4310") : current?.url);
     if (!raw) throw new CliError(t("connectNeedUrl"));
@@ -104,7 +112,7 @@ export async function connect(p: Paths, flags: ConnectFlags) {
       say(message);
     }
   }
-  say(t("connectFound", { name: found.appName, version: found.version, url }));
+  say(t("connectFound", { name: found, url }));
 
   let agent = "";
   let key = "";
