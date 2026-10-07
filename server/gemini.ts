@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ProviderError } from "./narration";
 import type { NarrationProvider } from "./narration";
+import { VERTEX_LOCATION } from "./vertex";
+import type { AdcSource } from "./vertex";
 
 /** Gemini 3.8 Flash TTS (stable): https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts */
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
@@ -123,6 +125,51 @@ export async function failureOf(response: Response): Promise<ProviderError> {
 }
 const DAILY_WAIT_MS = 60 * 60 * 1000;
 
+const vertexErrorSchema = z.object({ error: z.object({
+  details: z.array(z.object({ reason: z.string().optional() }).passthrough()).optional(),
+}).passthrough() }).passthrough();
+
+/**
+ * A failed Vertex AI response as a code the failure alert can explain: 401, or a 403 other than a switched-off API or billing,
+ * is the ADC login (`vertex_auth`); ErrorInfo SERVICE_DISABLED / BILLING_DISABLED is `vertex_disabled`; 429 is the project's
+ * Vertex quota (`vertex_quota`), retried after the wait it asks for. Anything else reads like the AI Studio failures.
+ */
+export async function vertexFailureOf(response: Response): Promise<ProviderError> {
+  const status = response.status;
+  if (status === 429) {
+    const failure = await failureOf(response);
+    return new ProviderError("vertex_quota", true, failure.retryAfterMs);
+  }
+  if (status !== 401 && status !== 403) return failureOf(response);
+  let reasons: string[] = [];
+  try {
+    const parsed = vertexErrorSchema.safeParse(JSON.parse(await response.text()));
+    if (parsed.success) reasons = (parsed.data.error.details ?? []).map(detail => detail.reason ?? "");
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+  }
+  if (status === 403 && reasons.some(reason => reason === "SERVICE_DISABLED" || reason === "BILLING_DISABLED")) {
+    return new ProviderError("vertex_disabled", false);
+  }
+  return new ProviderError("vertex_auth", false);
+}
+
+const vertexResponseSchema = z.object({
+  candidates: z.array(z.object({ content: z.object({ parts: z.array(z.object({
+    inlineData: z.object({ mimeType: z.string().optional(), data: z.string() }).passthrough().optional(),
+  }).passthrough()).optional() }).passthrough().optional() }).passthrough()).optional(),
+  usageMetadata: z.object({ candidatesTokenCount: z.number().optional() }).passthrough().optional(),
+}).passthrough();
+
+/** Speech through Vertex AI (billed to the Google Cloud project) instead of the AI Studio key; the script stays on the key. */
+export interface VertexSpeech {
+  readonly project: string;
+  readonly location?: string;
+  readonly credentials: AdcSource;
+  /** One line per call: host, model, location, status and audio tokens (25 per second of audio), never a token. */
+  readonly log?: (line: string) => void;
+}
+
 /** Strips a RIFF/WAVE header when the API answers WAV instead of the requested raw PCM. */
 export function pcmOf(bytes: Uint8Array): Uint8Array {
   const view = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -138,7 +185,7 @@ export function pcmOf(bytes: Uint8Array): Uint8Array {
 /** Interactions API with `store: false`; the key goes only in the x-goog-api-key header and never into errors. */
 export function geminiProvider(options: {
   readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly fallbackScriptModel?: string;
-  readonly voice?: string; readonly podcastVoice?: string;
+  readonly voice?: string; readonly podcastVoice?: string; readonly vertex?: VertexSpeech;
   readonly fetch?: (input: string, init: RequestInit) => Promise<Response>;
 }): NarrationProvider {
   const send = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
@@ -173,6 +220,43 @@ export function geminiProvider(options: {
     if (!parsed.success) throw new ProviderError("invalid_response", false);
     return parsed.data.steps.filter(step => step.type === "model_output").flatMap(step => step.content ?? []);
   }
+  // https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/text-to-speech/overview: generateContent, turn styling in
+  // parts[].speechMetadata, unary answers a whole WAV.
+  async function vertexAudioOf(vertex: VertexSpeech, parts: unknown[], speechConfig: unknown, signal: AbortSignal) {
+    const location = vertex.location ?? VERTEX_LOCATION;
+    const host = location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
+    const url = `https://${host}/v1/projects/${vertex.project}/locations/${location}/publishers/google/models/${ttsModel}:generateContent`;
+    const token = await vertex.credentials.token(signal);
+    let response: Response;
+    try {
+      response = await send(url, { method: "POST", signal, headers: { "content-type": "application/json",
+        authorization: `Bearer ${token}`, "x-goog-user-project": vertex.project },
+      body: JSON.stringify({ contents: [{ role: "user", parts }],
+        generationConfig: { responseModalities: ["AUDIO"], speechConfig } }) });
+    } catch (error) {
+      if (signal.aborted) throw new ProviderError("timeout", true);
+      if (error instanceof Error) throw new ProviderError("network", true);
+      throw error;
+    }
+    if (!response.ok) {
+      (vertex.log ?? console.log)(`narration tts: ${host} ${ttsModel} ${location} ${response.status}`);
+      throw await vertexFailureOf(response);
+    }
+    let json: unknown;
+    try { json = await response.json(); }
+    catch (error) {
+      if (error instanceof Error) throw new ProviderError("invalid_response", false);
+      throw error;
+    }
+    const parsed = vertexResponseSchema.safeParse(json);
+    if (!parsed.success) throw new ProviderError("invalid_response", false);
+    const tokens = parsed.data.usageMetadata?.candidatesTokenCount ?? 0;
+    (vertex.log ?? console.log)(`narration tts: ${host} ${ttsModel} ${location} ${response.status} audio_tokens=${tokens}`);
+    const audio = (parsed.data.candidates ?? []).flatMap(candidate => candidate.content?.parts ?? [])
+      .filter(part => part.inlineData?.data).at(-1)?.inlineData?.data;
+    if (!audio) throw new ProviderError("no_audio", false);
+    return pcmOf(Buffer.from(audio, "base64"));
+  }
   async function audioOf(input: unknown, speechConfig: unknown, signal: AbortSignal) {
     const content = await contentOf(await post({
       model: ttsModel, input,
@@ -186,7 +270,7 @@ export function geminiProvider(options: {
   }
   return {
     ttsModel, scriptModel, fallbackScriptModel, voice, hosts,
-    available: async () => await options.key() !== null,
+    available: async () => await options.key() !== null && (!options.vertex || await options.vertex.credentials.exists()),
     // Streamed, so the job can report the script's characters as they arrive; a plain JSON answer is read whole.
     async script(system, prompt, signal, model = scriptModel, onText) {
       const response = await post({ model, system_instruction: system, input: prompt, stream: true, store: false }, signal);
@@ -197,11 +281,16 @@ export function geminiProvider(options: {
       if (!script.trim()) throw new ProviderError("empty_script", false);
       return script;
     },
-    speak: (text, style, signal) => audioOf(
-      [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style }] }] }],
-      [{ voice }], signal),
+    speak: (text, style, signal) => options.vertex
+      ? vertexAudioOf(options.vertex, [{ text, speechMetadata: { style } }], { voiceConfig: { voice } }, signal)
+      : audioOf([{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style }] }] }],
+        [{ voice }], signal),
     // https://ai.google.dev/gemini-api/docs/speech-generation#multi-speaker: speakers as an object, every turn names its speaker.
-    converse: (turns, style, signal) => audioOf(
+    converse: (turns, style, signal) => options.vertex
+      ? vertexAudioOf(options.vertex, turns.map(turn => ({ text: turn.text, speechMetadata: { speaker: turn.speaker, style } })),
+        { multiSpeakerVoiceConfig: { speakerVoiceConfigs: [
+          { speaker: "A", voiceConfig: { voice: hosts[0] } }, { speaker: "B", voiceConfig: { voice: hosts[1] } }] } }, signal)
+      : audioOf(
       [{ type: "user_input", content: turns.map(turn => ({ type: "text", text: turn.text,
         annotations: [{ type: "speech_metadata", speaker: turn.speaker, style }] })) }],
       { mode: "conversational", speakers: [{ speaker: "A", voice: hosts[0] }, { speaker: "B", voice: hosts[1] }] }, signal),

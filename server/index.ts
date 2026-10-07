@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { z } from "zod";
 import { NARRATION_LIMITS } from "../shared/contracts";
+import { VERTEX_LOCATION, adcCredentials } from "./vertex";
 import { systemTimeZone, validTimeZone } from "../shared/time";
 import { commandRunner } from "./ai-fill";
 import { createApp } from "./app";
@@ -37,6 +38,9 @@ const parsed = z.object({
   NARRATION_SCRIPT_FALLBACK_MODEL: z.string().trim().min(1).default(GEMINI_SCRIPT_FALLBACK_MODEL),
   NARRATION_VOICE: z.string().trim().min(1).default(GEMINI_VOICE),
   NARRATION_PODCAST_VOICE: z.string().trim().min(1).default(GEMINI_PODCAST_VOICE),
+  NARRATION_TTS_PROVIDER: z.enum(["gemini", "vertex"]).default("gemini"),
+  NARRATION_VERTEX_PROJECT: z.string().trim().min(1).optional(),
+  NARRATION_VERTEX_LOCATION: z.string().trim().min(1).default(VERTEX_LOCATION),
   NARRATION_DAILY_LIMIT: z.coerce.number().int().min(0).max(200).default(NARRATION_LIMITS.dailyRuns),
   AUDIO_DIR: z.string().trim().min(1).optional(),
   AI_FILL_COMMAND: z.string().trim().min(1).optional(),
@@ -54,6 +58,10 @@ if ((config.TRUSTED_USER_HEADER === undefined) !== (config.OWNER_LOGIN === undef
 }
 if (config.DEMO && (config.TRUSTED_USER_HEADER || config.ENABLE_MCP || config.ENABLE_AGENT_INGRESS || config.AI_FILL_COMMAND)) {
   console.error("Invalid configuration: DEMO=on is a public read-only demo; turn off TRUSTED_USER_HEADER, ENABLE_MCP, ENABLE_AGENT_INGRESS and AI_FILL_COMMAND.");
+  process.exit(1);
+}
+if (config.NARRATION_TTS_PROVIDER === "vertex" && !config.NARRATION_VERTEX_PROJECT) {
+  console.error("Invalid configuration: NARRATION_TTS_PROVIDER=vertex needs NARRATION_VERTEX_PROJECT, the Google Cloud project to bill.");
   process.exit(1);
 }
 if (config.ENABLE_MCP && !config.MCP_AGENT) {
@@ -80,7 +88,10 @@ const app = createApp({
   ...(config.NARRATION && !config.DEMO ? { narration: {
     provider: geminiProvider({ key: envKey(), ttsModel: config.NARRATION_TTS_MODEL, scriptModel: config.NARRATION_SCRIPT_MODEL,
       fallbackScriptModel: config.NARRATION_SCRIPT_FALLBACK_MODEL, voice: config.NARRATION_VOICE,
-      podcastVoice: config.NARRATION_PODCAST_VOICE }),
+      podcastVoice: config.NARRATION_PODCAST_VOICE,
+      ...(config.NARRATION_TTS_PROVIDER === "vertex" && config.NARRATION_VERTEX_PROJECT ? { vertex: {
+        project: config.NARRATION_VERTEX_PROJECT, location: config.NARRATION_VERTEX_LOCATION, credentials: adcCredentials(),
+      } } : {}) }),
     dailyLimit: config.NARRATION_DAILY_LIMIT, ...(config.AUDIO_DIR ? { audioDir: config.AUDIO_DIR } : {}),
   } } : {}),
 });
@@ -103,7 +114,7 @@ console.log([
   `mcp ${mcpServer ? `http://127.0.0.1:${mcpServer.port}/mcp` : "disabled"}`,
   ...(config.DEMO ? ["read-only demo"] : []),
   `push ${config.PUSH && !config.DEMO ? "on" : "off"}`, `digest ${config.DIGEST ? "on" : "off"}`,
-  `narration ${narrationOn ? "on" : "off"}`, `ai fill ${config.AI_FILL_COMMAND ? "on" : "off"}`, `time zone ${config.TIME_ZONE}`,
+  `narration ${narrationOn ? `on (speech ${config.NARRATION_TTS_PROVIDER})` : "off"}`, `ai fill ${config.AI_FILL_COMMAND ? "on" : "off"}`, `time zone ${config.TIME_ZONE}`,
 ].join("; "));
 const purgeTimer = setInterval(() => app.purgeTrash(), 60 * 60 * 1000);
 function stop() {

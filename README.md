@@ -203,13 +203,23 @@ Optional features are off or keyless by default:
 |---|---|
 | Web push | `PUSH` (on by default; keys are generated) |
 | Digests | `DIGEST` (on by default) |
-| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`, and `NARRATION_SCRIPT_FALLBACK_MODEL` for busy hours |
+| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`, and `NARRATION_SCRIPT_FALLBACK_MODEL` for busy hours. To bill speech to a Google Cloud project instead of the key's quota, set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT` and sign in with Application Default Credentials (see below) |
 | AI title fill for saved links | `AI_FILL_COMMAND`, any CLI that reads a prompt on stdin and prints JSON |
 | MCP for chat apps | `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` |
 | Agent-only listener | `ENABLE_AGENT_INGRESS=on` |
 | Sign-in through an identity-aware proxy | `TRUSTED_USER_HEADER` and `OWNER_LOGIN` |
 
 `GET /api/v1/config` reports which features are on. Every variable is described in [.env.example](.env.example).
+
+### Speech through Vertex AI
+
+With `NARRATION_TTS_PROVIDER=vertex` the audio (not the script) is made by Gemini TTS on Vertex AI, billed to your Google Cloud project instead of the Gemini API key's free quota. The script still needs `GEMINI_API_KEY`.
+
+1. In your project, enable billing and the Vertex AI API (`gcloud services enable aiplatform.googleapis.com --project=<project-id>`).
+2. On the server, sign in once: `gcloud auth application-default login`. The server reads `~/.config/gcloud/application_default_credentials.json`, or the file named by `GOOGLE_APPLICATION_CREDENTIALS` (in Docker, mount that file read-only and point the variable at it). Only user logins (`authorized_user`) are supported; no API key is created or needed.
+3. Set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT=<project-id>`. The model is served in the `global` location (`NARRATION_VERTEX_LOCATION`).
+
+There is no fallback to the key for speech. An expired login fails as `vertex_auth`, switched-off billing or API as `vertex_disabled`, and a used-up Vertex quota as `vertex_quota` (retried first); the player says what to do. Each call logs `narration tts: aiplatform.googleapis.com <model> <location> <status> audio_tokens=<n>` (25 tokens per second of audio).
 
 ## Deploy
 

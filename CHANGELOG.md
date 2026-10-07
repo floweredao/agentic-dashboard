@@ -10,6 +10,7 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ### Added
 
+- Speech through Vertex AI: with `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT`, Listen audio is made by Gemini TTS on Vertex AI (`global`), signed in with Application Default Credentials and billed to the Google Cloud project; the script still uses the Gemini API key. Expired logins, switched-off billing or API, and the Vertex quota fail as `vertex_auth`, `vertex_disabled` and `vertex_quota` with a message saying what to do. The default stays the Gemini API key.
 - Favorites in the inbox: a Favorites chip (`#/inbox?state=starred`) lists the starred records, with its count and an empty-state hint.
 
 ### Changed
