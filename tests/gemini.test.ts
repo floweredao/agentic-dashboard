@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { z } from "zod";
-import { geminiProvider, pcmOf } from "../server/gemini";
+import { geminiProvider, pcmOf, failureOf } from "../server/gemini";
 import { ProviderError } from "../server/narration";
 
 const KEY = "AIza-test-key";
@@ -163,4 +163,12 @@ test("a WAV answer is reduced to its PCM data chunk", () => {
   header.write("fmt ", 12); header.writeUInt32LE(16, 16); header.write("data", 36); header.writeUInt32LE(pcm.byteLength, 40);
   expect(Buffer.from(pcmOf(Buffer.concat([header, pcm])))).toEqual(pcm);
   expect(pcmOf(pcm)).toBe(pcm);
+});
+
+test("a 429 asking to wait an hour or more is the day's quota, not a per-minute limit", async () => {
+  const daily = await failureOf(new Response("{}", { status: 429, headers: { "retry-after": "30814" } }));
+  expect(daily.code).toBe("quota_daily");
+  expect(daily.transient).toBe(false);
+  const minute = await failureOf(new Response("{}", { status: 429, headers: { "retry-after": "40" } }));
+  expect(minute).toMatchObject({ code: "http_429", transient: true, retryAfterMs: 40000 });
 });

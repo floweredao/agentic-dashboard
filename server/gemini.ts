@@ -117,8 +117,11 @@ export async function failureOf(response: Response): Promise<ProviderError> {
   const header = response.headers.get("retry-after");
   const retryAfterMs = delay ? Math.round(Number(delay[1]) * 1000)
     : header !== null && /^\d+$/.test(header.trim()) ? Number(header.trim()) * 1000 : undefined;
+  // A used-up daily quota can answer 429 with a Retry-After of hours and no quota details; a wait that long is the day's quota.
+  if (status === 429 && retryAfterMs !== undefined && retryAfterMs >= DAILY_WAIT_MS) return new ProviderError("quota_daily", false);
   return new ProviderError(`http_${status}`, true, retryAfterMs);
 }
+const DAILY_WAIT_MS = 60 * 60 * 1000;
 
 /** Strips a RIFF/WAVE header when the API answers WAV instead of the requested raw PCM. */
 export function pcmOf(bytes: Uint8Array): Uint8Array {
