@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
+import { RECORD_LIMITS } from "../../shared/contracts";
 import type { DashboardRecord, JSONValue, RecordInput, RecordKind } from "../../shared/contracts";
 import { errorMessage } from "../api";
 import { LinkFields, TagFields } from "../components/LinkTagFields";
@@ -153,7 +154,7 @@ export function Editor({ initial, existing, requestId, onClose }: {
         <div className="form-grid">
           {leadFields(t)[input.kind].map(textArea)}
           <label className="field field-wide">{bodyLabels(t)[input.kind]}
-            <textarea className="editor-body" rows={material && input.kind !== "social" ? 10 : 5} maxLength={16000} value={input.body}
+            <textarea className="editor-body" rows={material && input.kind !== "social" ? 10 : 5} maxLength={RECORD_LIMITS.bodyChars} value={input.body}
               onChange={event => setInput({ ...input, body: event.target.value })} />
           </label>
           {trailFields(t)[input.kind].map(textArea)}

@@ -170,6 +170,14 @@ test("an approved record with a due revisit keeps 확인함 and shows the separa
   expect(html).toMatch(/disabled=""[^>]*>.*?확인함<\/button>/);
 });
 
+test("Full screen shows only its icon, named for assistive tech and the pointer tooltip", () => {
+  const html = withDashboard(<Reader record={make()} />);
+  const button = /<button[^>]*reader-fullscreen-button[^>]*>(.*?)<\/button>/.exec(html);
+  expect(button?.[0]).toContain('aria-label="전체화면"');
+  expect(button?.[0]).toContain('title="전체화면으로 보기"');
+  expect(button?.[1]?.replace(/<svg.*?<\/svg>/g, "")).toBe("");
+});
+
 test("an approved record without a due revisit shows no revisit marker", () => {
   const html = withDashboard(<Reader record={make({ reviewState: "approved", fields: { revisitDate: "2999-01-01" } })} />);
   expect(html).not.toContain("다시 볼 날<");

@@ -37,6 +37,8 @@ const FieldsSchema = z.record(z.string().max(100), JSONValueSchema).superRefine(
   const known = knownFields.safeParse(value);
   if (!known.success) for (const issue of known.error.issues) ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
 });
+/** The body may hold a whole document's text, which is what is worth listening to, so it may run far past a note's length; record requests may be this large. */
+export const RECORD_LIMITS = { bodyChars: 120000, requestBytes: 512 * 1024 } as const;
 export const TITLE_MAX_WIDTH = 40;
 const pictographic = /^\p{Extended_Pictographic}$/u;
 export function titleWidth(title: string): number {
@@ -53,7 +55,7 @@ export function titleWidth(title: string): number {
 const inputShape = {
   kind: RecordKindSchema,
   title: z.string().trim().min(1).max(200),
-  body: z.string().max(16000).default(""),
+  body: z.string().max(RECORD_LIMITS.bodyChars).default(""),
   status: z.string().trim().min(1).max(50).default("new"),
   projectId: z.string().uuid().nullable().default(null),
   taskId: z.string().uuid().nullable().default(null),
@@ -190,7 +192,7 @@ export const NARRATABLE_KINDS = ["research", "work-report", "note", "social"] as
  * Cost guards for narration: script length, TTS chunk length, model input, queued jobs, generations started per Seoul day,
  * and failed generations per content version before only the owner may try again.
  */
-export const NARRATION_LIMITS = { scriptChars: 6000, digestScriptChars: 10000, chunkChars: 1500, sourceChars: 20000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
+export const NARRATION_LIMITS = { scriptChars: 6000, partScriptChars: 18000, digestScriptChars: 10000, chunkChars: 1500, sourceChars: 120000, partChars: 5000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
 /** queued -> scripting (listening script) -> speaking (TTS chunks) -> ready | failed. */
 export const NarrationStatusSchema = z.enum(["queued", "scripting", "speaking", "ready", "failed"]);
 export type NarrationStatus = z.infer<typeof NarrationStatusSchema>;
@@ -222,6 +224,20 @@ export type Narration = z.infer<typeof NarrationSchema>;
 /** GET/POST narration response; `available` is false when no TTS key is configured. */
 export const NarrationStateSchema = z.object({ narration: NarrationSchema.nullable(), available: z.boolean() }).strict();
 export type NarrationState = z.infer<typeof NarrationStateSchema>;
+
+/**
+ * A record's attached HTML document (full document), for research, work-report, note and social records. The dashboard shows
+ * it in a sandboxed frame where no script runs; the body keeps the same content as text for search and narration.
+ */
+export const DOCUMENT_LIMITS = { htmlBytes: 1024 * 1024, requestBytes: 2 * 1024 * 1024 } as const;
+export const DocumentInputSchema = z.object({
+  html: z.string().min(1).refine(html => new TextEncoder().encode(html).byteLength <= DOCUMENT_LIMITS.htmlBytes, "html exceeds 1 MiB"),
+}).strict();
+export const RecordDocumentSchema = z.object({ html: z.string(), bytes: z.number().int().nonnegative(), updatedBy: z.string(), updatedAt: z.iso.datetime() }).strict();
+export type RecordDocument = z.infer<typeof RecordDocumentSchema>;
+/** GET/PUT document response; `document` is null when none is attached. */
+export const DocumentStateSchema = z.object({ document: RecordDocumentSchema.nullable() }).strict();
+export type DocumentState = z.infer<typeof DocumentStateSchema>;
 
 /** The two kinds of digest section; each kind is also a part of a digest that is read and narrated on its own. */
 export const DIGEST_KINDS = ["articles", "messages"] as const;

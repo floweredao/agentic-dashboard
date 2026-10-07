@@ -1,8 +1,9 @@
+import { Database } from "bun:sqlite";
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema } from "../shared/contracts";
-import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, missingFigures, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, splitChunks } from "../server/narration";
+import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, listeningSource, missingFigures, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, ProviderError, SCRIPT_SYSTEM, scriptParts, splitChunks } from "../server/narration";
 import type { NarrationOptions, NarrationProvider, SpeechTurn } from "../server/narration";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
@@ -967,4 +968,128 @@ test("a dialogue script becomes speaker turns packed into bounded chunks", () =>
   expect(chunks.length).toBeGreaterThan(1);
   for (const chunk of chunks) expect(chunk.reduce((sum, turn) => sum + turn.text.length, 0)).toBeLessThanOrEqual(NARRATION_LIMITS.chunkChars);
   expect(chunks.flat().every(turn => turn.text.length > 0 && !/^[AB]\s*[:：]/.test(turn.text))).toBe(true);
+});
+
+const SOURCES_BODY = [
+  "## 배경", "본문 첫 문단입니다.", "", "```ts", "const secret = 1;", "```", "",
+  "| 항목 | 값 |", "|---|---|", "| A | 1 |", "", "## 관찰", "관찰 문단입니다.", "- [링크만 있는 줄](https://example.com/a)", "",
+  "## 출처", "- 예시뉴스 기사 https://news.example.com/a", "- 논문 원문", "", "## 다음", "마지막 문단입니다.",
+].join("\n");
+
+test("the listening source leaves out code, tables, link-only lines and the source list, and keeps every prose section", () => {
+  const source = listeningSource(SOURCES_BODY);
+  for (const kept of ["## 배경", "본문 첫 문단입니다.", "## 관찰", "관찰 문단입니다.", "## 다음", "마지막 문단입니다."]) expect(source).toContain(kept);
+  for (const dropped of ["secret", "| A | 1 |", "링크만", "## 출처", "예시뉴스 기사", "논문 원문"]) expect(source).not.toContain(dropped);
+  expect(listeningSource("## References\n- a\n## 참고 자료\n- b\n## 결론\n남는 문단")).toBe("## 결론\n남는 문단");
+  expect(listeningSource("## 13. 질문\n질문과 답\n## 15. 출처\n- 논문 원문\n### 원문 링크\n- 참고 링크\n## 16. 결론\n마지막 내용"))
+    .toBe("## 13. 질문\n질문과 답\n## 16. 결론\n마지막 내용");
+});
+
+for (const style of ["read", "podcast"] as const) test(`a ${style} script keeps the last answer beyond the former 6000-character cap`, async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const body = `${"원문의 문단입니다. 설명이 이어져요.\n\n".repeat(200)}## 끝 질문\n답은 마지막 확인입니다.`;
+  const response = await f.call("/api/v1/records", "POST", {
+    requestId: crypto.randomUUID(), record: agentRecord({ body }),
+  }, owner);
+  expect(response.status).toBe(201);
+  const record = recordResult.parse(await response.json()).record;
+  const paragraphs = Array.from({ length: 180 }, () => style === "podcast"
+    ? "A: 원문의 사실을 빠짐없이 전합니다.\n\nB: 이어지는 설명도 그대로 들어요."
+    : "원문의 사실을 빠짐없이 전합니다. 이어지는 설명도 그대로 들어요.");
+  const lastAnswer = "답은 마지막 확인입니다. 이 답까지 들어요.";
+  tts.scriptText = [...paragraphs, `${style === "podcast" ? "A: " : ""}${lastAnswer}`].join("\n\n");
+  expect(tts.scriptText.length).toBeGreaterThan(6000);
+  expect((await f.call(narration(record.id), "POST", { style }, owner)).status).toBe(202);
+  await idle();
+  const state = await read(await f.call(narration(record.id), "GET", undefined, owner));
+  expect(state.narration?.status).toBe("ready");
+  expect(state.narration?.audio?.style).toBe(style);
+  expect(state.narration?.script?.endsWith(lastAnswer)).toBe(true);
+  const spoken = style === "podcast" ? tts.calls.converse.flat().map(turn => turn.text) : tts.calls.speak;
+  expect(spoken.at(-1)).toContain(lastAnswer);
+});
+
+test("an oversized record script fails instead of speaking a silently truncated document", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  tts.scriptText = "원문의 설명입니다. 내용이 이어져요. ".repeat(1000);
+  expect(tts.scriptText.length).toBeGreaterThan(NARRATION_LIMITS.partScriptChars);
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await idle();
+  const state = await read(await f.call(narration(record.id), "GET", undefined, owner));
+  expect(state.narration).toMatchObject({ status: "failed", error: "script_too_long", audio: null });
+  expect(tts.calls.speak).toHaveLength(0);
+});
+
+test("a long body is split into parts at its headings, each within the part length, together covering the whole body", () => {
+  const sections = Array.from({ length: 6 }, (_, index) => `## 절 ${index + 1}\n${`절 ${index + 1}의 문장입니다. `.repeat(400).trim()}`);
+  const body = sections.join("\n\n");
+  const parts = scriptParts(body);
+  expect(parts.length).toBeGreaterThan(1);
+  for (const part of parts) expect(part.length).toBeLessThanOrEqual(NARRATION_LIMITS.partChars);
+  for (const section of sections) expect(parts.some(part => part.includes(section))).toBe(true);
+  expect(parts.every(part => part.startsWith("## 절"))).toBe(true);
+  expect(scriptParts("짧은 본문")).toEqual(["짧은 본문"]);
+  const oneParagraph = "긴 문단입니다. ".repeat(4000);
+  expect(scriptParts(oneParagraph).every(part => part.length <= NARRATION_LIMITS.partChars)).toBe(true);
+  expect(scriptParts(oneParagraph).join("").replace(/\s/g, "")).toBe(oneParagraph.replace(/\s/g, ""));
+});
+
+test("a record past the part length is scripted part by part: every part reaches the script model, the audio covers all of them", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const sections = Array.from({ length: 4 }, (_, index) => `## 절 ${index + 1}\n${`절 ${index + 1}의 내용입니다. `.repeat(500)}`);
+  const body = [...sections, "## 출처\n- 원문 https://example.com/source"].join("\n\n");
+  const response = await f.call("/api/v1/records", "POST", { requestId: crypto.randomUUID(), record: {
+    kind: "research", title: "긴 조사", body, fields: { summary: "요약", conclusion: "결론", nextActions: "- 다음 할 일" } } }, owner);
+  const record = recordResult.parse(await response.json()).record;
+  const partCount = scriptParts(listeningSource(body)).length;
+  expect(partCount).toBeGreaterThan(1);
+  tts.scriptTexts = Array.from({ length: partCount }, (_, index) => `${index + 1}번째 부분을 전합니다. 내용이 이어져요. ${"본문의 문장을 그대로 전합니다. 이어서 들어요. ".repeat(160)}`.trim());
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await idle();
+  const state = await read(await f.call(narration(record.id), "GET", undefined, owner));
+  expect(state.narration?.status).toBe("ready");
+  expect(tts.calls.script).toBe(partCount);
+  for (const [index, section] of sections.entries()) expect(tts.calls.prompts.some(prompt => prompt.includes(section.split("\n")[0] ?? "") && prompt.includes(`절 ${index + 1}의 내용입니다.`))).toBe(true);
+  expect(tts.calls.prompts.every(prompt => !prompt.includes("example.com/source"))).toBe(true);
+  expect(tts.calls.prompts[0]).toContain(`[Body 1/${partCount}]`);
+  expect(tts.calls.systems[0]).not.toBe(tts.calls.systems[partCount - 1]);
+  for (let index = 0; index < partCount; index += 1) expect(state.narration?.script).toContain(`${index + 1}번째 부분을 전합니다.`);
+});
+
+const COVER_BODY = `## 절\n${"원문의 문장입니다. ".repeat(300).trim()}`;
+const COVER_FULL = "원문의 문장을 그대로 전합니다. 이어서 들어요. ".repeat(110).trim();
+
+test("a part script far shorter than its source is written once more, and the fuller one is spoken", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const response = await f.call("/api/v1/records", "POST", { requestId: crypto.randomUUID(), record: agentRecord({ body: COVER_BODY }) }, owner);
+  const record = recordResult.parse(await response.json()).record;
+  tts.scriptTexts = ["원문의 일부만 전합니다. 나머지는 줄였어요.", COVER_FULL];
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await idle();
+  const state = await read(await f.call(narration(record.id), "GET", undefined, owner));
+  expect(state.narration?.status).toBe("ready");
+  expect(tts.calls.script).toBe(2);
+  expect(tts.calls.systems[1]).not.toBe(tts.calls.systems[0]);
+  expect(state.narration?.script).toBe(COVER_FULL);
+});
+
+test("a script saved under earlier script rules is written again instead of reused", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const response = await f.call("/api/v1/records", "POST", { requestId: crypto.randomUUID(), record: agentRecord({ body: COVER_BODY }) }, owner);
+  const record = recordResult.parse(await response.json()).record;
+  tts.scriptText = COVER_FULL;
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await idle();
+  const db = new Database(f.options.databasePath);
+  db.query("UPDATE narrations SET script_hash=audio_hash WHERE record_id=?").run(record.id);
+  db.close();
+  expect((await f.call(narration(record.id), "POST", { force: true }, owner)).status).toBe(202);
+  await idle();
+  expect(tts.calls.script).toBe(2);
 });

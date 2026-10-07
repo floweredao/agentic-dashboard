@@ -53,6 +53,10 @@ test("session cookies protect HTTP and HTTPS and responses carry restrictive hea
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    const policy = Object.fromEntries((response.headers.get("content-security-policy") ?? "").split(";").map(part => part.trim().split(/\s+/)).map(([name = "", ...values]) => [name, values]));
+    expect(policy["media-src"]).toEqual(["'self'", "data:", "blob:"]);
+    expect(policy["img-src"]).toEqual(["'self'", "data:", "blob:"]);
+    expect(policy["script-src"]).toEqual(["'self'"]);
   }
   } finally { secure.close(); }
 });

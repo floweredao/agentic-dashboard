@@ -23,7 +23,7 @@ Three logical collections share one table: projects (`project`), tasks (`task`) 
 {
   kind: "project" | "task" | "research" | "work-report" | "note" | "social";
   title: string;                 // trimmed, 1..200
-  body: string;                  // default "", at most 16000
+  body: string;                  // default "", at most 120000; record POST and PATCH bodies up to 512 KiB
   status: string;                // default "new"
   projectId: string | null;      // UUID of a project
   taskId: string | null;         // UUID of a task
@@ -136,6 +136,18 @@ Trashed records are purged after 30 days.
 | `GET /api/v1/shared/:code` | anyone with the code | `{ share, record }` |
 | `GET /s/:code` | anyone with the code | the record as plain-text Markdown |
 
+### Record documents
+
+A research, work-report, note or social record may carry one HTML document, the full page of the research (`DOCUMENT_LIMITS`: at most 1 MiB of HTML, request bodies up to 2 MiB). It is kept apart from the record JSON, stays while the record is in the trash and goes when the record is deleted for good. The body keeps the same content as Markdown for search and narration.
+
+| Route | Who | Result |
+|---|---|---|
+| `GET /api/v1/records/:id/document` | owner, agent that may read the record | `{ document: { html, bytes, updatedBy, updatedAt } \| null }` |
+| `PUT /api/v1/records/:id/document` | owner (CSRF), the agent that created the record | `{ html }`; `{ document }`; another agent 403, empty or over 1 MiB 400, tasks and projects 400 `document_unsupported` |
+| `DELETE /api/v1/records/:id/document` | same | 204 |
+
+The reader opens a record with a document on it, with a [Full document | Summary] switch and the conclusion and summary shown briefly above. The document renders in an iframe (`srcdoc`, `sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"`, never `allow-scripts`), so no script in it runs; the dashboard CSP applies inside: inline styles work, `data:` and `blob:` images and audio load and play, external scripts, styles, fonts and images do not. Links open in a new tab, `#section` links move within the document, and the frame grows to the document's height without scrolling on its own. A full-screen button shows the reading content alone; Close or Escape returns. CLI: `--html page.html` with a save or `--update` attaches it; `--get` adds `document: { bytes, updatedAt } | null`.
+
 ### Digests (when `DIGEST` is on)
 
 | Route | Who | Result |
@@ -157,7 +169,7 @@ A digest has 1 to 12 sections of kind `articles` or `messages`, each with at mos
 | `GET /api/v1/records/:id/narration/audio` | owner, agent in read scope | audio with byte ranges |
 | `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part (`articles`, `messages`) or the whole digest (`all`) |
 
-Only research, work-report, note and social records can be narrated. Limits: 6000-character scripts (10,000 for a digest, whose script tells every sentence of each article summary and is written once more when a Korean one leaves out a number the summary states), 20 queued jobs, `NARRATION_DAILY_LIMIT` runs per day (default 20) and 3 failed attempts per content version. `style` is `read` (one voice) or `podcast` (two hosts, records only); the state reports the style last chosen, which is the default for the next request. A busy or rate-limited provider is retried with backoff, and the script falls back to `NARRATION_SCRIPT_FALLBACK_MODEL`. Each job reports its stage, `progress` (while scripting the script characters streamed in so far over the expected length; while speaking the chunks done and total) and `stepAt` (when the current step began); a failure names its cause. A Korean script with plain (반말) endings or written almost all in 해요체 or in 습니다체 is written once more. Korean audio reads each number before a known unit as it is spoken (5곳 다섯 곳, 6월 유월, 4.2% 사 점 이 퍼센트); the saved script keeps the digits.
+Only research, work-report, note and social records can be narrated. Limits: 6000-character scripts (10,000 for a digest, whose script tells every sentence of each article summary and is written once more when a Korean one leaves out a number the summary states), 20 queued jobs, `NARRATION_DAILY_LIMIT` runs per day (default 20) and 3 failed attempts per content version. `style` is `read` (one voice) or `podcast` (two hosts, records only); the state reports the style last chosen, which is the default for the next request. A busy or rate-limited provider is retried with backoff, and the script falls back to `NARRATION_SCRIPT_FALLBACK_MODEL`. Each job reports its stage, `progress` (while scripting the script characters streamed in so far over the expected length; while speaking the chunks done and total) and `stepAt` (when the current step began); a failure names its cause. A record is scripted from its whole body: code, tables, link-only lines and source or reference sections are left out, the rest is split at its headings into parts of at most 5,000 characters, each part is scripted in order (up to 18,000 characters each, else the job fails as `script_too_long`), and a part script under 60% of its source is written once more. Scripts saved under earlier rules are rewritten. A Korean script with plain (반말) endings or written almost all in 해요체 or in 습니다체 is written once more. Korean audio reads each number before a known unit as it is spoken (5곳 다섯 곳, 6월 유월, 4.2% 사 점 이 퍼센트); the saved script keeps the digits.
 
 ### Push (when `PUSH` is on)
 
@@ -190,7 +202,7 @@ With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](doc
 - 300 requests per minute per credential; unknown credentials share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
 - Requests must carry an allowed `Host` (else `421 invalid_host`) and, when present, an allowed `Origin` (else `403 origin`).
 - JSON bodies only (`415 unsupported_media_type`), size-capped (`413 too_large`).
-- Every response sets a strict Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff` and `Cache-Control: no-store`.
+- Every response sets a strict Content-Security-Policy (scripts from the app only; images and media also from `data:` and `blob:`), `X-Frame-Options: DENY`, `nosniff` and `Cache-Control: no-store`.
 
 ## Time
 

@@ -59,6 +59,29 @@ export async function updateRecord(
     .json<unknown>();
 }
 
+/** PUT /api/v1/records/:id/document: attaches or replaces the record's HTML full document (only on records this agent created). */
+export async function putDocument(connection: AgentConnection, id: string, html: string): Promise<unknown> {
+  return ky
+    .put(new URL(`/api/v1/records/${encodeURIComponent(id)}/document`, connection.url), {
+      headers: { authorization: `Bearer ${connection.token}` },
+      json: { html },
+      timeout: 30_000,
+      retry: 0,
+    })
+    .json<unknown>();
+}
+
+/** GET /api/v1/records/:id/document: the record's full document, or `{ document: null }`. */
+export async function getDocument(connection: AgentConnection, id: string): Promise<unknown> {
+  return ky
+    .get(new URL(`/api/v1/records/${encodeURIComponent(id)}/document`, connection.url), {
+      headers: { authorization: `Bearer ${connection.token}` },
+      timeout: 15_000,
+      retry: 0,
+    })
+    .json<unknown>();
+}
+
 /** GET /api/v1/comments: the owner's comments in this agent's queue (state new|open|all), or one item's whole timeline. */
 export async function listComments(
   connection: AgentConnection,
