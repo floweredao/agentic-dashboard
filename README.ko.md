@@ -203,13 +203,23 @@ bun run agent --digest digest.json       # { date, slot, sections: [{ key, title
 |---|---|
 | 웹 푸시 | `PUSH` (기본 켜짐, 키 자동 생성) |
 | 다이제스트 | `DIGEST` (기본 켜짐) |
-| 듣기(음성 합성) | `GEMINI_API_KEY`, 또는 `server/narration.ts`의 `NarrationProvider`로 직접 구현. 목소리는 설정입니다: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`, 바쁠 때 쓰는 `NARRATION_SCRIPT_FALLBACK_MODEL` |
+| 듣기(음성 합성) | `GEMINI_API_KEY`, 또는 `server/narration.ts`의 `NarrationProvider`로 직접 구현. 목소리는 설정입니다: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE`, 바쁠 때 쓰는 `NARRATION_SCRIPT_FALLBACK_MODEL`. 음성 요금을 키의 한도 대신 Google Cloud 프로젝트로 내려면 `NARRATION_TTS_PROVIDER=vertex`와 `NARRATION_VERTEX_PROJECT`를 설정하고 ADC로 로그인합니다(아래 참고) |
 | 저장한 링크의 AI 제목 채우기 | `AI_FILL_COMMAND`: 표준 입력으로 프롬프트를 받아 JSON을 출력하는 아무 CLI |
 | 채팅 앱용 MCP | `ENABLE_MCP=on`과 `MCP_AGENT=<등록한 에이전트>` |
 | 에이전트 전용 리스너 | `ENABLE_AGENT_INGRESS=on` |
 | 신원 확인 프록시로 로그인 | `TRUSTED_USER_HEADER`와 `OWNER_LOGIN` |
 
 어떤 기능이 켜져 있는지는 `GET /api/v1/config`가 알려 줍니다. 모든 변수 설명은 [.env.example](.env.example)에 있습니다.
+
+### Vertex AI로 음성 만들기
+
+`NARRATION_TTS_PROVIDER=vertex`면 원고가 아닌 음성을 Vertex AI의 Gemini TTS가 만들고, 요금은 Gemini API 키의 무료 한도가 아니라 Google Cloud 프로젝트로 나갑니다. 원고에는 여전히 `GEMINI_API_KEY`가 필요합니다.
+
+1. 프로젝트에서 결제와 Vertex AI API를 켭니다(`gcloud services enable aiplatform.googleapis.com --project=<프로젝트 ID>`).
+2. 서버에서 한 번 로그인합니다: `gcloud auth application-default login`. 서버는 `~/.config/gcloud/application_default_credentials.json` 또는 `GOOGLE_APPLICATION_CREDENTIALS`가 가리키는 파일을 읽습니다(Docker에서는 이 파일을 읽기 전용으로 마운트하고 변수를 그 경로로 둡니다). 사용자 로그인(`authorized_user`)만 지원하며 API 키는 만들지 않습니다.
+3. `NARRATION_TTS_PROVIDER=vertex`, `NARRATION_VERTEX_PROJECT=<프로젝트 ID>`를 설정합니다. 모델은 `global` 위치에서 제공됩니다(`NARRATION_VERTEX_LOCATION`).
+
+음성은 키로 되돌아가지 않습니다. 로그인이 끝나면 `vertex_auth`, 결제나 API가 꺼져 있으면 `vertex_disabled`, Vertex 한도를 다 쓰면 `vertex_quota`(먼저 다시 시도)로 실패하고, 플레이어가 할 일을 알려 줍니다. 호출마다 `narration tts: aiplatform.googleapis.com <모델> <위치> <상태> audio_tokens=<n>`이 로그에 남습니다(오디오 1초에 25토큰).
 
 ## 배포
 

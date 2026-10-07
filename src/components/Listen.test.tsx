@@ -179,6 +179,14 @@ test("each cause of a failure reads differently: a busy server, a per-minute lim
   expect(daily).toContain("내일");
 });
 
+test("a Vertex failure says what to do: log in again, turn the API or billing back on, or wait out the quota", () => {
+  const [auth, disabled, quota] = ["vertex_auth", "vertex_disabled", "vertex_quota"].map(code => narrationFailure(code));
+  expect(auth).toContain("gcloud auth application-default login");
+  expect(disabled).toContain("결제");
+  expect(quota).toContain("Vertex");
+  expect(new Set([auth, disabled, quota, narrationFailure("http_429"), narrationFailure(null)]).size).toBe(5);
+});
+
 test("a label prefixes the commands and the row text for the digest 전체 view", () => {
   expect(labels({ narration: null, available: true }, "메일")).toEqual(["메일 음성 만들기"]);
   const html = bar({ narration: { ...base, status: "queued" }, available: true }, { label: "뉴스" });
