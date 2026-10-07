@@ -19,7 +19,7 @@ test("every CLI message exists in English and Korean with the same placeholders"
 });
 
 test("server.env values survive a write and read, quotes and spaces included", () => {
-  const values = { DATA_DIR: "/Users/a b/data \"x\"", PORT: "4391", APP_ORIGIN: "https://desk.example.com" };
+  const values = { DATA_DIR: "/home/a b/data \"x\"", PORT: "4391", APP_ORIGIN: "https://desk.example.com" };
   expect(parseEnv(formatEnv("# header", values))).toEqual(values);
   expect(parseEnv("# note\nPORT=4310\nEMPTY=\nbad line\n")).toEqual({ PORT: "4310", EMPTY: "" });
 });
