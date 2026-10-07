@@ -210,12 +210,15 @@ export const NarrationAudioSchema = z.object({
  * `waitUntil`: while the running job waits out a busy or rate-limited provider, when its next try starts; null otherwise.
  * `progress`: while scripting, the script characters received so far and the expected length; while speaking, chunks done and total.
  * `stepAt`: when the current step began (waiting its turn, writing the script, the chunk being spoken, saving); null when no job runs.
+ * `scriptTry`: while scripting on a second or later try of the script model, which try is running; absent otherwise, so the
+ * state keeps the shape that clients built before it (strict schemas) can read.
  */
 export const NarrationSchema = z.object({
   recordId: z.string().uuid(), status: NarrationStatusSchema, style: NarrationStyleSchema, stale: z.boolean(),
   progress: z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict().nullable(),
   waitUntil: z.iso.datetime().nullable(),
   stepAt: z.iso.datetime().nullable(),
+  scriptTry: z.number().int().min(2).optional(),
   attempts: z.number().int().nonnegative(), error: z.string().nullable(),
   requestedBy: z.string(), requestedAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
   audio: NarrationAudioSchema.nullable(), script: z.string().nullable(),

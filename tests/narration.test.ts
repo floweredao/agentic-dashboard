@@ -34,10 +34,10 @@ function fake(): Fake {
   const state: Fake = { calls: { script: 0, speak: [], prompts: [], systems: [], converse: [], models: [], voices: [], styles: [], hosts: [] }, available: true, failSpeak: 0, error: null, scriptText: SCRIPT,
     hold: null, scriptHold: null, scriptErrors: [], speakErrors: [], scriptTexts: [], provider: null as never };
   state.provider = {
-    ttsModel: "fake-tts", scriptModel: "fake-script", fallbackScriptModel: "fake-lite", voice: "Kore", hosts: ["Kore", "Puck"],
+    ttsModel: "fake-tts", scriptModel: "fake-script", voice: "Kore", hosts: ["Kore", "Puck"],
     available: async () => state.available,
-    script: async (system, prompt, signal, model, onText) => {
-      state.calls.models.push(model ?? "fake-script");
+    script: async (system, prompt, signal, route, onText) => {
+      state.calls.models.push(route ?? "fake-script");
       const failure = state.scriptErrors.shift();
       if (failure) throw failure;
       state.calls.script += 1; state.calls.prompts.push(prompt); state.calls.systems.push(system);
@@ -157,6 +157,8 @@ test("while the script streams in, the job reports the characters received again
   // Then: it reports the characters received over the expected length, and when writing the script began.
   expect(during).toMatchObject({ status: "scripting", progress: { done: Math.floor(TWO_CHUNKS.length / 2) } });
   expect(during?.progress?.total).toBeGreaterThan(0);
+  // A first try is not named: the state keeps the shape older clients know.
+  expect(Object.keys(during ?? {})).not.toContain("scriptTry");
   expect(Date.parse(during?.stepAt ?? "")).toBeLessThanOrEqual(Date.now());
   gate.release.resolve();
   await idle();
@@ -363,56 +365,121 @@ function waits() {
 }
 const busy = () => new ProviderError("http_503", true);
 
-test("a busy script model is retried with growing waits, then the lighter model writes the script", async () => {
+const TRIES = NARRATION_LIMITS.retries + 1;
+
+test("a busy script model is retried with growing waits on the same model, and when every try fails the job fails without audio", async () => {
   // Given: the script model answers 503 (high demand) to every try.
   const clock = waits();
-  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  const { f, tts, idle, audioFiles } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
   const owner = await f.login();
   const record = await research(f, owner);
-  tts.scriptErrors = Array.from({ length: NARRATION_LIMITS.retries + 1 }, busy);
+  tts.scriptErrors = Array.from({ length: TRIES }, busy);
   // When: the owner asks for audio.
   await f.call(narration(record.id), "POST", {}, owner);
   await idle();
-  // Then: the main model is tried 1 + retries times with exponential waits (plus a little jitter), then the fallback succeeds.
-  expect(tts.calls.models).toEqual([...Array.from({ length: NARRATION_LIMITS.retries + 1 }, () => "fake-script"), "fake-lite"]);
-  // The lighter model gets the same instructions (polite speech, order, what not to read).
-  expect(tts.calls.systems).toEqual([korean(SCRIPT_SYSTEM)]);
+  // Then: only the script model is tried, 1 + retries times with exponential waits (plus a little jitter); no other model writes
+  // a script, nothing is spoken and the job fails with the model's own failure (2026-10-07: the owner wants no lighter model).
+  expect(tts.calls.models).toEqual(Array.from({ length: TRIES }, () => "fake-script"));
   expect(clock.slept).toHaveLength(NARRATION_LIMITS.retries);
   clock.slept.forEach((ms, index) => {
     expect(ms).toBeGreaterThanOrEqual(1000 * 2 ** index);
     expect(ms).toBeLessThanOrEqual(1000 * 2 ** index * 1.25);
   });
-  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
+  expect(tts.calls.speak).toEqual([]);
+  expect(tts.calls.converse).toEqual([]);
+  expect(audioFiles()).toEqual([]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "failed", error: "http_503", attempts: 1, audio: null });
 });
 
-for (const code of ["stalled", "timeout"]) test(`a script model that ${code === "stalled" ? "stalls" : "times out"} is not retried: the lighter model writes the script at once`, async () => {
+for (const code of ["stalled", "timeout"]) test(`a script model that ${code === "stalled" ? "stalls" : "times out"} is tried again at once, with the same model`, async () => {
   const clock = waits();
   const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
   const owner = await f.login();
   const record = await research(f, owner);
-  // Given: the main script model hangs (2026-10-07: no answer for minutes, retried 4 times before the fallback).
+  // Given: the script model hangs once (2026-10-07: gemini-3.8-flash on the AI Studio key sent nothing for minutes).
   tts.scriptErrors = [new ProviderError(code, true)];
   await f.call(narration(record.id), "POST", {}, owner);
   await idle();
-  // Then: no waits and no further tries of the stuck model; the lighter one wrote the script and the audio is ready.
+  // Then: no wait, the same model wrote the script on the second try, and the audio is ready.
   expect(clock.slept).toEqual([]);
-  expect(tts.calls.models).toEqual(["fake-script", "fake-lite"]);
+  expect(tts.calls.models).toEqual(["fake-script", "fake-script"]);
   expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
 });
 
-test("a used-up daily quota is not retried: the script moves to the lighter model, and speech fails as quota_daily", async () => {
+test("a script model that stalls on every try fails the job as stalled after 1 + retries tries, with no wait and no other model", async () => {
   const clock = waits();
   const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
   const owner = await f.login();
   const record = await research(f, owner);
-  // Given: the script model's daily free quota is used up, and so is the speech model's.
+  tts.scriptErrors = Array.from({ length: TRIES }, () => new ProviderError("stalled", true));
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  expect(clock.slept).toEqual([]);
+  expect(tts.calls.models).toEqual(Array.from({ length: TRIES }, () => "fake-script"));
+  expect(tts.calls.speak).toEqual([]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "failed", error: "stalled", attempts: 1, audio: null });
+});
+
+test("with two routes to the same model, a try alternates between them and a route that fails for good is not asked again", async () => {
+  const clock = waits();
+  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  (tts.provider as { scriptRoutes?: readonly string[] }).scriptRoutes = ["vertex", "gemini"];
+  const owner = await f.login();
+  const record = await research(f, owner);
+  // Given: Vertex stalls, the key route stalls, Vertex's login is refused (final), then the key route answers.
+  tts.scriptErrors = [new ProviderError("stalled", true), new ProviderError("stalled", true), new ProviderError("vertex_auth", false)];
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  // Then: vertex, gemini, vertex, then only gemini; no waits, and the audio is ready.
+  expect(tts.calls.models).toEqual(["vertex", "gemini", "vertex", "gemini"]);
+  expect(clock.slept).toEqual([]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
+});
+
+test("while a script is being tried again, the job says which try is running", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  // Given: the first try stalled and the second is streaming in.
+  tts.scriptErrors = [new ProviderError("stalled", true)];
+  const gate = (tts.scriptHold = { entered: deferred<AbortSignal>(), release: deferred<void>() });
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await gate.entered.promise;
+  // Then: the state names try 2; once the speech starts there is no script try to show.
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "scripting", scriptTry: 2 });
+  gate.release.resolve();
+  await idle();
+  // The key is left out rather than null, so clients built before it (strict schemas: the CLI, a cached app) still read the state.
+  const after = await (await f.call(narration(record.id), "GET", undefined, owner)).json() as { narration: Record<string, unknown> };
+  expect(after.narration.status).toBe("ready");
+  expect(Object.keys(after.narration)).not.toContain("scriptTry");
+});
+
+test("a used-up daily quota is not retried: the script fails as quota_daily and nothing is spoken", async () => {
+  const clock = waits();
+  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  const owner = await f.login();
+  const record = await research(f, owner);
+  // Given: the script model's daily free quota is used up.
   tts.scriptErrors = [new ProviderError("quota_daily", false)];
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  // Then: no waits, one try of the same model, no speech, and the failure says why.
+  expect(clock.slept).toEqual([]);
+  expect(tts.calls.models).toEqual(["fake-script"]);
+  expect(tts.calls.speak).toEqual([]);
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "failed", error: "quota_daily", attempts: 1 });
+});
+
+test("a used-up daily speech quota is not retried and fails as quota_daily", async () => {
+  const clock = waits();
+  const { f, tts, idle } = setup(undefined, { retryDelayMs: 1000, sleep: clock.sleep });
+  const owner = await f.login();
+  const record = await research(f, owner);
   tts.speakErrors = [new ProviderError("quota_daily", false)];
   await f.call(narration(record.id), "POST", {}, owner);
   await idle();
-  // Then: no waits, the script came from the fallback, speech was tried once, and the failure says why.
   expect(clock.slept).toEqual([]);
-  expect(tts.calls.models).toEqual(["fake-script", "fake-lite"]);
   expect(tts.calls.speak).toHaveLength(1);
   expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "failed", error: "quota_daily", attempts: 1 });
 });
