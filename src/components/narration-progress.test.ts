@@ -17,12 +17,12 @@ test("each real stage owns its own band of the bar, in order, and the bands neve
     job({ status: "speaking", progress: { done: 2, total: 2 } }),
   ].map(each => narrationStage(each, since));
   expect(stages.map(stage => [stage.label, stage.from, stage.to])).toEqual([
-    ["만들 차례를 기다리는 중", 0, 4], ["원고를 다듬는 중", 4, 30], ["음성을 만드는 중 1/2", 30, 62.5], ["음성을 만드는 중 2/2", 62.5, 95],
-    ["파일로 저장하는 중", 95, 99],
+    ["차례를 기다리고 있어요", 0, 4], ["원고를 쓰고 있어요", 4, 30], ["음성을 만들고 있어요 1/2", 30, 62.5], ["음성을 만들고 있어요 2/2", 62.5, 95],
+    ["파일로 저장하고 있어요", 95, 99],
   ]);
   stages.slice(1).forEach((stage, index) => expect(stage.from).toBeGreaterThanOrEqual(stages[index]?.to ?? Infinity));
   // One chunk is no count to show.
-  expect(narrationStage(job({ status: "speaking", progress: { done: 0, total: 1 } }), since).label).toBe("음성을 만드는 중");
+  expect(narrationStage(job({ status: "speaking", progress: { done: 0, total: 1 } }), since).label).toBe("음성을 만들고 있어요");
   expect(narrationStage(job({ status: "ready" }), since)).toMatchObject({ label: "다 만들었어요", from: 100, to: 100 });
 });
 
@@ -40,6 +40,6 @@ test("within a stage the value creeps from its start toward, never onto, the nex
 
 test("a retry wait says so while it lasts and keeps the stage's band", () => {
   const waiting = job({ status: "speaking", progress: { done: 1, total: 4 }, waitUntil: "2026-10-02T12:00:07.000Z" });
-  expect(narrationStage(waiting, since + 3000)).toMatchObject({ label: "붐벼서 잠시 기다리는 중", from: 46.25, to: 62.5 });
-  expect(narrationStage(waiting, since + 8000).label).toBe("음성을 만드는 중 2/4");
+  expect(narrationStage(waiting, since + 3000)).toMatchObject({ label: "요청이 많아 잠시 쉬었다가 이어서 만들어요", from: 46.25, to: 62.5 });
+  expect(narrationStage(waiting, since + 8000).label).toBe("음성을 만들고 있어요 2/4");
 });

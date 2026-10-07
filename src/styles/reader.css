@@ -53,6 +53,8 @@
 .listen-bar > svg { flex: none; }
 .listen-stage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .listen-working .listen-stage { flex: 1 1 auto; }
+/* A stage sentence (요청이 많아 …) wraps to a second line on a phone instead of losing its reason to an ellipsis. */
+.listen-working .listen-stage, .listen-error .listen-stage { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.35; padding: 4px 0; }
 .listen-track { position: relative; flex: none; width: clamp(64px, 26%, 160px); height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .listen-fill { position: absolute; inset: 0; border-radius: inherit; background: var(--accent); transform-origin: left center; will-change: transform; }
 .listen-percent { flex: none; min-width: 4ch; color: var(--ink); text-align: right; }
@@ -107,6 +109,8 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
   .listen-bar .btn { min-height: 32px; }
   .listen-open { min-height: 44px; }
   .listen-seek { height: 28px; }
+  /* The stage sentence gets the room; the percent beside the track already gives the exact value. */
+  .listen-working .listen-track { width: 56px; }
 }
 @media (max-width: 359px) {
   .listen-time { display: none; }

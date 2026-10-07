@@ -4,21 +4,22 @@ import { strings } from "../i18n";
 const text = strings({
   en: {
     ready: "Ready",
-    scripting: "Preparing the script",
-    saving: "Saving audio",
+    scripting: "Writing the script",
+    saving: "Saving the file",
     speaking: "Creating audio",
     speakingChunk: (done: number, total: number) => `Creating audio ${done + 1}/${total}`,
-    waiting: "Waiting to be created",
-    busy: "The provider is busy, waiting briefly",
+    waiting: "Waiting for its turn",
+    busy: "Too many requests, resuming soon",
   },
   ko: {
     ready: "다 만들었어요",
-    scripting: "원고를 다듬는 중",
-    saving: "파일로 저장하는 중",
-    speaking: "음성을 만드는 중",
-    speakingChunk: (done: number, total: number) => `음성을 만드는 중 ${done + 1}/${total}`,
-    waiting: "만들 차례를 기다리는 중",
-    busy: "붐벼서 잠시 기다리는 중",
+    scripting: "원고를 쓰고 있어요",
+    saving: "파일로 저장하고 있어요",
+    speaking: "음성을 만들고 있어요",
+    speakingChunk: (done: number, total: number) => `음성을 만들고 있어요 ${done + 1}/${total}`,
+    waiting: "차례를 기다리고 있어요",
+    // A pause for the provider's request limit (a 429/503 retry or the pace between parts); the job goes on by itself after it.
+    busy: "요청이 많아 잠시 쉬었다가 이어서 만들어요",
   },
 });
 

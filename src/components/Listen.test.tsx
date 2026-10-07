@@ -41,14 +41,14 @@ test("a running job shows one compact row with its stage, a percent bar inside t
   const speaking = bar({ narration: { ...base, status: "speaking", progress: { done: 2, total: 5 } }, available: true });
   // Then the stage is stated with a percent, the bar stays inside the stage's band, and x cancels
   expect(scripting).toContain('class="listen-bar listen-working" role="status"');
-  expect(text(scripting)).toContain("원고를 다듬는 중");
+  expect(text(scripting)).toContain("원고를 쓰고 있어요");
   expect(scripting).toMatch(/role="progressbar" aria-label="[^"]+" aria-valuemin="0" aria-valuemax="100"/);
   expect(percentOf(scripting)).toBeGreaterThanOrEqual(4);
   expect(percentOf(scripting)).toBeLessThan(30);
   expect(text(scripting)).toContain(`${percentOf(scripting)}%`);
   expect(percentOf(speaking)).toBeGreaterThanOrEqual(56);
   expect(percentOf(speaking)).toBeLessThan(69);
-  expect(text(speaking)).toContain("음성을 만드는 중 3/5");
+  expect(text(speaking)).toContain("음성을 만들고 있어요 3/5");
   expect(speaking).toMatch(/<button[^>]*aria-label="음성 만들기 취소"/);
   expect(labels({ narration: { ...base, status: "queued" }, available: true })).toEqual(["음성 만들기 취소"]);
 });
@@ -67,11 +67,11 @@ test("a failure the owner closed stays closed on this device, until the job fail
   expect(failureDismissed("00000000-0000-4000-8000-000000000202", "2026-10-02T11:10:00.000Z", read)).toBe(false);
 });
 
-test("while the cancel is in flight the row says 취소하는 중 and the x is disabled", () => {
+test("while the cancel is in flight the row says 취소하고 있어요 and the x is disabled", () => {
   // Given x was pressed and the server has not answered yet
   const html = bar({ narration: { ...base, status: "speaking", progress: { done: 1, total: 5 } }, available: true }, { cancelling: true });
   // Then nothing claims it is cancelled
-  expect(text(html)).toContain("취소하는 중");
+  expect(text(html)).toContain("취소하고 있어요");
   expect(html).not.toContain("progressbar");
   expect(html).toMatch(/<button[^>]*aria-label="음성 만들기 취소"[^>]*disabled=""/);
 });
@@ -157,8 +157,14 @@ test("each cause of a failure reads differently: a busy server, a per-minute lim
 test("a label prefixes the commands and the row text for the digest 전체 view", () => {
   expect(labels({ narration: null, available: true }, "메일")).toEqual(["메일 음성 만들기"]);
   const html = bar({ narration: { ...base, status: "queued" }, available: true }, { label: "뉴스" });
-  expect(text(html)).toContain("뉴스 만들 차례를 기다리는 중");
+  expect(text(html)).toContain("뉴스 · 차례를 기다리고 있어요");
   expect(html).toContain('aria-label="뉴스 음성 만들기 취소"');
+  // A rate-limit wait names its reason and that the job goes on, set off from the label rather than run into it.
+  const waiting = bar({ narration: { ...base, status: "speaking", progress: { done: 1, total: 3 }, waitUntil: new Date(Date.now() + 60_000).toISOString() },
+    available: true }, { label: "뉴스" });
+  expect(text(waiting)).toContain("뉴스 · 요청이 많아 잠시 쉬었다가 이어서 만들어요");
+  const failed = bar({ narration: { ...base, status: "failed", error: "http_503", attempts: 1 }, available: true }, { label: "뉴스" });
+  expect(text(failed)).toContain("뉴스 · Gemini 서버가 붐비어");
 });
 
 test("the player starts at 1x unless the owner chose a rate, and a rate the owner chose is kept", () => {
