@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import type { Context } from "hono";
-import { CommentInputSchema, DIGEST_LIMITS, DigestInputSchema, DigestPartSchema, DOCUMENT_LIMITS, DocumentInputSchema, NARRATABLE_KINDS, NarrationStyleSchema, PushKindsSchema, RECORD_LIMITS, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
+import { AUTO_NARRATED_KINDS, CommentInputSchema, DIGEST_LIMITS, digestPartId, DigestInputSchema, DigestPartSchema, DOCUMENT_LIMITS, DocumentInputSchema, NARRATABLE_KINDS, NarrationStyleSchema, PushKindsSchema, RECORD_LIMITS, RecordInputSchema, RecordPatchSchema, schemaInfo } from "../shared/contracts";
 import type { Comment, DashboardRecord, PushPayload } from "../shared/contracts";
 import { createAiFill, type AiFillOptions } from "./ai-fill";
 import { systemTimeZone } from "../shared/time";
@@ -122,6 +122,11 @@ export function createApp(options: AppOptions = {}) {
     const host = strictHost ? c.req.header("host") : c.req.header("host") ?? new URL(c.req.url).host;
     return trusted !== undefined && trusted.login !== "" && !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
       host === privateUrl.host && c.req.header(trusted.header) === trusted.login;
+  };
+  /** Automatic audio for new records: a new research or work report gets its audio in the chosen style, in the background. */
+  const autoNarrate = (record: DashboardRecord) => {
+    const style = narration.autoSettings().records;
+    if (style !== "off" && AUTO_NARRATED_KINDS.some(kind => kind === record.kind)) narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
   };
   /** An agent's timeline entry: a reply to an owner comment notifies `reply`, moving its item to review notifies `review`. */
   const notifyEntry = (comment: Comment, updated: DashboardRecord | null) => {
@@ -325,6 +330,9 @@ export function createApp(options: AppOptions = {}) {
       app.delete("/api/v1/trash/:id", c => { owner(c.req.raw, true); store.destroy(c.req.param("id")); narration.prune(); return c.body(null, 204); });
       app.delete("/api/v1/trash", c => { owner(c.req.raw, true); store.emptyTrash(); narration.prune(); return c.body(null, 204); });
       /** Settings › Narration voices: the owner reads and saves the voices and speaking styles of the next narrations, and hears a voice first. */
+      /** Settings › Automatic audio: the owner reads and saves which audio is made without asking and what a record's audio reads. */
+      app.get("/api/v1/narration/auto", c => { owner(c.req.raw, false); return c.json(narration.autoSettings()); });
+      app.put("/api/v1/narration/auto", async c => { owner(c.req.raw, true); return c.json(narration.saveAuto(await json(c.req.raw))); });
       app.get("/api/v1/narration/voices", c => { owner(c.req.raw, false); return c.json(narration.voices()); });
       app.put("/api/v1/narration/voices", async c => { owner(c.req.raw, true); return c.json(narration.saveVoices(await json(c.req.raw))); });
       app.get("/api/v1/narration/voices/:voice/preview", async c => { owner(c.req.raw, false); return serveAudio(c, await narration.preview(c.req.param("voice"))); });
@@ -388,6 +396,13 @@ export function createApp(options: AppOptions = {}) {
         if (principal.source === "manual") throw new ApiError(403, "forbidden", "Agents upload digests");
         const input = DigestInputSchema.parse(await json(c.req.raw, DIGEST_LIMITS.bodyBytes));
         const result = digests.upsert(principal, input);
+        // Automatic digest audio: the audio of what changed is made in the background; the upload does not wait for it.
+        const mode = narration.autoSettings().digests;
+        if (mode !== "off" && result.changed.length > 0) {
+          const parts = mode === "all" ? ["all" as const]
+            : [...new Set(result.digest.sections.filter(section => result.changed.includes(section.key)).map(section => section.kind))];
+          for (const part of parts) narration.auto(principal, digestPartId(result.digest.id, part), "read");
+        }
         const notified = pushOn && input.notify && result.added.length > 0
           && push.notify([{ kind: "digest", payload: digestPayload(result.digest, result.added, result.created, options.locale) }]) > 0;
         return c.json({ digest: result.digest, created: result.created, changed: result.changed, notified }, result.created ? 201 : 200);
@@ -483,6 +498,7 @@ export function createApp(options: AppOptions = {}) {
       const result = store.create(principal, input.requestId, RecordInputSchema.parse(input.record), input.record);
       if (!result.replayed && aiFillSources.has(principal.source)) aiFill?.enqueue(result.record.id);
       if (!result.replayed && principal.source !== "manual") notifyReview(null, result.record);
+      if (!result.replayed) autoNarrate(result.record);
       return c.json(result, result.replayed ? 200 : 201);
     });
     app.get("/api/v1/records/:id", c => {
@@ -508,7 +524,7 @@ export function createApp(options: AppOptions = {}) {
   const mcpDisabled = async () => Response.json({ error: { code: "feature_disabled", message: "MCP needs MCP_AGENT" } }, { status: 503 });
   const mcpFetch = mcpAgent === undefined ? mcpDisabled : createMcpHandler({ store, agent: { id: mcpAgent, source: mcpAgent },
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
-    onCreate: id => { if (aiFillSources.has(mcpAgent)) aiFill?.enqueue(id); } });
+    onCreate: id => { if (aiFillSources.has(mcpAgent)) aiFill?.enqueue(id); autoNarrate(store.get(id)); } });
   return { fetch: (request: Request) => privateApp.fetch(request), publicFetch: (request: Request) => publicApp.fetch(request),
     mcpFetch, aiFill, narration, push, agents, invites, timeZone, purgeTrash: () => { const purged = store.purgeTrash(); narration.prune(); return purged; },
     close: () => store.close() };

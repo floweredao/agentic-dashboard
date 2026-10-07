@@ -192,7 +192,7 @@ export const NARRATABLE_KINDS = ["research", "work-report", "note", "social"] as
  * Cost guards for narration: script length, TTS chunk length, model input, queued jobs, generations started per Seoul day,
  * and failed generations per content version before only the owner may try again.
  */
-export const NARRATION_LIMITS = { scriptChars: 6000, partScriptChars: 18000, digestScriptChars: 10000, chunkChars: 1500, sourceChars: 120000, partChars: 5000, queue: 20, dailyRuns: 20, attempts: 3, retries: 4 } as const;
+export const NARRATION_LIMITS = { scriptChars: 6000, partScriptChars: 18000, digestScriptChars: 10000, chunkChars: 1500, sourceChars: 120000, partChars: 5000, queue: 20, dailyRuns: 20, autoDailyRuns: 30, attempts: 3, retries: 4 } as const;
 /** queued -> scripting (listening script) -> speaking (TTS chunks) -> ready | failed. */
 export const NarrationStatusSchema = z.enum(["queued", "scripting", "speaking", "ready", "failed"]);
 export type NarrationStatus = z.infer<typeof NarrationStatusSchema>;
@@ -244,6 +244,18 @@ export const NarrationVoiceSettingsSchema = z.object({
   settings: NarrationVoicesSchema, defaults: NarrationVoicesSchema, voices: z.array(VoiceSchema),
 }).strict();
 export type NarrationVoiceSettings = z.infer<typeof NarrationVoiceSettingsSchema>;
+/**
+ * GET and PUT /api/v1/narration/auto (Settings › Automatic audio). `digests`: a digest's audio is made when it arrives, for
+ * each changed part (`parts`), as one audio of the whole digest (`all`) or not at all. `records`: a new research or work
+ * report gets its audio in that style; while it is on, the daily limit is at least `autoDailyRuns`. `scope`: what a record's
+ * audio reads, its full document or only its summary (conclusion, summary, next actions). Unchanged content is never made again.
+ */
+export const NarrationAutoSchema = z.object({
+  digests: z.enum(["off", "parts", "all"]), records: z.enum(["off", "read", "podcast"]), scope: z.enum(["full", "summary"]),
+}).strict();
+export type NarrationAuto = z.infer<typeof NarrationAutoSchema>;
+/** The record kinds whose new records get audio when New records is on. */
+export const AUTO_NARRATED_KINDS = ["research", "work-report"] as const;
 
 /**
  * A record's attached HTML document (full document), for research, work-report, note and social records. The dashboard shows

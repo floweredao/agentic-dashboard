@@ -41,6 +41,8 @@ const parsed = z.object({
   NARRATION_TTS_PROVIDER: z.enum(["gemini", "vertex"]).default("gemini"),
   NARRATION_VERTEX_PROJECT: z.string().trim().min(1).optional(),
   NARRATION_VERTEX_LOCATION: z.string().trim().min(1).default(VERTEX_LOCATION),
+  /** Automatic digest audio until the owner chooses in Settings: each changed part, one audio for the whole digest, or off. */
+  NARRATION_DIGEST_AUTO: z.enum(["off", "parts", "all"]).default("off"),
   NARRATION_DAILY_LIMIT: z.coerce.number().int().min(0).max(200).default(NARRATION_LIMITS.dailyRuns),
   AUDIO_DIR: z.string().trim().min(1).optional(),
   AI_FILL_COMMAND: z.string().trim().min(1).optional(),
@@ -92,7 +94,7 @@ const app = createApp({
       ...(config.NARRATION_TTS_PROVIDER === "vertex" && config.NARRATION_VERTEX_PROJECT ? { vertex: {
         project: config.NARRATION_VERTEX_PROJECT, location: config.NARRATION_VERTEX_LOCATION, credentials: adcCredentials(),
       } } : {}) }),
-    dailyLimit: config.NARRATION_DAILY_LIMIT, ...(config.AUDIO_DIR ? { audioDir: config.AUDIO_DIR } : {}),
+    dailyLimit: config.NARRATION_DAILY_LIMIT, autoDefaults: { digests: config.NARRATION_DIGEST_AUTO }, ...(config.AUDIO_DIR ? { audioDir: config.AUDIO_DIR } : {}),
   } } : {}),
 });
 if (config.ENABLE_MCP && config.MCP_AGENT) {
