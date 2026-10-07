@@ -51,6 +51,15 @@ test("a long step says how long it has run, in words, while the value stays put"
   expect(narrationStage(speaking, since + 120_000).label).toBe("음성을 만들고 있어요 2/3 · 2분째");
 });
 
+test("a script tried again says which try is running, before how long it has run", () => {
+  const first = job({ status: "scripting", progress: { done: 0, total: 1000 }, stepAt: "2026-10-02T12:00:00.000Z" });
+  expect(narrationStage(first, since).label).toBe("원고를 쓰고 있어요");
+  const second = job({ ...first, scriptTry: 2 });
+  expect(narrationStage(second, since).label).toBe("원고를 쓰고 있어요 · 2번째 시도");
+  expect(narrationStage(second, since + 40_000).label).toBe("원고를 쓰고 있어요 · 2번째 시도 · 40초째");
+  expect(narrationStage(second, since).value).toBe(narrationStage(first, since).value);
+});
+
 test("a retry wait says so while it lasts and keeps the reported value", () => {
   const waiting = job({ status: "speaking", progress: { done: 1, total: 4 }, waitUntil: "2026-10-02T12:00:57.000Z", stepAt: "2026-10-02T12:00:00.000Z" });
   expect(narrationStage(waiting, since + 50_000)).toEqual({ label: "요청이 많아 잠시 쉬었다가 이어서 만들어요", value: 46.25 });
