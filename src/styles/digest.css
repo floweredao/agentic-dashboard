@@ -218,6 +218,13 @@
 .voice-role-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .voice-role-head .more-label { color: var(--ink); font-size: 15px; font-weight: 500; }
 .segmented.voice-gender { grid-template-columns: repeat(2, minmax(64px, 1fr)); }
+/* Automatic audio: a label and note above a full-width segmented choice, saved on tap. */
+.auto-row .more-text { display: grid; gap: 4px; }
+.auto-row .more-label { color: var(--ink); font-size: 15px; font-weight: 500; }
+.segmented.auto-choice-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.segmented.auto-choice-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.segmented.auto-choice button { padding: 0 6px; text-align: center; }
+.segmented.auto-choice button:disabled { cursor: progress; }
 .voice-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .voice-pick select { min-height: 40px; }
 .voice-pick select[aria-invalid="true"] { border-color: var(--danger); }

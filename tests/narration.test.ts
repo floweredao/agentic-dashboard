@@ -1193,3 +1193,131 @@ test("a voice preview is spoken once with that voice and then served from the sa
   expect((await f.call(`${VOICES}/ko-kr-nobody-9/preview`, "GET", undefined, owner)).status).toBe(404);
   expect((await f.call(`${VOICES}/ko-kr-tutor-1/preview`, "GET", undefined, bearer("omo"))).status).toBe(403);
 });
+
+const AUTO = "/api/v1/narration/auto";
+const articles = (...titles: string[]) => ({ key: "domestic", title: "Domestic", kind: "articles",
+  items: titles.map(title => ({ key: title, title, source: "Wire", summary: `${title} summary`, url: "https://news.example.com/a" })) });
+const messages = (subject: string) => ({ key: "inbox", title: "Inbox", kind: "messages", items: [{ key: subject, importance: "todo", from: "Carrier", subject }] });
+const uploadDigest = (f: Fixture, sections: unknown[]) =>
+  f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections }, bearer("omo"));
+const digestId = async (response: Response) => (await response.json() as { digest: { id: string } }).digest.id;
+
+test("with digest audio set to parts, an upload makes each changed part's audio in the background, and never an unchanged one", async () => {
+  const { f, tts, idle } = setup(undefined, { autoDefaults: { digests: "parts" } });
+  const owner = await f.login();
+  // When: an agent uploads articles and messages while the speech provider is held, so no audio can finish yet.
+  const held = hold(tts);
+  const created = await uploadDigest(f, [articles("First article"), messages("First message")]);
+  // Then: the upload answers at once.
+  expect(created.status).toBe(201);
+  const id = await digestId(created);
+  await held.entered.promise;
+  held.release.resolve();
+  await idle();
+  // And: the articles and the messages each have ready, current audio from one script, with nobody asking.
+  for (const part of ["articles", "messages"] as const) {
+    const state = await read(await f.call(`/api/v1/digests/${digestPartId(id, part)}/narration`, "GET", undefined, owner));
+    expect(state.narration).toMatchObject({ status: "ready", stale: false, style: "read" });
+  }
+  expect(tts.calls.script).toBe(2);
+  // When: the same digest comes again, then with new messages only.
+  await uploadDigest(f, [articles("First article"), messages("First message")]);
+  await idle();
+  expect(tts.calls.script).toBe(2);
+  await uploadDigest(f, [messages("Second message")]);
+  await idle();
+  // Then: only the messages are made again.
+  expect(tts.calls.script).toBe(3);
+  expect(tts.calls.prompts[2]).toContain("Second message");
+  expect((await read(await f.call(`/api/v1/digests/${id}/narration`, "GET", undefined, owner))).narration).toMatchObject({ status: "ready", stale: false });
+});
+
+test("a digest part that changes while its audio is being made is made again once that job ends", async () => {
+  const { f, tts, idle } = setup(undefined, { autoDefaults: { digests: "parts" } });
+  const owner = await f.login();
+  const held = hold(tts);
+  const id = await digestId(await uploadDigest(f, [articles("Early article")]));
+  await held.entered.promise;
+  // When: more articles arrive while the first articles audio is being spoken.
+  await uploadDigest(f, [articles("Early article", "Late article")]);
+  held.release.resolve();
+  await idle();
+  // Then: the articles audio is remade from the later articles and is current.
+  expect(tts.calls.script).toBe(2);
+  expect(tts.calls.prompts[1]).toContain("Late article");
+  expect((await read(await f.call(`/api/v1/digests/${id}/narration`, "GET", undefined, owner))).narration).toMatchObject({ status: "ready", stale: false });
+});
+
+test("digest audio set to all makes one audio for the whole digest; off (the default) makes none", async () => {
+  const off = setup();
+  const offOwner = await off.f.login();
+  const plainId = await digestId(await uploadDigest(off.f, [articles("Article"), messages("Message")]));
+  await off.idle();
+  expect(off.tts.calls.script).toBe(0);
+  expect((await read(await off.f.call(`/api/v1/digests/${plainId}/narration`, "GET", undefined, offOwner))).narration).toBeNull();
+  const all = setup(undefined, { autoDefaults: { digests: "all" } });
+  const owner = await all.f.login();
+  const id = await digestId(await uploadDigest(all.f, [articles("Article"), messages("Message")]));
+  await all.idle();
+  expect(all.tts.calls.script).toBe(1);
+  expect((await read(await all.f.call(`/api/v1/digests/${digestPartId(id, "all")}/narration`, "GET", undefined, owner))).narration?.status).toBe("ready");
+  expect((await read(await all.f.call(`/api/v1/digests/${id}/narration`, "GET", undefined, owner))).narration).toBeNull();
+});
+
+test("the owner reads and saves the automatic audio settings, which survive a restart; agents and bad input are refused", async () => {
+  const { f } = setup();
+  const owner = await f.login();
+  expect(await (await f.call(AUTO, "GET", undefined, owner)).json()).toEqual({ digests: "off", records: "off", scope: "full" });
+  const saved = await f.call(AUTO, "PUT", { digests: "all", records: "podcast", scope: "summary" }, owner);
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toEqual({ digests: "all", records: "podcast", scope: "summary" });
+  f.restart();
+  const again = await f.login();
+  expect(await (await f.call(AUTO, "GET", undefined, again)).json()).toEqual({ digests: "all", records: "podcast", scope: "summary" });
+  expect((await f.call(AUTO, "GET", undefined, bearer("omo"))).status).toBe(403);
+  expect((await f.call(AUTO, "PUT", { digests: "off", records: "off", scope: "full" }, bearer("omo"))).status).toBe(403);
+  expect((await f.call(AUTO, "PUT", { digests: "sometimes", records: "off", scope: "full" }, again)).status).toBe(400);
+  const { "X-CSRF-Token": _csrf, ...withoutCsrf } = again;
+  expect((await f.call(AUTO, "PUT", { digests: "off", records: "off", scope: "full" }, withoutCsrf)).status).toBe(403);
+});
+
+test("with new-record audio on, each new research or work report gets audio in the chosen style, and the daily limit rises to 30", async () => {
+  // Given: a daily limit of 1 and new-record audio turned on as podcast.
+  const { f, tts, idle } = setup(1);
+  const owner = await f.login();
+  expect((await f.call(AUTO, "PUT", { digests: "off", records: "podcast", scope: "full" }, owner)).status).toBe(200);
+  // When: an agent saves two research records and a note.
+  const save = async (record: Record<string, unknown>) =>
+    recordResult.parse(await (await f.call("/api/v1/records", "POST", payload(agentRecord(record)), bearer("omo"))).json()).record;
+  const first = await save({ title: "First research", body: "First body" });
+  const second = await save({ title: "Second research", body: "Second body" });
+  const note = await save({ kind: "note", title: "Note", body: "Note body" });
+  await idle();
+  // Then: both research records have podcast audio (two runs under a limit of 1 needed the raised limit); the note has none.
+  for (const record of [first, second]) {
+    expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", style: "podcast" });
+  }
+  expect((await read(await f.call(narration(note.id), "GET", undefined, owner))).narration).toBeNull();
+  expect(tts.calls.converse.length).toBeGreaterThan(0);
+});
+
+test("with records set to read only their summary, the script leaves the body out; back on the full document the body is read", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = recordResult.parse(await (await f.call("/api/v1/records", "POST", payload(agentRecord({
+    title: "Scope research", body: "A sentence only in the body.", fields: { summary: "A sentence in the summary", conclusion: "The conclusion", nextActions: "- none" } })), bearer("omo"))).json()).record;
+  expect((await f.call(AUTO, "PUT", { digests: "off", records: "off", scope: "summary" }, owner)).status).toBe(200);
+  // When: the owner asks for the record's audio under Summary only.
+  expect((await f.call(narration(record.id), "POST", { style: "read" }, owner)).status).toBe(202);
+  await idle();
+  // Then: the script was written from the summary fields only.
+  expect(tts.calls.prompts[0]).toContain("A sentence in the summary");
+  expect(tts.calls.prompts[0]).not.toContain("A sentence only in the body");
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.status).toBe("ready");
+  // When: the scope goes back to the full document and the owner asks again without forcing.
+  expect((await f.call(AUTO, "PUT", { digests: "off", records: "off", scope: "full" }, owner)).status).toBe(200);
+  expect((await f.call(narration(record.id), "POST", { style: "read" }, owner)).status).toBe(202);
+  await idle();
+  // Then: a new script covers the body.
+  expect(tts.calls.prompts[1]).toContain("A sentence only in the body");
+});
