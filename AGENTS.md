@@ -34,3 +34,4 @@ On a machine that provides a shared `heavy` gate (the maintainer's Mac does), ru
 - UI strings exist in English and Korean.
 - Keep diffs small and focused. Don't add dependencies without a clear reason.
 - Don't add CI workflows.
+- 한국어 문서 이름은 README-ko.md로 통일한다.

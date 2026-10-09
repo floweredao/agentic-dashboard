@@ -19,7 +19,7 @@
     ".env.example",
     "CONTRACT.md",
     "CHANGELOG.md",
-    "README.ko.md"
+    "README-ko.md"
   ],
   "engines": {
     "bun": ">=1.3.0"
