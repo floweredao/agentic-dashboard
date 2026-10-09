@@ -25,7 +25,7 @@
   <a href="#connect-your-agents">Connect your agents</a> ·
   <a href="docs/deploy.md">Deploy</a> ·
   <a href="#faq">FAQ</a> ·
-  <a href="README.ko.md">한국어</a>
+  <a href="README-ko.md">한국어</a>
 </p>
 
 <p align="center">
