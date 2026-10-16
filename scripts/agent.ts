@@ -4,15 +4,15 @@ import { z } from "zod";
 import { DocumentStateSchema, NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { NarrationState } from "../shared/contracts";
 import { storedConnection } from "../cli/client";
-import { getDocument, getNarration, getRecord, putDocument, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, trashRecord, updateRecord } from "./agent-client";
+import { digestReactions, getDocument, getNarration, getRecord, putDocument, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, trashRecord, updateRecord } from "./agent-client";
 
 let readingShared = false;
-type Action = "save" | "get" | "update" | "trash" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "digest" | "digests";
+type Action = "save" | "get" | "update" | "trash" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "digest" | "digests" | "reactions";
 let action: Action = "save";
 const labels: Record<Action, string> = {
   save: "Save", get: "Read", update: "Update", trash: "Move to trash", search: "Search", task: "Create task", report: "Report",
   comments: "List comments", mark: "Mark comment", reply: "Reply", timeline: "Read timeline", narrate: "Narration",
-  digest: "Upload digest", digests: "List digests",
+  digest: "Upload digest", digests: "List digests", reactions: "List article reactions",
 };
 /** What an agent needs from a narration: its state, and an absolute audio URL once there is audio. */
 const narrationSummary = (state: NarrationState, base: string) => {
@@ -82,6 +82,8 @@ try {
       digest: { type: "string" },
       quiet: { type: "boolean" },
       digests: { type: "boolean" },
+      "digest-reactions": { type: "boolean" },
+      days: { type: "string" },
       from: { type: "string" },
       to: { type: "string" },
       html: { type: "string" },
@@ -129,7 +131,8 @@ try {
         "Narrate:     bun run agent --narrate <record-id> [--style read|podcast] [--force] [--wait] [--interval 5] [--timeout 900]   (done 0, failed 1, timeout 2; without --style the last style, read at first)\n" +
         "Narration:   bun run agent --narration <record-id>\n" +
         "Digest:      bun run agent --digest digest.json [--quiet]   (the POST /api/v1/digests body)\n" +
-        "Digests:     bun run agent --digests [--from YYYY-MM-DD] [--to YYYY-MM-DD]",
+        "Digests:     bun run agent --digests [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n" +
+        "Reactions:   bun run agent --digest-reactions [--days 30]   (the owner's Like · Not for me · Seen it, newest first: {items, from})",
     );
   } else if (values.digest !== undefined) {
     action = "digest";
@@ -141,6 +144,9 @@ try {
     const { digest } = result;
     print({ id: digest.id, date: digest.date, slot: digest.slot, version: digest.version, created: result.created, changed: result.changed,
       notified: result.notified, counts: Object.fromEntries(digest.sections.map(section => [section.key, section.items.length])) });
+  } else if (values["digest-reactions"]) {
+    action = "reactions";
+    print(await digestReactions(await connect(), values.days === undefined ? undefined : z.coerce.number().int().min(1).max(92).parse(values.days)));
   } else if (values.digests) {
     action = "digests";
     print(await listDigests(await connect(), { ...(values.from ? { from: values.from } : {}), ...(values.to ? { to: values.to } : {}) }));

@@ -158,10 +158,14 @@ The reader opens a record with a document on it, with a [Full document | Summary
 | `POST /api/v1/digests` | agent | upsert by `date` and `slot`; 201 created or 200 updated |
 | `GET /api/v1/digests` | owner, agent | list; `from`, `to` (at most 92 days) |
 | `GET /api/v1/digests/search` | owner, agent | item search |
-| `GET /api/v1/digests/:id` | owner, agent | `{ digest }` |
+| `GET /api/v1/digests/:id` | owner, agent | `{ digest, reactions }` |
 | `POST /api/v1/digests/:id/read` | owner | `{ read, part? }` |
+| `PUT /api/v1/digests/:id/reactions` | owner | `{ section, key, reaction }` -> `{ reactions }` |
+| `GET /api/v1/digests/reactions` | owner, agent | `days` (1 to 92, default 30) -> `{ items, from }`, newest first |
 
 A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended. `notify: false` skips push. A section shows under its own `title`, except the key `social` (posts picked from social networks, kind `articles`), which the app names Social / 소셜 in its own language; a digest has no social section unless an agent sends one.
+
+Reactions: the owner can mark each article Like, Not for me or Seen it (`like`, `dislike`, `seen`; `null` takes it back). They live in the add-only table `digest_reactions` (created on start with `CREATE TABLE IF NOT EXISTS`), one per article, keyed by digest, section key and article key, and keep the article's title, source and link (`originalUrl` when present) as they were, so a later upload that rewrites the section leaves them readable. `reactions` on a digest is `{ "<section>:<key>": reaction }`. A messages section answers 400 and an article the digest does not have 404. Agents read recent reactions (`{ digestId, date, slot, section, key, reaction, title, source, url, updatedAt }`) to raise liked topics, lower disliked ones and skip stories already seen in the next digest; CLI `bun run agent --digest-reactions [--days N]`.
 
 ### Narration (when a provider key is set)
 

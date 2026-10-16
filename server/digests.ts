@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { DIGEST_LIMITS, DIGEST_PARTS, digestOfPartId, DigestPartSchema, DigestSchema, DateSchema, MESSAGE_IMPORTANCE } from "../shared/contracts";
-import type { DashboardRecord, Digest, DigestArticle, DigestHit, DigestInput, DigestMessage, DigestPart, DigestSection, DigestSummary } from "../shared/contracts";
+import { ArticleReactionInputSchema, ArticleReactionSchema, DIGEST_LIMITS, DIGEST_PARTS, digestOfPartId, DigestPartSchema, DigestSchema, DateSchema, MESSAGE_IMPORTANCE } from "../shared/contracts";
+import type { DashboardRecord, Digest, DigestArticle, DigestHit, DigestInput, DigestMessage, DigestPart, DigestReactions, DigestSection, DigestSummary, ReactionItem } from "../shared/contracts";
 import { zonedDate, zonedInstant } from "../shared/time";
 import { ApiError } from "./errors";
 import { canonical, type Principal, type Store } from "./store";
@@ -11,6 +11,9 @@ const rowSchema = z.object({
   created_at: z.string(), updated_at: z.string(), version: z.number().int(), articles_read_at: z.string().nullable(), messages_read_at: z.string().nullable(),
 });
 const rangeSchema = z.object({ from: DateSchema.optional(), to: DateSchema.optional() }).strict();
+const reactionsQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(DIGEST_LIMITS.rangeDays).default(30) }).strict();
+const reactionRowSchema = z.object({ digest_id: z.string(), date: z.string(), slot: z.string(), section: z.string(), article_key: z.string(),
+  reaction: ArticleReactionSchema, title: z.string(), source: z.string(), url: z.string(), updated_at: z.string() });
 const searchSchema = z.object({ q: z.string().trim().min(1).max(100), limit: z.coerce.number().int().min(1).max(50).default(30), part: DigestPartSchema.optional() }).strict();
 /** SQL over the `sections` JSON array: whether the digest has a section of a kind. */
 const presentSql = (part: DigestPart) => `EXISTS (SELECT 1 FROM json_each(digests.sections) WHERE json_extract(value,'$.kind')='${part}')`;
@@ -64,7 +67,11 @@ export class Digests {
     store.db.exec(`CREATE TABLE IF NOT EXISTS digests(id TEXT PRIMARY KEY, date TEXT NOT NULL, slot TEXT NOT NULL, scheduled_at TEXT NOT NULL,
         sections TEXT NOT NULL CHECK(json_valid(sections)), created_by TEXT NOT NULL REFERENCES principals(id), created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL, version INTEGER NOT NULL, articles_read_at TEXT, messages_read_at TEXT, UNIQUE(date, slot));
-      CREATE INDEX IF NOT EXISTS digests_scheduled ON digests(scheduled_at);`);
+      CREATE INDEX IF NOT EXISTS digests_scheduled ON digests(scheduled_at);
+      CREATE TABLE IF NOT EXISTS digest_reactions(digest_id TEXT NOT NULL REFERENCES digests(id), section TEXT NOT NULL, article_key TEXT NOT NULL,
+        reaction TEXT NOT NULL CHECK(reaction IN ('like','dislike','seen')), title TEXT NOT NULL, source TEXT NOT NULL, url TEXT NOT NULL,
+        updated_at TEXT NOT NULL, PRIMARY KEY(digest_id, section, article_key));
+      CREATE INDEX IF NOT EXISTS digest_reactions_updated ON digest_reactions(updated_at);`);
   }
 
   private find(date: string, slot: string): Digest | null {
@@ -154,6 +161,48 @@ export class Digests {
     }
     this.store.db.query("UPDATE digests SET articles_read_at=?, messages_read_at=? WHERE id=?").run(reads.articles, reads.messages, id);
     return summarize({ ...current, articlesReadAt: reads.articles, messagesReadAt: reads.messages, readAt: bothRead(reads.articles, reads.messages) });
+  }
+
+  /** A digest's reactions by `section:key` (404 for an unknown digest). */
+  reactions(id: string): DigestReactions {
+    if (!this.exists(id)) throw new ApiError(404, "not_found", "Digest not found");
+    const rows = this.store.db.query("SELECT section, article_key, reaction FROM digest_reactions WHERE digest_id=? ORDER BY section, article_key").all(id);
+    return Object.fromEntries(rows.map(value => {
+      const row = z.object({ section: z.string(), article_key: z.string(), reaction: ArticleReactionSchema }).parse(value);
+      return [`${row.section}:${row.article_key}`, row.reaction];
+    }));
+  }
+
+  /**
+   * Sets or clears the owner's reaction to one article the digest has now (messages take none), keeping its title, source and
+   * link so the reaction still reads after a later upload rewrites the section.
+   */
+  react(id: string, raw: unknown): DigestReactions {
+    const input = ArticleReactionInputSchema.parse(raw);
+    const digest = this.get(id);
+    const section = digest.sections.find(each => each.key === input.section);
+    if (section?.kind === "messages") throw new ApiError(400, "invalid_request", "Messages take no reactions");
+    const item = section?.items.find(each => each.key === input.key);
+    if (!section || !item) throw new ApiError(404, "not_found", "Article not found in this digest");
+    const article = item as DigestArticle;
+    if (input.reaction === null) this.store.db.query("DELETE FROM digest_reactions WHERE digest_id=? AND section=? AND article_key=?").run(id, input.section, input.key);
+    else this.store.db.query(`INSERT INTO digest_reactions(digest_id,section,article_key,reaction,title,source,url,updated_at) VALUES(?,?,?,?,?,?,?,?)
+      ON CONFLICT(digest_id,section,article_key) DO UPDATE SET reaction=excluded.reaction,title=excluded.title,source=excluded.source,url=excluded.url,updated_at=excluded.updated_at`)
+      .run(id, input.section, input.key, input.reaction, article.title, article.source, article.originalUrl ?? article.url, new Date(this.store.now()).toISOString());
+    return this.reactions(id);
+  }
+
+  /** Reactions given in the last `days` days (default 30), newest first, with each article as it was reacted to. */
+  recentReactions(raw: Record<string, string>): { items: ReactionItem[]; from: string } {
+    const query = reactionsQuerySchema.parse(raw);
+    const from = new Date(this.store.now() - query.days * DAY_MS).toISOString();
+    const rows = this.store.db.query(`SELECT r.*, d.date, d.slot FROM digest_reactions r JOIN digests d ON d.id=r.digest_id
+      WHERE r.updated_at>=? ORDER BY r.updated_at DESC, r.digest_id, r.section, r.article_key`).all(from);
+    return { from, items: rows.map(value => {
+      const row = reactionRowSchema.parse(value);
+      return { digestId: row.digest_id, date: row.date, slot: row.slot, section: row.section, key: row.article_key,
+        reaction: row.reaction, title: row.title, source: row.source, url: row.url, updatedAt: row.updated_at };
+    }) };
   }
 
   /** Articles (title, summary, source) and messages (sender, subject, summary, action) matching, newest digest first; `part` keeps to one kind. */
