@@ -1,14 +1,14 @@
 import { localized, strings } from "./i18n";
 
-export type View = "today" | "library" | "digest" | "work" | "more" | "trash" | "channels" | "settings";
-export const views: readonly View[] = ["today", "library", "digest", "work", "more", "trash", "channels", "settings"];
+export type View = "home" | "library" | "digest" | "work" | "more" | "trash" | "channels" | "settings";
+export const views: readonly View[] = ["home", "library", "digest", "work", "more", "trash", "channels", "settings"];
 const text = strings<{ readonly views: Record<View, string>; readonly previous: string }>({
   en: {
-    views: { today: "Today", library: "Library", digest: "Digest", work: "Tasks", more: "More", trash: "Trash", channels: "Channels", settings: "Settings" },
+    views: { home: "Home", library: "Library", digest: "Digest", work: "Tasks", more: "More", trash: "Trash", channels: "Channels", settings: "Settings" },
     previous: "Previous record",
   },
   ko: {
-    views: { today: "오늘", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", trash: "휴지통", channels: "채널 관리", settings: "설정" },
+    views: { home: "메인", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", trash: "휴지통", channels: "채널 관리", settings: "설정" },
     previous: "이전 기록",
   },
 });
@@ -22,7 +22,7 @@ export type Params = Readonly<Record<string, string>>;
 export type Route = { readonly view: View; readonly id: string | null; readonly params: Params };
 
 const legacy: Record<string, string> = {
-  home: "#/today", mobile: "#/today", research: "#/library", social: "#/library",
+  home: "#/home", mobile: "#/home", research: "#/library", social: "#/library",
   tasks: "#/work", projects: "#/work?show=projects", archive: "#/library?state=archived",
 };
 const isView = (value: string): value is View => (views as readonly string[]).includes(value);
@@ -37,6 +37,7 @@ const inboxStates: Readonly<Record<string, string>> = { pending: "pending", star
 export function legacyRedirect(hash: string): string | null {
   const word = /^#([a-z]+)(?:\/.*)?$/.exec(hash);
   if (word?.[1] && !hash.startsWith("#/")) return legacy[word[1]] ?? null;
+  if (hash === "#/today" || hash.startsWith("#/today?")) return "#/home";
   const route = /^#\/(inbox|archive|library)(?:\/([^?]*))?(?:\?(.*))?$/.exec(hash);
   if (!route?.[1]) return null;
   const [, view, id = "", query = ""] = route;
@@ -49,7 +50,7 @@ export function legacyRedirect(hash: string): string | null {
     const state = inboxStates[params.get("state") ?? ""];
     params.delete("state");
     if (state) params.set("state", state);
-    else if (!id && !params.has("q")) return "#/today";
+    else if (!id && !params.has("q")) return "#/home";
   }
   return formatRoute({ view: "library", id: /^[0-9a-f-]{36}$/i.test(id) ? id : null, params: Object.fromEntries(params) });
 }
@@ -59,7 +60,7 @@ export function parseRoute(hash: string): Route {
   const [candidate = "", id = ""] = path.split("/");
   const params: Record<string, string> = {};
   for (const [key, value] of new URLSearchParams(query)) if (value !== "") params[key] = value;
-  return { view: isView(candidate) ? candidate : "today", id: /^[0-9a-f-]{36}$/i.test(id) ? id : null, params };
+  return { view: isView(candidate) ? candidate : "home", id: /^[0-9a-f-]{36}$/i.test(id) ? id : null, params };
 }
 
 export function formatRoute(route: Route): string {
