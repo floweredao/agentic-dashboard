@@ -288,11 +288,15 @@ function ArticleCard({ item, index, date, section, focused, titles }: {
   const meta = [item.source, publishedLabel(item, date)].filter(Boolean).join(" · ");
   const title = splitUpdate(item.title);
   const updated = title.updated || Boolean(item.summary && splitUpdate(item.summary).updated);
+  // A picture that fails to load (moved, blocked) leaves the card as it was without one.
+  const [broken, setBroken] = useState(false);
+  const picture = !titles && !broken && item.imageUrl;
   return <li id={`item-${section}-${item.key}`} className={focused ? "focused" : undefined}>
-    <a className="digest-card" href={href} target="_blank" rel="noopener noreferrer">
+    <a className={`digest-card${picture ? " with-picture" : ""}`} href={href} target="_blank" rel="noopener noreferrer">
       <span className="digest-card-meta"><span className="digest-num">{String(index + 1).padStart(2, "0")}</span>
         <span className="digest-meta-end">{meta}<ExternalLink className="digest-card-out" size={12} aria-hidden="true" /></span></span>
       <span className="digest-card-title">{updated && <span className="digest-update">{t.updateTag}</span>}{title.text}</span>
+      {picture && <img className="digest-thumb" src={picture} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} />}
       {!titles && item.summary && <Summary text={item.summary} />}
     </a>
   </li>;
