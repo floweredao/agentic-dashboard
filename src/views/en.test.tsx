@@ -7,14 +7,13 @@ import { applyLocale } from "../i18n";
 import { DashboardContext } from "../state";
 import type { Dashboard } from "../state";
 import { fakeDashboard } from "../test-dashboard";
-import { ArchivePane } from "./Archive";
 import { ChannelsView } from "./Channels";
 import { DigestPane } from "./Digest";
-import { InboxPane } from "./Inbox";
 import { LibraryPane } from "./Library";
 import { MorePane } from "./More";
 import { Reader } from "./Reader";
 import { SettingsPane } from "./Settings";
+import { TodayPane } from "./Today";
 import { TrashPane } from "./Trash";
 import { WorkPane } from "./Work";
 
@@ -45,9 +44,9 @@ afterAll(() => {
   }
 });
 
-function render(node: ReactNode, view: "inbox" | "library" | "work" | "more" | "settings" | "channels" | "archive" | "trash" | "digest",
-  records: readonly DashboardRecord[] = [research], overrides: Partial<Dashboard> = {}) {
-  return renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard(records, { view }, overrides)}>{node}</DashboardContext.Provider>);
+function render(node: ReactNode, view: "today" | "library" | "work" | "more" | "settings" | "channels" | "trash" | "digest",
+  records: readonly DashboardRecord[] = [research], overrides: Partial<Dashboard> = {}, params: Readonly<Record<string, string>> = {}) {
+  return renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard(records, { view, params }, overrides)}>{node}</DashboardContext.Provider>);
 }
 
 async function withoutFixtureContent(markup: string) {
@@ -57,14 +56,14 @@ async function withoutFixtureContent(markup: string) {
 
 test("every pane renders without Korean UI text in English", async () => {
   const screens = [
-    render(<InboxPane />, "inbox"),
+    render(<TodayPane />, "today", [research, { ...research, id: "00000000-0000-4000-8000-000000000105", reviewState: "pending" }, { ...task, status: "review" }]),
     render(<LibraryPane />, "library"),
     render(<Reader record={research} />, "library"),
     render(<WorkPane />, "work", [task]),
     render(<MorePane />, "more"),
     render(<SettingsPane />, "settings"),
     render(<ChannelsView />, "channels"),
-    render(<ArchivePane />, "archive", [archived]),
+    render(<LibraryPane />, "library", [archived], {}, { state: "archived" }),
     render(<TrashPane now={Date.parse("2026-10-02T00:00:00Z")} />, "trash", [], { trash: [trashed] }),
     render(<DigestPane />, "digest"),
   ];

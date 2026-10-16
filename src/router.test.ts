@@ -13,28 +13,44 @@ test("routes round-trip view, record id and committed filters", () => {
 });
 
 test("unknown views and malformed ids fall back safely", () => {
-  expect(parseRoute("#/nowhere/abc")).toEqual({ view: "inbox", id: null, params: {} });
-  expect(parseRoute("")).toEqual({ view: "inbox", id: null, params: {} });
+  expect(parseRoute("#/nowhere/abc")).toEqual({ view: "today", id: null, params: {} });
+  expect(parseRoute("")).toEqual({ view: "today", id: null, params: {} });
 });
 
 test("old dashboard bookmarks redirect to the new views", () => {
-  expect(legacyRedirect("#research/pending")).toBe("#/library?type=research");
-  expect(legacyRedirect("#home")).toBe("#/inbox");
-  expect(legacyRedirect("#archive")).toBe("#/archive");
+  expect(legacyRedirect("#research/pending")).toBe("#/library");
+  expect(legacyRedirect("#home")).toBe("#/today");
+  expect(legacyRedirect("#archive")).toBe("#/library?state=archived");
   expect(legacyRedirect("#/library")).toBeNull();
+  expect(legacyRedirect("#/today")).toBeNull();
 });
 
-test("더보기 is a route and owns 보관함, 휴지통 and 채널 관리 as its section", () => {
+test("받은 항목 and 보관함 addresses open their records in 기록, and the gone kind and channel filters drop out", () => {
+  expect(legacyRedirect("#/inbox")).toBe("#/today");
+  expect(legacyRedirect("#/inbox?state=all")).toBe("#/today");
+  expect(legacyRedirect("#/inbox?state=pending")).toBe("#/library?state=pending");
+  expect(legacyRedirect("#/inbox?state=starred&q=%EA%B0%80")).toBe("#/library?q=%EA%B0%80&state=starred");
+  expect(legacyRedirect("#/inbox?state=approved&q=x")).toBe("#/library?q=x");
+  expect(legacyRedirect(`#/inbox/${a}?state=pending`)).toBe(`#/library/${a}?state=pending`);
+  expect(legacyRedirect(`#/inbox/${a}`)).toBe(`#/library/${a}`);
+  expect(legacyRedirect("#/archive")).toBe("#/library?state=archived");
+  expect(legacyRedirect(`#/archive/${a}`)).toBe(`#/library/${a}?state=archived`);
+  expect(legacyRedirect("#/library?type=research&channel=omo&q=x")).toBe("#/library?q=x");
+  expect(legacyRedirect(`#/work/${a}`)).toBeNull();
+  expect(legacyRedirect("#/more")).toBeNull();
+});
+
+test("더보기 is a route and owns 할 일, 휴지통, 채널 관리 and 설정 as its section", () => {
   expect(parseRoute("#/more")).toEqual({ view: "more", id: null, params: {} });
-  expect(["archive", "trash", "channels", "more"].map(view => sectionOf(parseRoute(`#/${view}`).view))).toEqual(["more", "more", "more", "more"]);
-  expect(["inbox", "library", "work"].map(view => sectionOf(parseRoute(`#/${view}`).view))).toEqual(["inbox", "library", "work"]);
+  expect(["work", "trash", "channels", "settings", "more"].map(view => sectionOf(parseRoute(`#/${view}`).view))).toEqual(["more", "more", "more", "more", "more"]);
+  expect(["today", "digest", "library"].map(view => sectionOf(parseRoute(`#/${view}`).view))).toEqual(["today", "digest", "library"]);
 });
 
 test("a reader opened from its list goes back one history step to that list, filters kept", () => {
-  const route = parseRoute(`#/inbox/${a}?state=all`);
-  expect(backOf(route, { from: "#/inbox?state=all" }, true)).toEqual({ hash: "#/inbox?state=all", steps: 1, place: "reader" });
+  const route = parseRoute(`#/library/${a}?state=pending`);
+  expect(backOf(route, { from: "#/library?state=pending" }, true)).toEqual({ hash: "#/library?state=pending", steps: 1, place: "reader" });
   // On a desktop the list is beside the reader, so there is nothing to go back to.
-  expect(backOf(route, { from: "#/inbox?state=all" }, false)).toBeNull();
+  expect(backOf(route, { from: "#/library?state=pending" }, false)).toBeNull();
 });
 
 test("a reader opened by address goes up to its list on a phone instead of leaving the app", () => {
@@ -51,29 +67,30 @@ test("a record reached from another record goes back to it on every width", () =
   expect(backLabel(back.hash)).toBe("이전 기록");
 });
 
-test("보관함, 휴지통 and 채널 관리 go back to where they were opened from, else up to 더보기 on a phone", () => {
-  expect(backOf(parseRoute("#/archive"), { from: "#/more" }, true)).toEqual({ hash: "#/more", steps: 1, place: "list" });
+test("할 일, 휴지통 and 채널 관리 go back to where they were opened from, else up to 더보기 on a phone", () => {
+  expect(backOf(parseRoute("#/work"), { from: "#/more" }, true)).toEqual({ hash: "#/more", steps: 1, place: "list" });
   expect(backOf(parseRoute("#/trash"), null, true)).toEqual({ hash: "#/more", steps: 0, place: "list" });
-  expect(backOf(parseRoute("#/channels"), { from: "#/inbox" }, false)).toEqual({ hash: "#/inbox", steps: 1, place: "list" });
+  expect(backOf(parseRoute("#/channels"), { from: "#/today" }, false)).toEqual({ hash: "#/today", steps: 1, place: "list" });
   // A desktop sidebar already lists them, so an address-opened one has no back.
   expect(backOf(parseRoute("#/trash"), null, false)).toBeNull();
 });
 
-test("a desktop reader inside 보관함 keeps the list's back, two history steps away", () => {
-  const route = parseRoute(`#/archive/${a}`);
-  expect(backOf(route, { from: "#/archive", listFrom: "#/inbox" }, false)).toEqual({ hash: "#/inbox", steps: 2, place: "list" });
-  expect(backOf(route, { from: "#/archive", listFrom: "#/inbox" }, true)).toEqual({ hash: "#/archive", steps: 1, place: "reader" });
+test("a desktop reader inside 할 일 keeps the list's back, two history steps away", () => {
+  const route = parseRoute(`#/work/${a}`);
+  expect(backOf(route, { from: "#/work", listFrom: "#/more" }, false)).toEqual({ hash: "#/more", steps: 2, place: "list" });
+  expect(backOf(route, { from: "#/work", listFrom: "#/more" }, true)).toEqual({ hash: "#/work", steps: 1, place: "reader" });
 });
 
 test("the tab screens have no back, wherever they were opened from", () => {
-  for (const hash of ["#/inbox", "#/library?channel=omo", "#/work", "#/more"]) {
-    expect(backOf(parseRoute(hash), { from: "#/archive" }, true)).toBeNull();
+  for (const hash of ["#/today", "#/library?state=archived", "#/digest", "#/more"]) {
+    expect(backOf(parseRoute(hash), { from: "#/trash" }, true)).toBeNull();
     expect(backOf(parseRoute(hash), null, true)).toBeNull();
   }
 });
 
 test("the back label names the screen it returns to", () => {
-  expect(backLabel("#/inbox?state=approved")).toBe("받은 항목");
+  expect(backLabel("#/library?state=pending")).toBe("기록");
+  expect(backLabel("#/today")).toBe("오늘");
   expect(backLabel("#/more")).toBe("더보기");
   expect(backLabel("#/channels")).toBe("채널 관리");
 });
