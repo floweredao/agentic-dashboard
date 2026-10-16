@@ -231,3 +231,38 @@ test("Search finds articles and messages across digests, newest first, and keeps
   expect((await f.call("/api/v1/digests/search?q=", "GET", undefined, owner)).status).toBe(400);
   expect((await f.call("/api/v1/digests/search?q=a&part=all", "GET", undefined, owner)).status).toBe(400);
 });
+
+test("The owner marks an article liked, not for them or seen; the digest reads back with it and agents read recent reactions with each article's title", async () => {
+  // Given: a morning with an article section and a message section.
+  const am = await upload(morning([articles("domestic", "Domestic", [article("a", "First story"), article("b", "Second story")]), messages("mail", "Mail", [message("m1", "Check")])]));
+  const id = am.digest.id;
+  const owner = await f.login();
+  const reactions = z.object({ reactions: z.record(z.string(), z.enum(["like", "dislike", "seen"])) }).strict();
+  const react = (body: unknown, headers: Record<string, string> = owner) => f.call(`/api/v1/digests/${id}/reactions`, "PUT", body, headers);
+  // When: the owner likes one article and marks the other seen.
+  const liked = await react({ section: "domestic", key: "a", reaction: "like" });
+  expect(liked.status).toBe(200);
+  expect(reactions.parse(await liked.json()).reactions).toEqual({ "domestic:a": "like" });
+  await react({ section: "domestic", key: "b", reaction: "seen" });
+  // Then: the digest reads back with both; a second choice replaces the first and null clears it.
+  const detail = z.object({ digest: DigestSchema, reactions: z.record(z.string(), z.string()) }).strict();
+  expect(detail.parse(await (await f.call(`/api/v1/digests/${id}`, "GET", undefined, owner)).json()).reactions).toEqual({ "domestic:a": "like", "domestic:b": "seen" });
+  expect(reactions.parse(await (await react({ section: "domestic", key: "a", reaction: "dislike" })).json()).reactions["domestic:a"]).toBe("dislike");
+  expect(reactions.parse(await (await react({ section: "domestic", key: "b", reaction: null })).json()).reactions).toEqual({ "domestic:a": "dislike" });
+  // And: only the owner reacts, with CSRF, to an article the digest has; messages take no reactions.
+  const { "X-CSRF-Token": _csrf, ...noCsrf } = owner;
+  expect((await react({ section: "domestic", key: "a", reaction: "like" }, noCsrf)).status).toBe(403);
+  expect((await react({ section: "domestic", key: "a", reaction: "like" }, bearer("omo"))).status).toBe(403);
+  expect((await react({ section: "domestic", key: "zzz", reaction: "like" })).status).toBe(404);
+  expect((await react({ section: "mail", key: "m1", reaction: "like" })).status).toBe(400);
+  expect((await react({ section: "domestic", key: "a", reaction: "love" })).status).toBe(400);
+  // When: a later upload rewrites the section, the reaction keeps the title it was given to.
+  await upload(morning([articles("domestic", "Domestic", [article("c", "New story")])]), 200);
+  // Then: an agent lists recent reactions with each article's title, source and link.
+  const recent = await f.call("/api/v1/digests/reactions?days=30", "GET", undefined, bearer("codex"));
+  expect(recent.status).toBe(200);
+  const body = z.object({ items: z.array(z.object({ digestId: z.string(), date: z.string(), slot: z.string(), section: z.string(), key: z.string(),
+    reaction: z.string(), title: z.string(), source: z.string(), url: z.string(), updatedAt: z.string() }).strict()), from: z.string() }).strict().parse(await recent.json());
+  expect(body.items).toEqual([expect.objectContaining({ digestId: id, section: "domestic", key: "a", reaction: "dislike", title: "First story", source: "Newswire", url: "https://news.example.com/a" })]);
+  expect((await f.call("/api/v1/digests/reactions?days=0", "GET", undefined, bearer("omo"))).status).toBe(400);
+});

@@ -377,6 +377,21 @@ export const DigestHitSchema = z.object({
   item: z.union([DigestMessageSchema, DigestArticleSchema]),
 }).strict();
 export type DigestHit = z.infer<typeof DigestHitSchema>;
+/** The owner's word on one article: like, not for me (dislike) or already seen. Agents read them back to tune the next digest. */
+export const ARTICLE_REACTIONS = ["like", "dislike", "seen"] as const;
+export const ArticleReactionSchema = z.enum(ARTICLE_REACTIONS);
+export type ArticleReaction = z.infer<typeof ArticleReactionSchema>;
+/** One reaction, or `null` to take it back; `section` is the key of an articles section. */
+export const ArticleReactionInputSchema = z.object({ section: DigestSectionKeySchema, key: itemKey, reaction: ArticleReactionSchema.nullable() }).strict();
+/** A digest's reactions by `section:key`. */
+export const DigestReactionsSchema = z.record(z.string(), ArticleReactionSchema);
+export type DigestReactions = z.infer<typeof DigestReactionsSchema>;
+/** A reaction with the article as it was when the owner gave it (a later upload may rewrite the section). */
+export const ReactionItemSchema = z.object({
+  digestId: z.string().uuid(), date: DateSchema, slot: DigestSlotSchema, section: DigestSectionKeySchema, key: z.string(), reaction: ArticleReactionSchema,
+  title: z.string(), source: z.string(), url: z.string(), updatedAt: z.iso.datetime(),
+}).strict();
+export type ReactionItem = z.infer<typeof ReactionItemSchema>;
 
 /** What a device can be told about; each device turns each kind on or off. */
 export const PUSH_KINDS = ["digest", "review", "reply"] as const;

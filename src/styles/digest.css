@@ -159,6 +159,17 @@
 /* What to do: an arrow and ink text, no inset box. */
 .message-action { display: flex; align-items: flex-start; gap: 6px; color: var(--ink); font-size: 15px; line-height: 1.55; font-weight: 600; word-break: keep-all; overflow-wrap: anywhere; }
 .message-action svg { flex: none; margin-top: 3px; color: var(--muted); }
+/* Like · Not for me · Seen it: a quiet row under the article, outside its link; the chosen one fills with ink like Titles only. */
+.digest-react { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 14px; }
+.digest-react-btn {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 550; line-height: 1;
+  transition: background-color 120ms var(--ease), color 120ms var(--ease), border-color 120ms var(--ease);
+}
+@media (hover: hover) { .digest-react-btn:hover { background: var(--wash); color: var(--ink); } }
+.digest-react-btn:active { opacity: .7; }
+.digest-react-btn[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
+@media (pointer: coarse) { .digest-react-btn { min-height: 36px; padding: 0 12px; } }
 /* Titles only: denser rows, titles and message actions only. */
 .digest.titles .digest-card { gap: 4px; padding: 12px 10px; }
 .digest-end { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; text-align: center; font-variant-numeric: tabular-nums; }

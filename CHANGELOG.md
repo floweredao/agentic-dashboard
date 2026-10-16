@@ -8,10 +8,11 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
-On first start the server adds a `narration_auto` table and two columns to `narrations`; back up the data folder before you upgrade.
+On first start the server adds the `narration_auto` and `digest_reactions` tables and two columns to `narrations`; back up the data folder before you upgrade.
 
 ### Added
 
+- Article reactions: each digest article ends with Like · Not for me · Seen it toggle buttons (beside the link, hidden under Titles only, none on messages). The owner's choice is saved at once with `PUT /api/v1/digests/:id/reactions`, comes back with the digest, and agents read recent ones with `GET /api/v1/digests/reactions` or `bun run agent --digest-reactions [--days N]` to tune the next digest.
 - Automatic audio in Settings: **Digests** (Off | Each part | All in one) makes a digest's audio when it arrives, only for the parts that changed; **New records** (Off | Read aloud | Podcast) makes a new research note or work report's audio, with the daily limit raised to at least 30 while it is on; **What records read** (Full document | Summary only) chooses whether a record's audio reads the whole body or only its conclusion, summary and next steps. Each choice is saved on tap. Audio is made in the background through the same queue and limits as Listen, unchanged audio is never made again, and a part that changes while its audio is being made is made again after it. New routes `GET`/`PUT /api/v1/narration/auto`; `NARRATION_DIGEST_AUTO` (`off`, `parts`, `all`; default `off`) sets the digest default.
 - A digest can carry a social section: an `articles` section with the key `social` holds posts an agent picked from a social network and is named Social / 소셜 in the app's language. It shows only when an agent sends one.
 - Articles can carry their picture: an optional `imageUrl` (https) on a digest article shows as a small thumbnail beside its source and title, loaded from the publisher's address with no referrer and never stored; Titles only hides it. The private app now allows `https:` images in its Content-Security-Policy; the public surface does not.
