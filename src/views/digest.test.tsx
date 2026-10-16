@@ -295,3 +295,18 @@ test("An article with a picture shows it as a no-referrer thumbnail beside its t
   expect(render("summary").match(/<img[^>]*>/g)).toEqual([expect.stringMatching(/class="digest-thumb" src="https:\/\/img\.example\.com\/a\.jpg" alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer"/)]);
   expect(render("titles")).not.toContain("<img");
 });
+
+test("Each article has Like · Not for me · Seen it toggles outside its link, the chosen one pressed; messages have none, and Titles only hides them", async () => {
+  const view = (density: "summary" | "titles", onReact?: () => void) => renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
+    <DigestView digest={digest} part="all" density={density} reactions={{ "local:a": "seen" }} {...(onReact ? { onReact } : {})} /></DashboardContext.Provider>);
+  applyLocale("en");
+  try {
+    const html = view("summary", () => undefined);
+    expect(await scan(html, ".digest-react button")).toEqual(["Like", "Not for me", "Seen it"]);
+    expect(html).toContain('<div class="digest-react" role="group" aria-label="Your take on: 국내 첫 소식">');
+    expect(html.match(/aria-pressed="(true|false)" data-reaction="\w+"/g)).toEqual(['aria-pressed="false" data-reaction="like"', 'aria-pressed="false" data-reaction="dislike"', 'aria-pressed="true" data-reaction="seen"']);
+    expect(html).not.toMatch(/<a [^>]*class="digest-card[^"]*"[^>]*>(?:(?!<\/a>).)*digest-react/s);
+    expect(await scan(view("titles", () => undefined), ".digest-react button")).toEqual([]);
+    expect(await scan(view("summary"), ".digest-react button")).toEqual([]);
+  } finally { applyLocale("ko"); }
+});

@@ -410,7 +410,17 @@ export function createApp(options: AppOptions = {}) {
       });
       app.get("/api/v1/digests", c => { digestReader(c.req.raw); return c.json(digests.list(c.req.query())); });
       app.get("/api/v1/digests/search", c => { digestReader(c.req.raw); return c.json(digests.search(c.req.query())); });
-      app.get("/api/v1/digests/:id", c => { digestReader(c.req.raw); return c.json({ digest: digests.get(c.req.param("id")) }); });
+      app.get("/api/v1/digests/reactions", c => { digestReader(c.req.raw); return c.json(digests.recentReactions(c.req.query())); });
+      app.get("/api/v1/digests/:id", c => {
+        digestReader(c.req.raw);
+        const id = c.req.param("id");
+        return c.json({ digest: digests.get(id), reactions: digests.reactions(id) });
+      });
+      /** Like · Not for me · Seen it on one article: owner only, with CSRF. */
+      app.put("/api/v1/digests/:id/reactions", async c => {
+        owner(c.req.raw, true);
+        return c.json({ reactions: digests.react(c.req.param("id"), await json(c.req.raw)) });
+      });
       app.post("/api/v1/digests/:id/read", async c => {
         owner(c.req.raw, true);
         const input = z.object({ read: z.boolean(), part: DigestPartSchema.optional() }).strict().parse(await json(c.req.raw));
