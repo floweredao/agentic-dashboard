@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent as RowPointerEvent, ReactNode } from "react";
-import { Archive, ArchiveRestore, BriefcaseBusiness, Library, Star, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, BriefcaseBusiness, ChevronDown, Library, Star, Trash2 } from "lucide-react";
 import type { DashboardRecord } from "../../shared/contracts";
-import { aiFilled, channelOf, channelLabel, dateLabel, excerpt, groupByDay, hostOf, isRecord, kindLabels, projectStatuses, revisitDue, taskStatuses, waitingReplies } from "../model";
+import { aiFilled, channelOf, channelLabel, dateLabel, excerpt, foldContinuations, groupByDay, hostOf, isRecord, kindLabels, projectStatuses, revisitDue, taskStatuses, waitingReplies } from "../model";
 import { strings } from "../i18n";
 import { formatRoute } from "../router";
 import { useDashboard } from "../state";
@@ -15,10 +15,12 @@ const text = strings({
   en: {
     restore: "Restore", archive: "Archive", delete: "Delete", unread: "Unread ",
     waiting: "Awaiting reply", revisit: "Revisit", due: "Due", starred: "Favorite", archived: "Archived", aiFilled: "Auto-filled", sample: "Sample",
+    thread: (count: number) => `${count} earlier ${count === 1 ? "record" : "records"}`,
   },
   ko: {
     restore: "복원", archive: "보관", delete: "삭제", unread: "미확인 ",
     waiting: "답 대기", revisit: "다시 볼 날", due: "마감", starred: "즐겨찾기", archived: "보관됨", aiFilled: "자동 작성", sample: "샘플",
+    thread: (count: number) => `이어진 기록 ${count}`,
   },
 });
 
@@ -169,15 +171,40 @@ export function RecordRow({ record, kinds = false }: { readonly record: Dashboar
   </li>;
 }
 
-/** Rows with optional sticky day headers. Rows carry `id="row-<id>"` for keyboard selection. */
-export function RecordList({ records, empty, emptyAction, grouped = false, kinds = false }: {
+/** A record that later records continue, with a toggle that unfolds those earlier records under it (open while one of them is). */
+function Thread({ record, earlier, kinds }: { readonly record: DashboardRecord; readonly earlier: readonly DashboardRecord[]; readonly kinds: boolean }) {
+  const { route } = useDashboard();
+  const [open, setOpen] = useState(false);
+  const shown = open || earlier.some(item => item.id === route.id);
+  const id = `thread-${record.id}`;
+  return <>
+    <RecordRow record={record} kinds={kinds} />
+    <li className="thread-toggle">
+      <button type="button" className="thread-button" aria-expanded={shown} aria-controls={id} onClick={() => setOpen(!shown)}>
+        <ChevronDown size={14} aria-hidden="true" />{text().thread(earlier.length)}
+      </button>
+    </li>
+    {shown && <li id={id} className="thread-earlier"><ul className="record-list">{earlier.map(item => <RecordRow key={item.id} record={item} kinds={kinds} />)}</ul></li>}
+  </>;
+}
+
+/**
+ * Rows with optional sticky day headers. Rows carry `id="row-<id>"` for keyboard selection. With `fold`, a record that
+ * a later listed record continues folds under that one (foldContinuations).
+ */
+export function RecordList({ records, empty, emptyAction, grouped = false, kinds = false, fold = false }: {
   readonly records: readonly DashboardRecord[]; readonly empty: string; readonly emptyAction?: ReactNode; readonly grouped?: boolean;
-  readonly kinds?: boolean;
+  readonly kinds?: boolean; readonly fold?: boolean;
 }) {
   if (!records.length) return <Empty action={emptyAction}>{empty}</Empty>;
-  if (!grouped) return <ul className="record-list">{records.map(record => <RecordRow key={record.id} record={record} kinds={kinds} />)}</ul>;
-  return <div className="record-groups">{groupByDay(records).map(group => <section key={group.label} className="day-group" aria-label={group.label}>
-    <h2 className="day-label">{group.label}</h2>
-    <ul className="record-list">{group.items.map(record => <RecordRow key={record.id} record={record} kinds={kinds} />)}</ul>
-  </section>)}</div>;
+  const entries = fold ? foldContinuations(records) : records.map(item => ({ item, earlier: [] as DashboardRecord[] }));
+  const rows = (items: typeof entries) => items.map(({ item, earlier }) => earlier.length
+    ? <Fragment key={item.id}><Thread record={item} earlier={earlier} kinds={kinds} /></Fragment>
+    : <RecordRow key={item.id} record={item} kinds={kinds} />);
+  if (!grouped) return <ul className="record-list">{rows(entries)}</ul>;
+  return <div className="record-groups">{groupByDay(entries.map(entry => ({ ...entry, createdAt: entry.item.createdAt }))).map(group =>
+    <section key={group.label} className="day-group" aria-label={group.label}>
+      <h2 className="day-label">{group.label}</h2>
+      <ul className="record-list">{rows(group.items)}</ul>
+    </section>)}</div>;
 }
