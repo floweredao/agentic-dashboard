@@ -215,7 +215,7 @@ Copy `.env.example` to `.env`; Bun loads it automatically.
 | `APP_ORIGIN` | `http://127.0.0.1:PORT` | The address people open, for example `https://dashboard.example.com` |
 | `APP_NAME` | `Agentic Dashboard` | Name shown in the UI |
 | `DATA_DIR` | `data` | SQLite database, owner key, VAPID keys and audio |
-| `TIME_ZONE` | host zone | IANA zone for Today, digests and daily limits |
+| `TIME_ZONE` | host zone | IANA zone for dates, the Today task filter, digests and daily limits |
 | `LOCALE` | `en` | Default push language (`en` or `ko`); each device sends its own language when it subscribes |
 
 Optional features are off or keyless by default:
