@@ -192,7 +192,7 @@ export const NARRATABLE_KINDS = ["research", "work-report", "note", "social"] as
  * Cost guards for narration: script length, TTS chunk length, model input, queued jobs, generations started per Seoul day,
  * and failed generations per content version before only the owner may try again.
  */
-export const NARRATION_LIMITS = { scriptChars: 6000, partScriptChars: 18000, digestScriptChars: 10000, chunkChars: 1500, sourceChars: 120000, partChars: 5000, queue: 20, dailyRuns: 20, autoDailyRuns: 30, attempts: 3, retries: 4 } as const;
+export const NARRATION_LIMITS = { scriptChars: 6000, partScriptChars: 18000, digestScriptChars: 20000, chunkChars: 1500, sourceChars: 120000, partChars: 5000, queue: 20, dailyRuns: 20, autoDailyRuns: 30, attempts: 3, retries: 4 } as const;
 /** queued -> scripting (listening script) -> speaking (TTS chunks) -> ready | failed. */
 export const NarrationStatusSchema = z.enum(["queued", "scripting", "speaking", "ready", "failed"]);
 export type NarrationStatus = z.infer<typeof NarrationStatusSchema>;
@@ -309,6 +309,8 @@ export const DigestArticleSchema = z.object({
   /** The verified link to open; `originalUrl` is the publisher's page when `url` is an aggregator's. */
   url: digestUrl, originalUrl: digestUrl.nullable().default(null),
   publishedAt: z.iso.datetime({ offset: true }).nullable().default(null), publishedDate: DateSchema.nullable().default(null),
+  /** The article's own picture (its og:image), shown as a small thumbnail from the publisher's address and never stored here. */
+  imageUrl: z.url({ protocol: /^https$/ }).max(2048).nullable().default(null),
 }).strict();
 export type DigestArticle = z.infer<typeof DigestArticleSchema>;
 export const DigestMessageSchema = z.object({
