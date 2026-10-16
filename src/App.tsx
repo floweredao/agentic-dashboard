@@ -24,7 +24,7 @@ import { LibraryPane } from "./views/Library";
 import { MorePane } from "./views/More";
 import { Reader } from "./views/Reader";
 import { SettingsPane } from "./views/Settings";
-import { TodayPane } from "./views/Today";
+import { HomePane } from "./views/Home";
 import { TrashPane } from "./views/Trash";
 import { WorkPane } from "./views/Work";
 
@@ -68,13 +68,13 @@ const text = strings({
 });
 
 const icons: Record<View, typeof House> = {
-  today: House, library: Library, digest: Newspaper, work: BriefcaseBusiness, more: Ellipsis, trash: Trash2, channels: RadioTower,
+  home: House, library: Library, digest: Newspaper, work: BriefcaseBusiness, more: Ellipsis, trash: Trash2, channels: RadioTower,
   settings: Bell,
 };
 /** The tab screens in the order of the phone's tab bar and the top of the desktop sidebar (More is the sidebar's lower group). Digest only when it is on. */
-const tabViews = (): readonly View[] => config.features.digest ? ["today", "digest", "library"] : ["today", "library"];
+const tabViews = (): readonly View[] => config.features.digest ? ["home", "digest", "library"] : ["home", "library"];
 /** Views that fill the workspace alone, with no reader pane beside them. */
-const singlePane = (view: View) => view === "today" || view === "channels" || view === "trash" || view === "more" || view === "settings";
+const singlePane = (view: View) => view === "home" || view === "channels" || view === "trash" || view === "more" || view === "settings";
 /** The app's own part of `history.state` (anything else, such as a state from an older build, reads as opened by address). */
 const trailOf = (state: unknown): Trail => {
   const value = state && typeof state === "object" ? state as Record<string, unknown> : {};
@@ -275,7 +275,7 @@ export function App() {
   }, [toast]);
 
   // The digest list hidden while digests are off sends its address to Today.
-  useEffect(() => { if (route.view === "digest" && !config.features.digest) navigate({ view: "today" }, { replace: true }); }, [route.view, navigate]);
+  useEffect(() => { if (route.view === "digest" && !config.features.digest) navigate({ view: "home" }, { replace: true }); }, [route.view, navigate]);
 
   // Pending records; unread digests count on the Digest tab.
   const inbox = useMemo(() => inboxBadge(records), [records]);
@@ -490,7 +490,7 @@ export function App() {
         const auth = await session(token);
         setCsrf(auth.csrfToken); store(await loadAll(report)); setModal(null);
       },
-      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "today" }); notify(text().loggedOut); },
+      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "home" }); notify(text().loggedOut); },
       importJson: async text => create(recordInputSchema.parse(JSON.parse(text)), crypto.randomUUID()),
     };
   }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store]);
@@ -526,7 +526,7 @@ export function App() {
   const selected = route.id ? dashboard.byId.get(route.id) : undefined;
   const hasDetail = connected && !singlePane(route.view) && route.id !== null;
   const counts: Record<View, number> = {
-    today: 0,
+    home: 0,
     library: inbox,
     work: records.filter(record => record.kind === "task" && !record.archivedAt && record.status !== "done").length,
     more: 0,
@@ -565,7 +565,7 @@ export function App() {
     <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}${mini ? " has-mini" : ""}`} data-sidebar={sidebar}>
       <nav id="sidebar" className="sidebar" aria-label={t.mainMenu} inert={sidebar === "hidden"}>
         <div className="sidebar-head">
-          <a className="brand" href={link("today")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
+          <a className="brand" href={link("home")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
           <button type="button" className="icon-btn sidebar-toggle" onClick={hideSidebar} aria-label={t.hideSidebar} title={t.hideSidebarShortcut}
             aria-controls="sidebar" aria-expanded={sidebar !== "hidden"}><PanelLeftClose size={18} aria-hidden="true" /></button>
         </div>
@@ -587,7 +587,7 @@ export function App() {
         <button type="button" className="icon-btn appbar-menu" onClick={showSidebar} aria-label={t.showSidebar} title={t.showSidebarShortcut}
           aria-controls="sidebar" aria-expanded={sidebar !== "hidden"}>{layout === "phone" ? <Menu size={20} aria-hidden="true" /> : <PanelLeftOpen size={18} aria-hidden="true" />}</button>
         {back && <button type="button" className="btn appbar-back" onClick={dashboard.goBack}><ArrowLeft size={18} aria-hidden="true" />{backLabel(back.hash)}</button>}
-        <a className="brand" href={link("today")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
+        <a className="brand" href={link("home")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
         {connected && <button type="button" className="icon-btn appbar-compose" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.compose}><Plus size={20} aria-hidden="true" /></button>}
         {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh}><RefreshCw size={18} aria-hidden="true" /></button>}
       </header>
@@ -596,7 +596,7 @@ export function App() {
         {!connected ? loading ? null : <section className="pane">
           <OwnerGate onToken={() => setModal({ mode: "login" })} />
         </section>
-          : route.view === "today" ? <section className="pane" aria-label={title}><TodayPane /></section>
+          : route.view === "home" ? <section className="pane" aria-label={title}><HomePane /></section>
           : route.view === "more" ? <section className="pane" aria-label={title}><MorePane /></section>
           : route.view === "channels" ? <section className="pane" aria-label={title}><ChannelsView /></section>
           : route.view === "trash" ? <section className="pane" aria-label={title}><TrashPane /></section>

@@ -9,13 +9,13 @@ import { useDashboard } from "../state";
 
 const text = strings({
   en: {
-    title: "More", work: "Work", tasks: "Tasks", tasksNote: "Shared with agents · tasks to check also show on Today",
+    title: "More", work: "Work", tasks: "Tasks", tasksNote: "Shared with agents · open tasks also show on Home",
     tidy: "Clean up", trash: "Trash", trashNote: (days: number) => `Deleted items are kept for ${days} days`,
     channels: "Connections", manage: "Manage channels", manageNote: (count: number) => `${count} connected · Import JSON · Sign out`,
     app: "App", settings: "Settings", settingsNote: "Language · Voice · Notifications",
   },
   ko: {
-    title: "더보기", work: "일", tasks: "할 일", tasksNote: "에이전트와 함께 보는 일 · 확인할 일은 오늘에도 떠요",
+    title: "더보기", work: "일", tasks: "할 일", tasksNote: "에이전트와 함께 보는 일 · 열린 일은 메인에도 떠요",
     tidy: "정리", trash: "휴지통", trashNote: (days: number) => `삭제한 항목은 ${days}일 동안 보관`,
     channels: "연결", manage: "채널 관리", manageNote: (count: number) => `${count}개 연결 · JSON 가져오기 · 로그아웃`,
     app: "앱", settings: "설정", settingsNote: "언어 · 음성 · 알림",

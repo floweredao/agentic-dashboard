@@ -215,7 +215,7 @@ bun run agent --digest digest.json       # { date, slot, sections: [{ key, title
 | `APP_ORIGIN` | `http://127.0.0.1:PORT` | 사람들이 여는 주소. 예: `https://dashboard.example.com` |
 | `APP_NAME` | `Agentic Dashboard` | 화면에 보이는 이름 |
 | `DATA_DIR` | `data` | SQLite 데이터베이스, 소유자 키, VAPID 키, 오디오 |
-| `TIME_ZONE` | 서버 시간대 | 오늘, 다이제스트, 하루 한도를 계산하는 IANA 시간대 |
+| `TIME_ZONE` | 서버 시간대 | 날짜, 할 일의 오늘 필터, 다이제스트, 하루 한도를 계산하는 IANA 시간대 |
 | `LOCALE` | `en` | 기본 푸시 언어(`en` 또는 `ko`). 기기마다 구독할 때 자기 언어를 보냅니다 |
 
 선택 기능은 기본으로 꺼져 있거나 키 없이 동작합니다.

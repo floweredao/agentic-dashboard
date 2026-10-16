@@ -8,7 +8,7 @@ export function fakeDashboard(records: readonly DashboardRecord[], route: Partia
   return {
     records, byId: new Map(records.map(record => [record.id, record])), trash: [], comments: [],
     connected: true, csrfToken: "", loading: false, busy: false,
-    route: { view: "today", id: null, params: {}, ...route }, back: null, goBack: () => {},
+    route: { view: "home", id: null, params: {}, ...route }, back: null, goBack: () => {},
     navigate: () => {}, setParams: () => {}, select: () => {}, open: () => {}, notify: () => {},
     digests: null, digestReads: new Map(), markDigest: unexpected("markDigest"),
     patch: unexpected("patch"), confirm: unexpected("confirm"), markRead: unexpected("markRead"), markPending: unexpected("markPending"), clearRevisit: unexpected("clearRevisit"), toggleStar: unexpected("toggleStar"),
