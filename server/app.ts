@@ -182,7 +182,8 @@ export function createApp(options: AppOptions = {}) {
       c.header("X-Content-Type-Options", "nosniff");
       c.header("X-Frame-Options", "DENY");
       c.header("Referrer-Policy", "no-referrer");
-      c.header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+      // Digest thumbnails load from the publisher's https address (no referrer); the public surface serves no pictures.
+      c.header("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${publicOnly ? "" : " https:"}; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
       c.header("Cache-Control", "no-store");
       const url = new URL(c.req.url);
       if (!hosts.has(c.req.header("host") ?? url.host)) throw new ApiError(421, "invalid_host", "Host is not allowed");

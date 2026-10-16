@@ -137,6 +137,16 @@
 .digest-meta-end { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .digest-card-out { flex: none; color: var(--faint); }
 .message-from .digest-card-out { display: inline; margin-left: 6px; vertical-align: -1px; }
+/* The article's picture: a small thumbnail beside the source line and title; the summary runs full width under both. */
+.digest-card.with-picture { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; }
+.digest-card.with-picture > * { grid-column: 1; }
+.digest-card.with-picture > .digest-card-summary { grid-column: 1 / -1; }
+.digest-card.with-picture > .digest-thumb { grid-column: 2; grid-row: 1 / 3; align-self: start; }
+.digest-thumb {
+  width: 112px; height: 76px; border-radius: 8px; object-fit: cover; background: var(--wash);
+  outline: 1px solid var(--line); outline-offset: -1px;
+}
+@media (max-width: 520px) { .digest-thumb { width: 88px; height: 64px; } }
 .digest-card-title { color: var(--ink); font-size: 17px; line-height: 1.45; font-weight: 650; letter-spacing: -0.25px; word-break: keep-all; overflow-wrap: anywhere; }
 .digest-update {
   display: inline-flex; align-items: center; height: 19px; margin-right: 6px; padding: 0 6px; border-radius: 6px; vertical-align: 2px;
