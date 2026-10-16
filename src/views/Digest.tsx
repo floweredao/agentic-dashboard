@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { ArrowRight, CalendarDays, ChevronRight, CircleCheck, CircleDot, Clock3, ExternalLink, Headphones, Layers, List, Mail, Moon, Newspaper, Sun } from "lucide-react";
-import { DigestSectionKeySchema, digestPartId, MESSAGE_IMPORTANCE } from "../../shared/contracts";
-import type { Digest, DigestArticle, DigestHit, DigestMessage, DigestNarration, DigestPart, DigestSummary, MessageImportance } from "../../shared/contracts";
-import { errorMessage, loadDigest, loadDigests, searchDigests } from "../api";
+import { ArrowRight, CalendarDays, ChevronRight, CircleCheck, CircleDot, Clock3, ExternalLink, Eye, Headphones, Layers, List, Mail, Moon, Newspaper, Sun, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ARTICLE_REACTIONS, DigestSectionKeySchema, digestPartId, MESSAGE_IMPORTANCE } from "../../shared/contracts";
+import type { ArticleReaction, DigestReactions, Digest, DigestArticle, DigestHit, DigestMessage, DigestNarration, DigestPart, DigestSummary, MessageImportance } from "../../shared/contracts";
+import { errorMessage, loadDigest, loadDigests, reactToArticle, searchDigests } from "../api";
 import { useNarration } from "../components/Listen";
 import { Menu } from "../components/Menu";
 import type { MenuItem } from "../components/Menu";
@@ -39,6 +39,7 @@ const text = strings({
     voiceNotes: { cannotNow: "Can't generate it right now", keyNeeded: "Needs a Gemini key", ready: "Audio is ready · listen from More",
       failed: "Couldn't generate it · try again from More", making: "Generating audio…" },
     updateTag: "Update", titlesOnly: "Titles only", end: (n: number) => `End of digest · ${n} ${n === 1 ? "item" : "items"}`,
+    reaction: { like: "Like", dislike: "Not for me", seen: "Seen it" }, reactTo: (title: string) => `Your take on: ${title}`,
   },
   ko: {
     parts: { articles: "기사", messages: "메시지" }, social: "소셜",
@@ -62,6 +63,7 @@ const text = strings({
     voiceNotes: { cannotNow: "지금은 만들 수 없어요", keyNeeded: "Gemini 키가 필요해요", ready: "만들어 둔 음성이 있어요 · 더보기에서 듣기",
       failed: "만들지 못했어요 · 더보기에서 다시 시도", making: "만드는 중이에요" },
     updateTag: "업데이트", titlesOnly: "제목만 보기", end: (n: number) => `다이제스트 끝 · ${n}건`,
+    reaction: { like: "좋아요", dislike: "별로예요", seen: "이미 봤어요" }, reactTo: (title: string) => `이 기사 반응: ${title}`,
   },
 });
 const partLabel = (part: DigestPart) => text().parts[part];
@@ -279,9 +281,28 @@ export function DigestRow({ summary, part, selected, href, onOpen }: {
  * One article as a list item: number · source · time and an external-link mark, the title (a leading update prefix becomes a
  * small tag), then the summary unless only titles are shown. The whole item opens the original in a new tab.
  */
-function ArticleCard({ item, index, date, section, focused, titles }: {
+const REACTION_ICONS: Record<ArticleReaction, typeof ThumbsUp> = { like: ThumbsUp, dislike: ThumbsDown, seen: Eye };
+export type ReactHandler = (section: string, key: string, reaction: ArticleReaction | null) => void;
+
+/**
+ * Like · Not for me · Seen it under an article, beside its link (a button never sits inside a link): three toggle buttons
+ * (`aria-pressed`) where pressing one replaces the others and pressing the chosen one again takes it back.
+ */
+function ReactionBar({ title, current, onReact }: { readonly title: string; readonly current: ArticleReaction | undefined; readonly onReact: (reaction: ArticleReaction | null) => void }) {
+  const t = text();
+  return <div className="digest-react" role="group" aria-label={t.reactTo(title)}>
+    {ARTICLE_REACTIONS.map(reaction => {
+      const Icon = REACTION_ICONS[reaction];
+      const pressed = current === reaction;
+      return <button key={reaction} type="button" className="digest-react-btn" aria-pressed={pressed} data-reaction={reaction}
+        onClick={() => onReact(pressed ? null : reaction)}><Icon size={14} aria-hidden="true" />{t.reaction[reaction]}</button>;
+    })}
+  </div>;
+}
+
+function ArticleCard({ item, index, date, section, focused, titles, reaction, onReact }: {
   readonly item: DigestArticle; readonly index: number; readonly date: string; readonly section: string; readonly focused: boolean;
-  readonly titles: boolean;
+  readonly titles: boolean; readonly reaction?: ArticleReaction | undefined; readonly onReact?: ReactHandler | undefined;
 }) {
   const t = text();
   const href = item.originalUrl ?? item.url;
@@ -299,6 +320,7 @@ function ArticleCard({ item, index, date, section, focused, titles }: {
       {picture && <img className="digest-thumb" src={picture} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} />}
       {!titles && item.summary && <Summary text={item.summary} />}
     </a>
+    {!titles && onReact && <ReactionBar title={title.text} current={reaction} onReact={next => onReact(section, item.key, next)} />}
   </li>;
 }
 
@@ -332,8 +354,10 @@ const NO_SECTIONS: ReadonlySet<string> = new Set();
  * `aria-current="location"`) and titles only. Each section head is a disclosure button; `collapsed` sections keep their head
  * and hide the body. The end line counts the items shown.
  */
-export function DigestView({ digest, part, focus, actions, listen, collapsed = NO_SECTIONS, onExpand, density = "summary", onDensity }: {
+export function DigestView({ digest, part, focus, actions, listen, collapsed = NO_SECTIONS, onExpand, density = "summary", onDensity, reactions, onReact }: {
   readonly digest: Digest; readonly part: DigestFilter; readonly focus?: string; readonly actions?: ReactNode; readonly listen?: ReactNode;
+  /** The owner's reactions by `section:key`; with `onReact` each article shows Like · Not for me · Seen it. */
+  readonly reactions?: DigestReactions; readonly onReact?: ReactHandler;
   readonly collapsed?: ReadonlySet<string>; readonly onExpand?: (key: string, expanded: boolean) => void;
   readonly density?: DigestDensity; readonly onDensity?: (density: DigestDensity) => void;
 }) {
@@ -398,7 +422,7 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
               : <ol className="digest-cards">{section.kind === "messages"
                 ? sortedMessages(section.items).map(item => <MessageCard key={item.key} item={item} section={key} focused={focus === `${key}:${item.key}`} titles={titles} />)
                 : section.items.map((item, index) => <ArticleCard key={item.key} item={item} index={index} date={digest.date} section={key}
-                  focused={focus === `${key}:${item.key}`} titles={titles} />)}</ol>}
+                  focused={focus === `${key}:${item.key}`} titles={titles} reaction={reactions?.[`${key}:${item.key}`]} onReact={onReact} />)}</ol>}
           </div>
         </section>;
       })}
@@ -449,6 +473,7 @@ export function VoiceChoice({ options, onSubmit, onClose }: {
 }
 
 const cache = new Map<string, Digest>();
+const reactionCache = new Map<string, DigestReactions>();
 
 /**
  * The reader pane of the digest tab: loads the digest, shows the filter's parts, marks each unread part with items read once,
@@ -458,6 +483,9 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
   const t = text();
   const d = useDashboard();
   const [digest, setDigest] = useState<Digest | null>(() => cache.get(id) ?? null);
+  const [reactions, setReactions] = useState<DigestReactions>(() => reactionCache.get(id) ?? {});
+  // Only the latest reaction request settles the buttons, so quick taps never end on an older answer.
+  const reactionTurn = useRef(0);
   const [failed, setFailed] = useState<string | null>(null);
   const [collapsed, setExpanded] = useCollapsed();
   const [density, setDensity] = useDensity();
@@ -483,7 +511,11 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
   const articlesNarration = useNarration({ record: narrationOf("articles"), collection: "digests", label: label("articles") });
   useEffect(() => {
     let alive = true;
-    loadDigest(id).then(next => { cache.set(id, next); if (alive) setDigest(next); },
+    setReactions(reactionCache.get(id) ?? {});
+    loadDigest(id).then(next => {
+      cache.set(id, next.digest); reactionCache.set(id, next.reactions);
+      if (alive) { setDigest(next.digest); setReactions(next.reactions); }
+    },
       async (error: unknown) => { if (alive) setFailed(await errorMessage(error)); });
     return () => { alive = false; };
   }, [id, known?.version]);
@@ -520,10 +552,26 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
   const narrationItems = narrations.flatMap(({ narration }) => folded && narration.state?.narration === null ? [] : narration.items);
   const makeItem: MenuItem[] = folded ? [{ label: t.makeAudio, icon: <Headphones size={16} aria-hidden="true" />,
     disabled: voices.every(each => !each.make || each.make.disabled), onSelect: () => setChoosingVoice(true) }] : [];
+  /** Shows the choice at once and saves it; a refusal puts the buttons back and says why. */
+  const react: ReactHandler = (section, key, reaction) => {
+    const before = reactions;
+    const next = { ...reactions };
+    if (reaction) next[`${section}:${key}`] = reaction; else delete next[`${section}:${key}`];
+    setReactions(next);
+    const turn = ++reactionTurn.current;
+    reactToArticle(id, section, key, reaction, d.csrfToken).then(saved => {
+      reactionCache.set(id, saved);
+      if (turn === reactionTurn.current) setReactions(saved);
+    }, async (error: unknown) => {
+      if (turn === reactionTurn.current) setReactions(before);
+      d.notify(await errorMessage(error), "error");
+    });
+  };
   const readItem: MenuItem = { label: unread ? t.markRead : t.markUnread,
     icon: unread ? <CircleCheck size={16} aria-hidden="true" /> : <CircleDot size={16} aria-hidden="true" />, onSelect: toggleRead };
   const actions = filled.length > 0 && <Menu label={t.more} items={[readItem, ...makeItem, ...narrationItems]} />;
   return <DigestView digest={digest} part={part} actions={actions} collapsed={collapsed} onExpand={setExpanded} density={density} onDensity={setDensity}
+    reactions={reactions} onReact={react}
     {...(focus ? { focus } : {})}
     listen={<>{allNarration.bar}{messagesNarration.bar}{articlesNarration.bar}
       {choosingVoice && folded && <Dialog title={t.makeAudio} onClose={() => setChoosingVoice(false)}>

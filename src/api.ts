@@ -2,7 +2,10 @@ import ky, { HTTPError } from "ky";
 import { z } from "zod";
 import {
   DigestHitSchema,
+  DigestReactionsSchema,
   DigestSchema,
+  type ArticleReaction,
+  type DigestReactions,
   DigestSummarySchema,
   PushDeviceSchema,
   type Digest,
@@ -227,8 +230,15 @@ export async function loadDigests(range: { readonly from?: string; readonly to?:
   if (range.to) searchParams.to = range.to;
   return digestPageSchema.parse(await http.get("digests", { searchParams }).json());
 }
-export async function loadDigest(id: string): Promise<Digest> {
-  return z.object({ digest: DigestSchema }).parse(await http.get(`digests/${id}`).json()).digest;
+/** One digest with the owner's reactions to its articles (`section:key` -> like | dislike | seen). */
+export async function loadDigest(id: string): Promise<{ digest: Digest; reactions: DigestReactions }> {
+  return z.object({ digest: DigestSchema, reactions: DigestReactionsSchema.default({}) }).parse(await http.get(`digests/${id}`).json());
+}
+/** Sets (or with null takes back) the owner's reaction to one article; answers the digest's reactions. */
+export async function reactToArticle(id: string, section: string, key: string, reaction: ArticleReaction | null, csrfToken: string): Promise<DigestReactions> {
+  return z.object({ reactions: DigestReactionsSchema }).parse(await http.put(`digests/${id}/reactions`, {
+    json: { section, key, reaction }, headers: { "X-CSRF-Token": csrfToken },
+  }).json()).reactions;
 }
 /** Articles and messages matching `q`; without `part` both. */
 export async function searchDigests(q: string, part?: DigestPart): Promise<DigestHit[]> {

@@ -183,6 +183,18 @@ export async function listDigests(connection: AgentConnection, query: { from?: s
     .json<unknown>();
 }
 
+/** GET /api/v1/digests/reactions: the owner's Like · Not for me · Seen it from the last `days` days, newest first. */
+export async function digestReactions(connection: AgentConnection, days?: number): Promise<unknown> {
+  return ky
+    .get(new URL("/api/v1/digests/reactions", connection.url), {
+      headers: { authorization: `Bearer ${connection.token}` },
+      searchParams: days === undefined ? {} : { days: String(days) },
+      timeout: 15_000,
+      retry: 0,
+    })
+    .json<unknown>();
+}
+
 export async function readShared(url: string): Promise<string> {
   return ky.get(url, { timeout: 15_000, retry: 0 }).text();
 }
