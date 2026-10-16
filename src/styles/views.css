@@ -1,4 +1,35 @@
-/* 더보기: the sidebar's lower groups (보관, 채널) as grouped rows, each a 52px target. */
+/* Today: one readable column of sections (digest, new records, continue listening, tasks), each list in an outlined card like More's groups. */
+.today-page { display: grid; align-content: start; width: 100%; max-width: 720px; margin-inline: auto; padding-bottom: 24px; }
+.today-page .pane-head { position: static; border-bottom: 0; }
+.today-section { display: grid; gap: 6px; padding: 4px 16px 16px; }
+.today-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 4px; }
+.today-heading h2 { color: var(--faint); font-size: 11.5px; font-weight: 600; letter-spacing: 0.2px; }
+.today-more { display: inline-flex; align-items: center; gap: 2px; min-height: 32px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.today-card { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
+.today-card > li:last-child > .row, .today-card > li:last-child > .digest-row { border-bottom: 0; }
+.today-empty { padding: 12px 4px; color: var(--faint); font-size: 13.5px; }
+.today-listen { display: grid; gap: 10px; padding: 12px 14px; }
+.today-listen-title { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 32px; color: var(--ink); }
+.today-listen-title svg { flex: none; color: var(--muted); }
+.today-listen-title strong { overflow: hidden; font-size: 14.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.today-progress { position: relative; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.today-progress span { position: absolute; inset: 0; background: var(--ink); transform-origin: left center; }
+.today-listen-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.today-listen-time { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.today-listen .listen-play { width: 36px; height: 36px; }
+
+/* Library: a continued record's earlier records fold under it behind one quiet toggle. */
+.thread-toggle { padding: 0 12px 4px 14px; }
+.thread-button {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px; border-radius: 999px;
+  background: var(--wash); color: var(--muted); font-size: 12px; font-weight: 500;
+}
+.thread-button svg { transition: transform 160ms var(--ease); }
+.thread-button[aria-expanded="true"] svg { transform: rotate(180deg); }
+.thread-earlier > .record-list { margin-left: 14px; padding-left: 8px; border-left: 2px solid var(--line); }
+@media (pointer: coarse) { .thread-button { min-height: 36px; } }
+
+/* 더보기: the sidebar's lower group (할 일, 휴지통, 채널 관리, 설정) as grouped rows, each a 52px target. */
 .more-page { display: grid; align-content: start; width: 100%; max-width: 720px; margin-inline: auto; padding-bottom: 24px; }
 .more-page .pane-head { position: static; border-bottom: 0; }
 .more-group { display: grid; gap: 6px; padding: 4px 16px 16px; }

@@ -5,7 +5,6 @@ import type { DashboardRecord } from "../../shared/contracts";
 import { DashboardContext } from "../state";
 import type { Dashboard } from "../state";
 import { fakeDashboard } from "../test-dashboard";
-import { ArchivePane } from "./Archive";
 import { TrashPane, purgeLabel } from "./Trash";
 
 const make = (id: string, patch: Record<string, unknown> = {}) => DashboardRecordSchema.parse({
@@ -14,7 +13,7 @@ const make = (id: string, patch: Record<string, unknown> = {}) => DashboardRecor
 });
 
 const render = (node: React.ReactNode, records: readonly DashboardRecord[], overrides: Partial<Dashboard> = {}) =>
-  renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard(records, { view: "archive" }, overrides)}>{node}</DashboardContext.Provider>);
+  renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard(records, { view: "trash" }, overrides)}>{node}</DashboardContext.Provider>);
 
 async function scan(markup: string, selector: string) {
   let count = 0;
@@ -25,26 +24,6 @@ async function scan(markup: string, selector: string) {
   }).transform(new Response(markup)).text();
   return { count, text };
 }
-
-test("ArchivePane lists archived records of every kind, latest first, and leaves live ones out", async () => {
-  // Given: an archived task, a later-archived note and a live link.
-  const records = [
-    make("00000000-0000-4000-8000-000000000001", { kind: "task", title: "끝난 업무", status: "done", archivedAt: "2026-09-20T00:00:00Z" }),
-    make("00000000-0000-4000-8000-000000000002", { kind: "note", title: "보관한 메모", archivedAt: "2026-09-21T00:00:00Z" }),
-    make("00000000-0000-4000-8000-000000000003", { title: "살아 있는 링크" }),
-  ];
-  // When: the archive is rendered.
-  const html = render(<ArchivePane />, records);
-  // Then: both archived records are rows, note first, and the live link is absent; the title counts two.
-  expect(await scan(html, ".row-title")).toEqual({ count: 2, text: "보관한 메모끝난 업무" });
-  expect((await scan(html, ".pane-title .count")).text).toBe("2");
-});
-
-test("ArchivePane without archived records shows its empty line", async () => {
-  const html = render(<ArchivePane />, [make("00000000-0000-4000-8000-000000000004")]);
-  expect((await scan(html, ".row")).count).toBe(0);
-  expect(html).toContain("보관한 항목 없음");
-});
 
 const trashed = (id: string, patch: Record<string, unknown>, deletedAt: string, purgeAt: string) =>
   TrashItemSchema.parse({ record: make(id, patch), deletedAt, purgeAt });

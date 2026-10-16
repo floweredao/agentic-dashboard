@@ -11,7 +11,7 @@ import { Timeline } from "../components/Timeline";
 import type { MenuItem } from "../components/Menu";
 import { BackButton, RecordChannel, Tag, isSample } from "../components/primitives";
 import type { ResolveRecord } from "../components/Markdown";
-import { aiFilled, blankRecord, channelOf, channelLabel, dateLabel, homeRouteOf, homeViewOf, idsField, isRecord, kindLabels, listedFor, localDate, projectStatuses, recordByRef, revisitDue, taskStatuses, textField } from "../model";
+import { aiFilled, blankRecord, channelOf, channelLabel, dateLabel, homeRouteOf, idsField, isRecord, kindLabels, listedFor, localDate, projectStatuses, recordByRef, revisitDue, taskStatuses, textField } from "../model";
 import { strings } from "../i18n";
 import { formatRoute } from "../router";
 import type { Route } from "../router";
@@ -33,7 +33,7 @@ const text = strings({
       goal: "Goal", stage: "Current stage", decisions: "Decisions", acceptance: "Acceptance criteria", progress: "Progress", result: "Result",
     },
     unread: "Unread", rejected: "Rejected", read: "Confirmed",
-    fromInbox: "View in Inbox", fromLibrary: "View in Library", fromArchive: "View in Archive", fromProjects: "View in Projects", fromTasks: "View in all tasks",
+    fromLibrary: "View in Library", fromArchive: "View in Archived", fromProjects: "View in Projects", fromTasks: "View in all tasks",
     archived: "Archived",
     continuation: "Continues from", earlier: "Earlier record", later: "Later records",
     notLoaded: "Record not loaded",
@@ -60,7 +60,7 @@ const text = strings({
       goal: "목표", stage: "현재 단계", decisions: "결정", acceptance: "완료 기준", progress: "진행 상황", result: "결과",
     },
     unread: "미확인", rejected: "반려", read: "확인함",
-    fromInbox: "받은 항목에서 보기", fromLibrary: "기록에서 보기", fromArchive: "보관함에서 보기", fromProjects: "프로젝트 목록에서 보기", fromTasks: "할 일 전체에서 보기",
+    fromLibrary: "기록에서 보기", fromArchive: "보관됨에서 보기", fromProjects: "프로젝트 목록에서 보기", fromTasks: "할 일 전체에서 보기",
     archived: "보관됨",
     continuation: "이어지는 기록", earlier: "앞 기록", later: "다음 기록",
     notLoaded: "불러오지 않은 기록",
@@ -91,13 +91,13 @@ function statusTag(record: DashboardRecord) {
   return <Tag tone="ok">{text().read}</Tag>;
 }
 
-const homeLabel = (home: Pick<Route, "view" | "params">) => home.view === "inbox" ? text().fromInbox
-  : home.view === "library" ? text().fromLibrary : home.view === "archive" ? text().fromArchive
-    : home.params.show ? text().fromProjects : text().fromTasks;
+const homeLabel = (home: Pick<Route, "view" | "params">) => home.view === "library"
+  ? home.params.state === "archived" ? text().fromArchive : text().fromLibrary
+  : home.params.show ? text().fromProjects : text().fromTasks;
 
 /** One related record as a row button that opens it in its home view (related items, continuation links). */
 function relationButton(item: DashboardRecord, navigate: Dashboard["navigate"]) {
-  return <button type="button" onClick={() => navigate({ view: homeViewOf(item), id: item.id })}>
+  return <button type="button" onClick={() => navigate({ ...homeRouteOf(item), id: item.id })}>
     <RecordChannel record={item} /><span className="relation-kind">{kindLabels[item.kind]}</span><span className="relation-title">{item.title}</span>
     {item.archivedAt && <Tag>{text().archived}</Tag>}
   </button>;
@@ -158,7 +158,7 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [];
   const resolveRecord: ResolveRecord = token => {
     const item = recordByRef(d.records, token);
-    return item ? { id: item.id, title: item.title, href: formatRoute({ view: homeViewOf(item), id: item.id, params: {} }) } : null;
+    return item ? { id: item.id, title: item.title, href: formatRoute({ ...homeRouteOf(item), id: item.id }) } : null;
   };
   const sourceLink = record.kind === "social" ? record.links[0] : undefined;
   const listedLinks = sourceLink ? record.links.slice(1) : record.links;

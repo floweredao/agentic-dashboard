@@ -20,6 +20,7 @@ On first start the server adds a `narration_auto` table and two columns to `narr
 
 - Narration scripts always come from the script model: the lighter fallback model and `NARRATION_SCRIPT_FALLBACK_MODEL` are gone. With Vertex AI speech configured, the script is also streamed from the same model on Vertex AI first and then through the key; a try that stalls or times out is followed at once by the next, up to five tries, and when every try fails the audio fails with Retry instead of being made from a weaker script. While a script is tried again, the progress reads "Writing the script · attempt 2".
 - Digests are listed only in the Digest tab: the inbox shows records alone, and its badge, filter chips and title count only records.
+- The app opens on Today, and the tabs are Today, Digest, Library and More. Today shows today's digests (else the latest), up to five records to review, the audio you are listening to and tasks to check. The Inbox, Library and Archive merge into the Library, filtered by All, To review, Favorites and Archived, with continued records folded under their latest record; the kind and channel chips and the sidebar's channel list are gone, and Tasks moves under More. Old `#/inbox` and `#/archive` addresses redirect.
 
 ## [0.3.0] - 2026-10-07
 

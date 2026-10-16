@@ -192,7 +192,7 @@ test("the reader says when the open item is outside the current list and links t
   </DashboardContext.Provider>);
   // Then: a note explains it and offers the list that contains it.
   expect(html).toContain("지금 목록 조건에 맞지 않는 항목이에요.");
-  expect(html).toMatch(/<button[^>]*>보관함에서 보기<\/button>/);
+  expect(html).toMatch(/<button[^>]*>보관됨에서 보기<\/button>/);
 });
 
 const earlierId = "b1d095e5-e555-4a5c-b740-80b5bc1ab176";
@@ -241,5 +241,5 @@ test("clicking 앞 기록 or 다음 기록 navigates to that record in its home 
   // When: every row button is clicked in order.
   for (const button of elementsOf(tree, "button")) (button.props.onClick as () => void)();
   // Then: each click opens that record in the library (all are confirmed material).
-  expect(calls).toEqual([{ view: "library", id: earlierId }, { view: "library", id: newer.id }, { view: "library", id: older.id }]);
+  expect(calls).toEqual([{ view: "library", params: {}, id: earlierId }, { view: "library", params: {}, id: newer.id }, { view: "library", params: {}, id: older.id }]);
 });

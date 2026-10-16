@@ -1,31 +1,30 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Archive, ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, Inbox, Library, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, House, Library, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
 import type { Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
 import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadAgents, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
 import type { DigestPage } from "./api";
 import { syncPush } from "./push";
-import { Empty, ChannelMark, DialogToast } from "./components/primitives";
+import { Empty, DialogToast } from "./components/primitives";
 import { ShareDialog } from "./components/ShareDialog";
 import { MiniPlayer, useMiniPlayerShown } from "./components/playback";
 import { DOCK_MIN, SPLIT_MIN, SidebarContext, WIDE_MIN, layoutOf, readDocked, useSidebarDrag, writeDocked } from "./components/sidebar";
 import { config } from "./config";
 import { isTypingTarget } from "./hooks";
 import { formatClock, strings } from "./i18n";
-import { addDays, aiFillRevert, blankRecord, channelOf, channelLabel, channelsFor, confirmationChanges, homeViewOf, inboxBadge, inboxStateOf, isRecord, listedFor, localDate, nextInQueue, partReadAt, revisitDue, setChannelKeys } from "./model";
+import { addDays, aiFillRevert, blankRecord, channelsFor, confirmationChanges, homeViewOf, inboxBadge, isRecord, libraryStateOf, listedFor, localDate, nextInQueue, partReadAt, revisitDue, setChannelKeys } from "./model";
 import { backLabel, backOf, formatRoute, legacyRedirect, parseRoute, sectionOf, viewTitles } from "./router";
 import type { Back, Route, Trail, View } from "./router";
 import { DashboardContext } from "./state";
 import type { Dashboard, Destination, ReviewState } from "./state";
-import { ArchivePane } from "./views/Archive";
 import { DigestPane, DigestReader, digestPart } from "./views/Digest";
 import { ChannelsView, LoginDialog, OwnerGate } from "./views/Channels";
 import { Compose } from "./views/Compose";
 import { Editor } from "./views/Editor";
-import { InboxPane } from "./views/Inbox";
 import { LibraryPane } from "./views/Library";
 import { MorePane } from "./views/More";
 import { Reader } from "./views/Reader";
 import { SettingsPane } from "./views/Settings";
+import { TodayPane } from "./views/Today";
 import { TrashPane } from "./views/Trash";
 import { WorkPane } from "./views/Work";
 
@@ -40,7 +39,7 @@ const text = strings({
     emptyConfirm: "Empty the trash? Every item will be deleted permanently and this can't be undone.", emptied: "Emptied the trash.",
     aiReverted: "Restored the original title and summary.", followUp: (title: string) => `Follow-up: ${title}`, loggedOut: "Signed out.",
     undo: "Undo", close: "Close", skip: "Skip to content", loading: "Loading", mainMenu: "Main menu",
-    compose: "New item", composeShortcut: "New item (C)", stored: "Storage", channels: "Channels", settings: "Settings",
+    compose: "New item", composeShortcut: "New item (C)", more: "More",
     offline: "Offline · changes won't save", disconnected: "Not connected", refresh: "Refresh",
     showSidebar: "Show sidebar", hideSidebar: "Hide sidebar", showSidebarShortcut: "Show sidebar (⌘\\)", hideSidebarShortcut: "Hide sidebar (⌘\\)",
     digestList: "Digest list", detail: "Details", pickDigest: "Pick a digest from the list to read it here",
@@ -58,7 +57,7 @@ const text = strings({
     emptyConfirm: "휴지통을 비울까요? 모든 항목이 영구 삭제되고 되돌릴 수 없어요.", emptied: "휴지통을 비웠어요.",
     aiReverted: "원래 제목과 요약으로 되돌렸어요.", followUp: (title: string) => `${title} 후속 할 일`, loggedOut: "로그아웃했어요.",
     undo: "되돌리기", close: "닫기", skip: "본문으로 바로가기", loading: "불러오는 중", mainMenu: "주 메뉴",
-    compose: "새로 저장", composeShortcut: "새로 저장 (C)", stored: "보관", channels: "채널", settings: "설정",
+    compose: "새로 저장", composeShortcut: "새로 저장 (C)", more: "더보기",
     offline: "오프라인 · 저장되지 않아요", disconnected: "연결 안 됨", refresh: "새로고침",
     showSidebar: "사이드바 보기", hideSidebar: "사이드바 숨기기", showSidebarShortcut: "사이드바 보기 (⌘\\)", hideSidebarShortcut: "사이드바 숨기기 (⌘\\)",
     digestList: "다이제스트 목록", detail: "상세", pickDigest: "목록에서 다이제스트를 고르면 여기에 보여요",
@@ -68,14 +67,14 @@ const text = strings({
   },
 });
 
-const icons: Record<View, typeof Inbox> = {
-  inbox: Inbox, library: Library, digest: Newspaper, work: BriefcaseBusiness, more: Ellipsis, archive: Archive, trash: Trash2, channels: RadioTower,
+const icons: Record<View, typeof House> = {
+  today: House, library: Library, digest: Newspaper, work: BriefcaseBusiness, more: Ellipsis, trash: Trash2, channels: RadioTower,
   settings: Bell,
 };
-/** The tab screens in the order of the phone's tab bar and the top of the desktop sidebar (More is the sidebar's lower groups). Digest only when it is on. */
-const tabViews = (): readonly View[] => config.features.digest ? ["inbox", "library", "digest", "work"] : ["inbox", "library", "work"];
+/** The tab screens in the order of the phone's tab bar and the top of the desktop sidebar (More is the sidebar's lower group). Digest only when it is on. */
+const tabViews = (): readonly View[] => config.features.digest ? ["today", "digest", "library"] : ["today", "library"];
 /** Views that fill the workspace alone, with no reader pane beside them. */
-const singlePane = (view: View) => view === "channels" || view === "trash" || view === "more" || view === "settings";
+const singlePane = (view: View) => view === "today" || view === "channels" || view === "trash" || view === "more" || view === "settings";
 /** The app's own part of `history.state` (anything else, such as a state from an older build, reads as opened by address). */
 const trailOf = (state: unknown): Trail => {
   const value = state && typeof state === "object" ? state as Record<string, unknown> : {};
@@ -174,6 +173,8 @@ export function App() {
     const changed = () => {
       // A link or an address-bar edit pushed a new entry: remember where it was opened from.
       if (history.state === null) history.replaceState({ from: lastHash.current }, "");
+      const moved = legacyRedirect(location.hash);
+      if (moved) history.replaceState(history.state, "", moved);
       setRoute(parseRoute(location.hash));
     };
     window.addEventListener("hashchange", changed);
@@ -273,8 +274,8 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  // The digest list hidden while digests are off sends its address to the inbox.
-  useEffect(() => { if (route.view === "digest" && !config.features.digest) navigate({ view: "inbox" }, { replace: true }); }, [route.view, navigate]);
+  // The digest list hidden while digests are off sends its address to Today.
+  useEffect(() => { if (route.view === "digest" && !config.features.digest) navigate({ view: "today" }, { replace: true }); }, [route.view, navigate]);
 
   // Pending records; unread digests count on the Digest tab.
   const inbox = useMemo(() => inboxBadge(records), [records]);
@@ -319,18 +320,18 @@ export function App() {
       else navigate({ view: now.view, id: null, params: now.params }, { replace: true });
     };
     /**
-     * When the open inbox item leaves the pending queue, the reader moves to its neighbour (and the toast says so). `leaves` is false when the change keeps it queued.
-     * Under the all/approved filters a review change keeps the item listed, so the reader stays.
+     * When the open Library item leaves the To review queue, the reader moves to its neighbour (and the toast says so). `leaves` is false when the change keeps it queued.
+     * Under the other filters a review change keeps the item listed, so the reader stays.
      */
     const leaveQueue = async (record: DashboardRecord, run: (moved: string) => Promise<DashboardRecord | null>, leaves = true) => {
       const { route: now, records: all } = latest.current;
-      // listedFor keeps the open item in the inbox after its quiet confirmation, so it still advances from there.
+      // listedFor keeps the open item under To review after its quiet confirmation, so it still advances from there.
       const queue = listedFor(now, all);
-      const advances = leaves && now.view === "inbox" && inboxStateOf(now.params) === "pending"
+      const advances = leaves && now.view === "library" && libraryStateOf(now.params) === "pending"
         && now.id === record.id && queue.some(item => item.id === record.id);
       const next = advances ? nextInQueue(queue, record.id) : null;
       const saved = await run(next ? text().openedNext : "");
-      if (saved && advances) navigate({ view: "inbox", id: next?.id ?? null, params: now.params }, { replace: true });
+      if (saved && advances) navigate({ view: "library", id: next?.id ?? null, params: now.params }, { replace: true });
     };
     const confirm = async (record: DashboardRecord) => {
       if (record.kind === "task") { await leaveQueue(record, moved => patch(record, { status: "done" }, text().markedDone + moved)); return; }
@@ -489,7 +490,7 @@ export function App() {
         const auth = await session(token);
         setCsrf(auth.csrfToken); store(await loadAll(report)); setModal(null);
       },
-      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "inbox" }); notify(text().loggedOut); },
+      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "today" }); notify(text().loggedOut); },
       importJson: async text => create(recordInputSchema.parse(JSON.parse(text)), crypto.randomUUID()),
     };
   }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store]);
@@ -525,9 +526,8 @@ export function App() {
   const selected = route.id ? dashboard.byId.get(route.id) : undefined;
   const hasDetail = connected && !singlePane(route.view) && route.id !== null;
   const counts: Record<View, number> = {
-    inbox,
-    library: records.filter(record => isRecord(record) && !record.archivedAt).length,
-    archive: records.filter(record => record.archivedAt !== null).length,
+    today: 0,
+    library: inbox,
     work: records.filter(record => record.kind === "task" && !record.archivedAt && record.status !== "done").length,
     more: 0,
     channels: 0,
@@ -545,7 +545,7 @@ export function App() {
     const Icon = icons[view];
     return <li key={view}><a className="nav-item" href={link(view)} title={viewTitles[view]} aria-current={route.view === view ? "page" : undefined}>
       <Icon size={18} aria-hidden="true" /><span className="nav-label">{viewTitles[view]}</span>
-      {connected && counts[view] > 0 && <span className={`nav-count${view === "inbox" || view === "digest" ? " strong" : ""}`}>{counts[view]}</span>}
+      {connected && counts[view] > 0 && <span className={`nav-count${view === "library" || view === "digest" ? " strong" : ""}`}>{counts[view]}</span>}
     </a></li>;
   };
   const locked = !connected && !loading;
@@ -565,26 +565,15 @@ export function App() {
     <div className={`app view-${route.view}${hasDetail ? " has-detail" : ""}${back ? " has-back" : ""}${locked ? " locked" : ""}${mini ? " has-mini" : ""}`} data-sidebar={sidebar}>
       <nav id="sidebar" className="sidebar" aria-label={t.mainMenu} inert={sidebar === "hidden"}>
         <div className="sidebar-head">
-          <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
+          <a className="brand" href={link("today")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span></a>
           <button type="button" className="icon-btn sidebar-toggle" onClick={hideSidebar} aria-label={t.hideSidebar} title={t.hideSidebarShortcut}
             aria-controls="sidebar" aria-expanded={sidebar !== "hidden"}><PanelLeftClose size={18} aria-hidden="true" /></button>
         </div>
         <button type="button" className="btn btn-primary compose-btn" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.composeShortcut}><Plus size={17} aria-hidden="true" /><span>{t.compose}</span></button>
         <ul className="nav-list">{tabViews().map(navItem)}</ul>
         {connected && <>
-          <p className="nav-section">{t.stored}</p>
-          <ul className="nav-list">{navItem("archive")}{navItem("trash")}</ul>
-          <p className="nav-section">{t.channels}</p>
-          <ul className="nav-list">{navItem("channels")}</ul>
-          <p className="nav-section">{t.settings}</p>
-          <ul className="nav-list">{navItem("settings")}</ul>
-          <ul className="nav-list channel-nav">{channels.map(channel => {
-            const total = records.filter(record => isRecord(record) && !record.archivedAt && channelOf(record) === channel).length;
-            const active = route.view === "library" && route.params.channel === channel;
-            return <li key={channel}><a className="nav-item" href={formatRoute({ view: "library", id: null, params: { channel } })} aria-current={active ? "page" : undefined}>
-              <ChannelMark channel={channel} size="tile" /><span className="nav-label">{channelLabel(channel)}</span>{total > 0 && <span className="nav-count">{total}</span>}
-            </a></li>;
-          })}</ul>
+          <p className="nav-section">{t.more}</p>
+          <ul className="nav-list">{navItem("work")}{navItem("trash")}{navItem("channels")}{navItem("settings")}</ul>
         </>}
         <div className="sidebar-foot">
           {demoReleaseBadge}
@@ -598,7 +587,7 @@ export function App() {
         <button type="button" className="icon-btn appbar-menu" onClick={showSidebar} aria-label={t.showSidebar} title={t.showSidebarShortcut}
           aria-controls="sidebar" aria-expanded={sidebar !== "hidden"}>{layout === "phone" ? <Menu size={20} aria-hidden="true" /> : <PanelLeftOpen size={18} aria-hidden="true" />}</button>
         {back && <button type="button" className="btn appbar-back" onClick={dashboard.goBack}><ArrowLeft size={18} aria-hidden="true" />{backLabel(back.hash)}</button>}
-        <a className="brand" href={link("inbox")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
+        <a className="brand" href={link("today")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
         {connected && <button type="button" className="icon-btn appbar-compose" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.compose}><Plus size={20} aria-hidden="true" /></button>}
         {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh}><RefreshCw size={18} aria-hidden="true" /></button>}
       </header>
@@ -607,6 +596,7 @@ export function App() {
         {!connected ? loading ? null : <section className="pane">
           <OwnerGate onToken={() => setModal({ mode: "login" })} />
         </section>
+          : route.view === "today" ? <section className="pane" aria-label={title}><TodayPane /></section>
           : route.view === "more" ? <section className="pane" aria-label={title}><MorePane /></section>
           : route.view === "channels" ? <section className="pane" aria-label={title}><ChannelsView /></section>
           : route.view === "trash" ? <section className="pane" aria-label={title}><TrashPane /></section>
@@ -620,9 +610,7 @@ export function App() {
           </>
             : <>
               <section className="pane list-pane" aria-label={t.list(title)}>
-                {route.view === "inbox" && <InboxPane />}
                 {route.view === "library" && <LibraryPane />}
-                {route.view === "archive" && <ArchivePane />}
                 {route.view === "work" && <WorkPane />}
               </section>
               <section className="pane reader-pane" aria-label={t.detail}>
@@ -633,10 +621,8 @@ export function App() {
       </main>
 
       <nav className="tabbar" aria-label={t.mainMenu} inert={sidebar === "open"}>
-        {tabViews().filter(view => view !== "work").map(view => <TabLink key={view} view={view} current={route.view}
-          count={connected && (view === "inbox" || view === "digest") ? counts[view] : 0} />)}
-        {(["work", "more"] as const).map(view => <TabLink key={view} view={view} current={route.view}
-          count={view === "work" && connected ? records.filter(record => record.kind === "task" && !record.archivedAt && record.status === "review").length : 0} />)}
+        {[...tabViews(), "more" as const].map(view => <TabLink key={view} view={view} current={route.view}
+          count={connected && (view === "library" || view === "digest") ? counts[view] : 0} />)}
       </nav>
       {connected && <MiniPlayer />}
     </div>
@@ -651,7 +637,7 @@ export function App() {
   </SidebarContext.Provider></DashboardContext.Provider>;
 }
 
-/** A tab is current on its own screen (page) and on the screens under it (true: archive, trash, channels and settings under More). */
+/** A tab is current on its own screen (page) and on the screens under it (true: tasks, trash, channels and settings under More). */
 function TabLink({ view, current, count }: { readonly view: View; readonly current: View; readonly count: number }) {
   const Icon = icons[view];
   return <a className="tab" href={formatRoute({ view, id: null, params: {} })} aria-current={current === view ? "page" : sectionOf(current) === view ? "true" : undefined}>
