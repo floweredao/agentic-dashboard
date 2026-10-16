@@ -13,21 +13,22 @@ test("routes round-trip view, record id and committed filters", () => {
 });
 
 test("unknown views and malformed ids fall back safely", () => {
-  expect(parseRoute("#/nowhere/abc")).toEqual({ view: "today", id: null, params: {} });
-  expect(parseRoute("")).toEqual({ view: "today", id: null, params: {} });
+  expect(parseRoute("#/nowhere/abc")).toEqual({ view: "home", id: null, params: {} });
+  expect(parseRoute("")).toEqual({ view: "home", id: null, params: {} });
 });
 
 test("old dashboard bookmarks redirect to the new views", () => {
   expect(legacyRedirect("#research/pending")).toBe("#/library");
-  expect(legacyRedirect("#home")).toBe("#/today");
+  expect(legacyRedirect("#home")).toBe("#/home");
+  expect(legacyRedirect("#/today")).toBe("#/home");
   expect(legacyRedirect("#archive")).toBe("#/library?state=archived");
   expect(legacyRedirect("#/library")).toBeNull();
-  expect(legacyRedirect("#/today")).toBeNull();
+  expect(legacyRedirect("#/home")).toBeNull();
 });
 
 test("받은 항목 and 보관함 addresses open their records in 기록, and the gone kind and channel filters drop out", () => {
-  expect(legacyRedirect("#/inbox")).toBe("#/today");
-  expect(legacyRedirect("#/inbox?state=all")).toBe("#/today");
+  expect(legacyRedirect("#/inbox")).toBe("#/home");
+  expect(legacyRedirect("#/inbox?state=all")).toBe("#/home");
   expect(legacyRedirect("#/inbox?state=pending")).toBe("#/library?state=pending");
   expect(legacyRedirect("#/inbox?state=starred&q=%EA%B0%80")).toBe("#/library?q=%EA%B0%80&state=starred");
   expect(legacyRedirect("#/inbox?state=approved&q=x")).toBe("#/library?q=x");
@@ -43,7 +44,7 @@ test("받은 항목 and 보관함 addresses open their records in 기록, and th
 test("더보기 is a route and owns 할 일, 휴지통, 채널 관리 and 설정 as its section", () => {
   expect(parseRoute("#/more")).toEqual({ view: "more", id: null, params: {} });
   expect(["work", "trash", "channels", "settings", "more"].map(view => sectionOf(parseRoute(`#/${view}`).view))).toEqual(["more", "more", "more", "more", "more"]);
-  expect(["today", "digest", "library"].map(view => sectionOf(parseRoute(`#/${view}`).view))).toEqual(["today", "digest", "library"]);
+  expect(["home", "digest", "library"].map(view => sectionOf(parseRoute(`#/${view}`).view))).toEqual(["home", "digest", "library"]);
 });
 
 test("a reader opened from its list goes back one history step to that list, filters kept", () => {
@@ -70,7 +71,7 @@ test("a record reached from another record goes back to it on every width", () =
 test("할 일, 휴지통 and 채널 관리 go back to where they were opened from, else up to 더보기 on a phone", () => {
   expect(backOf(parseRoute("#/work"), { from: "#/more" }, true)).toEqual({ hash: "#/more", steps: 1, place: "list" });
   expect(backOf(parseRoute("#/trash"), null, true)).toEqual({ hash: "#/more", steps: 0, place: "list" });
-  expect(backOf(parseRoute("#/channels"), { from: "#/today" }, false)).toEqual({ hash: "#/today", steps: 1, place: "list" });
+  expect(backOf(parseRoute("#/channels"), { from: "#/home" }, false)).toEqual({ hash: "#/home", steps: 1, place: "list" });
   // A desktop sidebar already lists them, so an address-opened one has no back.
   expect(backOf(parseRoute("#/trash"), null, false)).toBeNull();
 });
@@ -82,7 +83,7 @@ test("a desktop reader inside 할 일 keeps the list's back, two history steps a
 });
 
 test("the tab screens have no back, wherever they were opened from", () => {
-  for (const hash of ["#/today", "#/library?state=archived", "#/digest", "#/more"]) {
+  for (const hash of ["#/home", "#/library?state=archived", "#/digest", "#/more"]) {
     expect(backOf(parseRoute(hash), { from: "#/trash" }, true)).toBeNull();
     expect(backOf(parseRoute(hash), null, true)).toBeNull();
   }
@@ -90,7 +91,7 @@ test("the tab screens have no back, wherever they were opened from", () => {
 
 test("the back label names the screen it returns to", () => {
   expect(backLabel("#/library?state=pending")).toBe("기록");
-  expect(backLabel("#/today")).toBe("오늘");
+  expect(backLabel("#/home")).toBe("메인");
   expect(backLabel("#/more")).toBe("더보기");
   expect(backLabel("#/channels")).toBe("채널 관리");
 });

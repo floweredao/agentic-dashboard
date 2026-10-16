@@ -13,7 +13,7 @@ import { LibraryPane } from "./Library";
 import { MorePane } from "./More";
 import { Reader } from "./Reader";
 import { SettingsPane } from "./Settings";
-import { TodayPane } from "./Today";
+import { HomePane } from "./Home";
 import { TrashPane } from "./Trash";
 import { WorkPane } from "./Work";
 
@@ -44,7 +44,7 @@ afterAll(() => {
   }
 });
 
-function render(node: ReactNode, view: "today" | "library" | "work" | "more" | "settings" | "channels" | "trash" | "digest",
+function render(node: ReactNode, view: "home" | "library" | "work" | "more" | "settings" | "channels" | "trash" | "digest",
   records: readonly DashboardRecord[] = [research], overrides: Partial<Dashboard> = {}, params: Readonly<Record<string, string>> = {}) {
   return renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard(records, { view, params }, overrides)}>{node}</DashboardContext.Provider>);
 }
@@ -56,7 +56,7 @@ async function withoutFixtureContent(markup: string) {
 
 test("every pane renders without Korean UI text in English", async () => {
   const screens = [
-    render(<TodayPane />, "today", [research, { ...research, id: "00000000-0000-4000-8000-000000000105", reviewState: "pending" }, { ...task, status: "review" }]),
+    render(<HomePane />, "home", [research, { ...research, id: "00000000-0000-4000-8000-000000000105", reviewState: "pending" }, { ...task, status: "review" }]),
     render(<LibraryPane />, "library"),
     render(<Reader record={research} />, "library"),
     render(<WorkPane />, "work", [task]),

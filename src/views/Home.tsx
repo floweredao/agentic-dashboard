@@ -5,26 +5,27 @@ import type { DashboardRecord } from "../../shared/contracts";
 import { clock, usePlayback } from "../components/playback";
 import { SidebarOpen, Time } from "../components/primitives";
 import { config } from "../config";
-import { channelLabel, channelOf, inboxItems, inQueue, isRecord, kindLabels, localDate, taskStatuses } from "../model";
+import { channelLabel, channelOf, foldContinuations, inboxItems, isRecord, kindLabels, lastActivity, libraryView, localDate, taskStatuses } from "../model";
 import { strings } from "../i18n";
-import { formatRoute } from "../router";
+import { formatRoute, viewTitles } from "../router";
 import { useDashboard } from "../state";
-import { DigestRow, dayTitle } from "./Digest";
+import { DigestRow } from "./Digest";
 
 const text = strings({
   en: {
-    digest: "Digest", noDigest: "No digest yet today", allDigests: "All digests", latest: "Latest digest",
-    records: "New records", toReview: (count: number) => `${count} to review`, seeAll: "See all", noRecords: "Nothing new to review",
-    listen: "Continue listening", play: "Play", pause: "Pause", tasks: "Tasks to check",
+    digest: "Latest digest", noDigest: "No digests yet", allDigests: "All digests",
+    records: "Recent records", toReview: (count: number) => `${count} to review`, seeAll: "See all", noRecords: "No records yet",
+    listen: "Continue listening", play: "Play", pause: "Pause", tasks: "Tasks",
   },
   ko: {
-    digest: "다이제스트", noDigest: "오늘 온 다이제스트 없음", allDigests: "다이제스트 모두 보기", latest: "가장 최근 다이제스트",
-    records: "새 기록", toReview: (count: number) => `미확인 ${count}`, seeAll: "모두 보기", noRecords: "새로 확인할 기록 없음",
-    listen: "이어 듣기", play: "재생", pause: "일시정지", tasks: "할 일 · 확인 필요",
+    digest: "최신 다이제스트", noDigest: "아직 온 다이제스트 없음", allDigests: "다이제스트 모두 보기",
+    records: "최근 기록", toReview: (count: number) => `미확인 ${count}`, seeAll: "모두 보기", noRecords: "아직 기록 없음",
+    listen: "이어 듣기", play: "재생", pause: "일시정지", tasks: "할 일",
   },
 });
 
-const NEW_RECORDS = 5;
+/** How many rows Recent records and Tasks show before their See all link. */
+const SHOWN = 5;
 
 function Row({ record, href }: { readonly record: DashboardRecord; readonly href: string }) {
   const unread = isRecord(record) && record.reviewState === "pending";
@@ -72,42 +73,52 @@ function Listening() {
   </Section>;
 }
 
-/** Today, the first screen: today's digests (when digests are on), the records waiting for review, the playback going on and tasks to check. */
-export function TodayPane() {
+/**
+ * Home, the first screen, with no day boundary (a day brings few records): the latest digest (when digests are on),
+ * the newest records, the playback going on and the open tasks, those waiting for review first.
+ */
+export function HomePane() {
   const t = text();
-  const { records, digests, digestReads } = useDashboard();
+  const { records, comments, digests, digestReads } = useDashboard();
   const today = localDate();
-  const queue = useMemo(() => inboxItems(records, today), [records, today]);
-  const tasks = useMemo(() => records.filter(record => record.kind === "task" && inQueue(record, today)), [records, today]);
-  const page = digests?.items ?? [];
-  const todays = page.filter(item => item.date === today);
+  const recent = useMemo(() => foldContinuations(libraryView(records, "all", today)).slice(0, SHOWN).map(entry => entry.item), [records, today]);
+  const pendingCount = useMemo(() => inboxItems(records, today).length, [records, today]);
+  const tasks = useMemo(() => records
+    .filter(record => record.kind === "task" && !record.archivedAt && record.status !== "done" && record.status !== "paused")
+    .map(record => ({ record, review: record.status === "review", at: lastActivity(record, comments) }))
+    .sort((a, b) => Number(b.review) - Number(a.review) || b.at.localeCompare(a.at))
+    .map(entry => entry.record), [records, comments]);
   // The App's per-part read overlay (`<id>:<part>`) wins over the loaded summaries, as in the Digest list.
-  const shown = (todays.length ? todays : page.slice(0, 1)).map(item => ({
+  const latest = (digests?.items ?? []).slice(0, 1).map(item => ({
     ...item,
     ...(digestReads.has(`${item.id}:articles`) ? { articlesReadAt: digestReads.get(`${item.id}:articles`) ?? null } : {}),
     ...(digestReads.has(`${item.id}:messages`) ? { messagesReadAt: digestReads.get(`${item.id}:messages`) ?? null } : {}),
   }));
-  const pending = formatRoute({ view: "library", id: null, params: { state: "pending" } });
+  const library = (params: Readonly<Record<string, string>>) => formatRoute({ view: "library", id: null, params });
 
   return <div className="today-page">
     <header className="pane-head">
-      <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{dayTitle(today)}</h1></div>
+      <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{viewTitles.home}</h1></div>
     </header>
-    {config.features.digest && <Section id="today-digest" title={todays.length || !shown.length ? t.digest : t.latest}
+    {config.features.digest && <Section id="today-digest" title={t.digest}
       aside={<a className="today-more" href={formatRoute({ view: "digest", id: null, params: {} })}>{t.allDigests}<ChevronRight size={14} aria-hidden="true" /></a>}>
-      {shown.length ? <ul className="digest-list today-card">{shown.map(summary => <DigestRow key={summary.id} summary={summary} part="all" selected={false}
+      {latest.length ? <ul className="digest-list today-card">{latest.map(summary => <DigestRow key={summary.id} summary={summary} part="all" selected={false}
         href={formatRoute({ view: "digest", id: summary.id, params: {} })} onOpen={() => undefined} />)}</ul>
         : <p className="today-empty">{t.noDigest}</p>}
     </Section>}
     <Section id="today-records" title={t.records}
-      aside={queue.length > 0 && <a className="today-more" href={pending}>{t.toReview(queue.length)} · {t.seeAll}<ChevronRight size={14} aria-hidden="true" /></a>}>
-      {queue.length ? <ul className="record-list today-card">{queue.slice(0, NEW_RECORDS).map(record =>
-        <Row key={record.id} record={record} href={formatRoute({ view: "library", id: record.id, params: { state: "pending" } })} />)}</ul>
+      aside={recent.length > 0 && <span className="today-links">
+        {pendingCount > 0 && <a className="today-more" href={library({ state: "pending" })}>{t.toReview(pendingCount)}</a>}
+        <a className="today-more" href={library({})}>{t.seeAll}<ChevronRight size={14} aria-hidden="true" /></a>
+      </span>}>
+      {recent.length ? <ul className="record-list today-card">{recent.map(record =>
+        <Row key={record.id} record={record} href={formatRoute({ view: "library", id: record.id, params: {} })} />)}</ul>
         : <p className="today-empty">{t.noRecords}</p>}
     </Section>
     <Listening />
-    {tasks.length > 0 && <Section id="today-tasks" title={t.tasks}>
-      <ul className="record-list today-card">{tasks.map(record => <Row key={record.id} record={record} href={formatRoute({ view: "work", id: record.id, params: {} })} />)}</ul>
+    {tasks.length > 0 && <Section id="today-tasks" title={t.tasks}
+      aside={<a className="today-more" href={formatRoute({ view: "work", id: null, params: {} })}>{t.seeAll}<ChevronRight size={14} aria-hidden="true" /></a>}>
+      <ul className="record-list today-card">{tasks.slice(0, SHOWN).map(record => <Row key={record.id} record={record} href={formatRoute({ view: "work", id: record.id, params: {} })} />)}</ul>
     </Section>}
   </div>;
 }
