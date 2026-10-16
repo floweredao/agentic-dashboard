@@ -283,3 +283,15 @@ test("DigestView and DigestRow render in English when the locale is en", async (
     expect(await scan(row, ".digest-row-meta span")).toEqual(["Local 1 · Inbox 2", "Act now 1"]);
   } finally { applyLocale("ko"); }
 });
+
+test("An article with a picture shows it as a no-referrer thumbnail beside its title, and titles only or no picture shows none", () => {
+  const local = digest.sections[0]!;
+  const pictured = DigestSchema.parse({ ...digest, sections: [{ ...local, items: [
+    { ...local.items[0]!, imageUrl: "https://img.example.com/a.jpg" },
+    { ...local.items[0]!, key: "b", title: "사진 없는 소식" },
+  ] }] });
+  const render = (density: "summary" | "titles") => renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([], { view: "digest", id: digest.id })}>
+    <DigestView digest={pictured} part="all" density={density} /></DashboardContext.Provider>);
+  expect(render("summary").match(/<img[^>]*>/g)).toEqual([expect.stringMatching(/class="digest-thumb" src="https:\/\/img\.example\.com\/a\.jpg" alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer"/)]);
+  expect(render("titles")).not.toContain("<img");
+});
