@@ -168,13 +168,13 @@ test("a phone keeps its tab bar and opens the sidebar as a drawer that closes on
     const rest = JSON.parse(String(await view.evaluate(boxes)));
     expect(rest[".tabbar"]).toEqual([0, Number(await view.evaluate("document.documentElement.clientWidth"))]);
     expect(rest[".sidebar"][0] + rest[".sidebar"][1]).toBeLessThanOrEqual(0);
-    // When: the app bar's menu button opens the drawer and a channel in it is chosen.
+    // When: the app bar's menu button opens the drawer and a destination under 더보기 in it is chosen.
     await press(view, ".appbar-menu");
     await until(view, `() => ${state} === "open"`);
     await until(view, settled);
-    await press(view, `.channel-nav a[href*="channel=chatgpt"]`);
-    // Then: the library filters to that channel and the drawer closes.
-    await until(view, `() => location.hash.includes("channel=chatgpt") && ${state} === "hidden"`);
+    await press(view, `#sidebar a[href="#/trash"]`);
+    // Then: that screen opens and the drawer closes.
+    await until(view, `() => location.hash === "#/trash" && ${state} === "hidden"`);
     await until(view, settled);
     expect(JSON.parse(String(await view.evaluate(boxes)))[".tabbar"]).toEqual(rest[".tabbar"]);
   });

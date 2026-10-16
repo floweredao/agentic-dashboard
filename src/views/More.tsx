@@ -1,26 +1,24 @@
-import { Archive, Bell, ChevronRight, RadioTower, Trash2 } from "lucide-react";
+import { Bell, BriefcaseBusiness, ChevronRight, RadioTower, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { TRASH_RETENTION_DAYS } from "../../shared/contracts";
-import { ChannelMark, SidebarOpen } from "../components/primitives";
-import { channelKeys, channelOf, channelLabel, isRecord } from "../model";
+import { SidebarOpen } from "../components/primitives";
+import { channelKeys } from "../model";
 import { strings } from "../i18n";
 import { formatRoute } from "../router";
 import { useDashboard } from "../state";
 
 const text = strings({
   en: {
-    title: "More", keep: "Storage", archive: "Archive", trash: "Trash",
-    trashNote: (days: number) => `Deleted items are kept for ${days} days`,
-    channels: "Channels", manage: "Manage channels", manageNote: "Status by channel · Import JSON · Sign out",
-    records: (channel: string) => channel,
-    settings: "Settings", notifications: "Language and notifications", notificationsNote: "Language · Digests · Needs review · Replies · Test",
+    title: "More", work: "Work", tasks: "Tasks", tasksNote: "Shared with agents · tasks to check also show on Today",
+    tidy: "Clean up", trash: "Trash", trashNote: (days: number) => `Deleted items are kept for ${days} days`,
+    channels: "Connections", manage: "Manage channels", manageNote: (count: number) => `${count} connected · Import JSON · Sign out`,
+    app: "App", settings: "Settings", settingsNote: "Language · Voice · Notifications",
   },
   ko: {
-    title: "더보기", keep: "보관", archive: "보관함", trash: "휴지통",
-    trashNote: (days: number) => `삭제한 항목은 ${days}일 동안 보관`,
-    channels: "채널", manage: "채널 관리", manageNote: "채널별 현황 · JSON 가져오기 · 로그아웃",
-    records: (channel: string) => `${channel} 기록`,
-    settings: "설정", notifications: "언어와 알림", notificationsNote: "언어 · 다이제스트 · 확인 필요 · 답글 · 테스트",
+    title: "더보기", work: "일", tasks: "할 일", tasksNote: "에이전트와 함께 보는 일 · 확인할 일은 오늘에도 떠요",
+    tidy: "정리", trash: "휴지통", trashNote: (days: number) => `삭제한 항목은 ${days}일 동안 보관`,
+    channels: "연결", manage: "채널 관리", manageNote: (count: number) => `${count}개 연결 · JSON 가져오기 · 로그아웃`,
+    app: "앱", settings: "설정", settingsNote: "언어 · 음성 · 알림",
   },
 });
 
@@ -35,39 +33,35 @@ function Item({ href, icon, label, note, count }: {
   </a></li>;
 }
 
-/** More: every screen that is not a tab, in the groups and order of the desktop sidebar (keep, channels). */
+function Group({ id, title, children }: { readonly id: string; readonly title: string; readonly children: ReactNode }) {
+  return <section className="more-group" aria-labelledby={id}>
+    <h2 id={id} className="more-heading">{title}</h2>
+    <ul className="more-list">{children}</ul>
+  </section>;
+}
+
+/** More: every screen that is not a tab, in the groups and order of the desktop sidebar (work, clean up, connections, app). */
 export function MorePane() {
   const t = text();
   const { records, trash } = useDashboard();
-  const live = records.filter(record => isRecord(record) && record.archivedAt === null);
-  const archived = records.filter(record => record.archivedAt !== null).length;
-  const link = (view: "archive" | "trash" | "channels" | "settings") => formatRoute({ view, id: null, params: {} });
+  const open = records.filter(record => record.kind === "task" && !record.archivedAt && record.status !== "done").length;
+  const link = (view: "work" | "trash" | "channels" | "settings") => formatRoute({ view, id: null, params: {} });
 
   return <div className="more-page">
     <header className="pane-head">
       <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{t.title}</h1></div>
     </header>
-    <section className="more-group" aria-labelledby="more-keep">
-      <h2 id="more-keep" className="more-heading">{t.keep}</h2>
-      <ul className="more-list">
-        <Item href={link("archive")} icon={<Archive size={18} aria-hidden="true" />} label={t.archive} count={archived} />
-        <Item href={link("trash")} icon={<Trash2 size={18} aria-hidden="true" />} label={t.trash} note={t.trashNote(TRASH_RETENTION_DAYS)} count={trash.length} />
-      </ul>
-    </section>
-    <section className="more-group" aria-labelledby="more-channels">
-      <h2 id="more-channels" className="more-heading">{t.channels}</h2>
-      <ul className="more-list">
-        <Item href={link("channels")} icon={<RadioTower size={18} aria-hidden="true" />} label={t.manage} note={t.manageNote} />
-        {channelKeys.map(channel => <Item key={channel} href={formatRoute({ view: "library", id: null, params: { channel } })}
-          icon={<ChannelMark channel={channel} size="tile" />} label={t.records(channelLabel(channel))}
-          count={live.filter(record => channelOf(record) === channel).length} />)}
-      </ul>
-    </section>
-    <section className="more-group" aria-labelledby="more-settings">
-      <h2 id="more-settings" className="more-heading">{t.settings}</h2>
-      <ul className="more-list">
-        <Item href={link("settings")} icon={<Bell size={18} aria-hidden="true" />} label={t.notifications} note={t.notificationsNote} />
-      </ul>
-    </section>
+    <Group id="more-work" title={t.work}>
+      <Item href={link("work")} icon={<BriefcaseBusiness size={18} aria-hidden="true" />} label={t.tasks} note={t.tasksNote} count={open} />
+    </Group>
+    <Group id="more-tidy" title={t.tidy}>
+      <Item href={link("trash")} icon={<Trash2 size={18} aria-hidden="true" />} label={t.trash} note={t.trashNote(TRASH_RETENTION_DAYS)} count={trash.length} />
+    </Group>
+    <Group id="more-channels" title={t.channels}>
+      <Item href={link("channels")} icon={<RadioTower size={18} aria-hidden="true" />} label={t.manage} note={t.manageNote(channelKeys.length)} />
+    </Group>
+    <Group id="more-app" title={t.app}>
+      <Item href={link("settings")} icon={<Bell size={18} aria-hidden="true" />} label={t.settings} note={t.settingsNote} />
+    </Group>
   </div>;
 }

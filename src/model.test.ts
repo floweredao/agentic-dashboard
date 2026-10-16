@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { DashboardRecordSchema, DigestSummarySchema } from "../shared/contracts";
 import { applyLocale } from "./i18n";
-import { aiFilled, aiFillRevert, channelOf, confirmationChanges, digest, viewRecords, weekBounds, excerpt, groupByDay, homeRouteOf, hostOf, inboxItems, inboxStateOf, inQueue, libraryItems, listedFor, nextInQueue, revisitDue } from "./model";
+import { aiFilled, aiFillRevert, channelOf, confirmationChanges, digest, viewRecords, weekBounds, excerpt, groupByDay, foldContinuations, homeRouteOf, hostOf, inboxItems, inQueue, libraryStateOf, listedFor, nextInQueue, revisitDue } from "./model";
 import { dateLabel, inboxBadge } from "./model";
 
 test("date labels read the language at the moment they are formatted", () => {
@@ -128,39 +128,35 @@ test("inbox holds only unconfirmed or due material, newest first", () => {
   expect(inboxItems(items, "2026-09-21").map(item => item.id.slice(-2))).toEqual(["21", "20"]);
 });
 
-test("library filters by kind, channel and star, never lists archived material, and searches saved summaries", () => {
-  // Given: live, starred and archived material from different channels.
-  const items = [
-    make("00000000-0000-4000-8000-000000000030", { fields: { summary: "검색용설명 링크" } }),
-    make("00000000-0000-4000-8000-000000000031", { kind: "research", source: "omo", createdBy: "omo", fields: { starred: true } }),
-    make("00000000-0000-4000-8000-000000000032", { archivedAt: "2026-09-21T00:00:00Z" }),
-    make("00000000-0000-4000-8000-000000000033", { kind: "project" }),
-  ];
-  const ids = (filter: Parameters<typeof libraryItems>[1]) => libraryItems(items, filter).map(item => item.id.slice(-2)).sort();
-  // When / Then: each filter narrows to the matching records only.
-  expect(ids({})).toEqual(["30", "31"]);
-  expect(ids({ q: "검색용설명" })).toEqual(["30"]);
-  expect(ids({ type: "research" })).toEqual(["31"]);
-  expect(ids({ channel: "omo" })).toEqual(["31"]);
-  expect(ids({ starred: true })).toEqual(["31"]);
-});
-
-test("the archive lists archived records of every kind, latest first, and the trash lists no records", () => {
-  // Given: an archived note, a later-archived task and a live link.
-  const note = make("00000000-0000-4000-8000-0000000000b1", { kind: "note", archivedAt: "2026-09-21T00:00:00Z" });
-  const task = make("00000000-0000-4000-8000-0000000000b2", { kind: "task", status: "done", archivedAt: "2026-09-22T00:00:00Z" });
-  const live = make("00000000-0000-4000-8000-0000000000b3", {});
-  const all = [note, live, task];
-  // Then: the archive route lists both archived records, most recently archived first, and the trash route lists nothing.
-  expect(listedFor({ view: "archive", id: null, params: {} }, all, "2026-09-22").map(item => item.id)).toEqual([task.id, note.id]);
+test("기록 lists unarchived material by default, the queue for 미확인, favorites for 즐겨찾기 and every archived record for 보관됨", () => {
+  // Given: pending, confirmed, starred and rejected material, an archived note, a later-archived task and a project.
+  const pending = make("00000000-0000-4000-8000-0000000000d1", { reviewState: "pending", createdAt: "2026-09-21T00:00:00Z" });
+  const approved = make("00000000-0000-4000-8000-0000000000d2", { title: "알파 메모", createdAt: "2026-09-20T00:00:00Z" });
+  const starred = make("00000000-0000-4000-8000-0000000000d3", { reviewState: "rejected", fields: { starred: true }, createdAt: "2026-09-19T00:00:00Z" });
+  const note = make("00000000-0000-4000-8000-0000000000d4", { kind: "note", archivedAt: "2026-09-21T00:00:00Z" });
+  const task = make("00000000-0000-4000-8000-0000000000d5", { kind: "task", status: "done", archivedAt: "2026-09-22T00:00:00Z" });
+  const project = make("00000000-0000-4000-8000-0000000000d6", { kind: "project" });
+  const all = [starred, task, approved, note, pending, project];
+  const ids = (params: Record<string, string>) => listedFor({ view: "library", id: null, params }, all, "2026-09-22").map(item => item.id);
+  // Then: no or an unknown state is 전체, all unarchived material newest first; 미확인 is the queue; 즐겨찾기 the starred material.
+  expect(ids({})).toEqual([pending.id, approved.id, starred.id]);
+  expect(ids({ state: "bogus" })).toEqual([pending.id, approved.id, starred.id]);
+  expect(ids({ state: "pending" })).toEqual([pending.id]);
+  expect(ids({ state: "starred" })).toEqual([starred.id]);
+  expect(libraryStateOf({})).toBe("all");
+  // And: 보관됨 lists archived records of every kind, most recently archived first; the trash route lists nothing.
+  expect(ids({ state: "archived" })).toEqual([task.id, note.id]);
   expect(listedFor({ view: "trash", id: null, params: {} }, all, "2026-09-22")).toEqual([]);
-  // And: archived records of any kind live in the archive; the live link stays in the library.
-  expect(homeRouteOf(note)).toEqual({ view: "archive", params: {} });
-  expect(homeRouteOf(task)).toEqual({ view: "archive", params: {} });
-  expect(homeRouteOf(live, "2026-09-22")).toEqual({ view: "library", params: {} });
+  // And: the search narrows whichever filter is chosen.
+  expect(ids({ q: "알파" })).toEqual([approved.id]);
+  expect(ids({ state: "pending", q: "알파" })).toEqual([]);
+  // And: archived records of any kind are at home under 보관됨, live material in 기록, live tasks in 할 일.
+  expect(homeRouteOf(note)).toEqual({ view: "library", params: { state: "archived" } });
+  expect(homeRouteOf(task)).toEqual({ view: "library", params: { state: "archived" } });
+  expect(homeRouteOf(approved)).toEqual({ view: "library", params: {} });
 });
 
-test("the inbox keeps the open record listed after it is confirmed, in date order, only while it is selected", () => {
+test("기록 미확인 keeps the open record listed after it is confirmed, in date order, only while it is selected", () => {
   // Given: two pending links around a confirmed one, plus an archived link and a task under review.
   const older = make("00000000-0000-4000-8000-0000000000c1", { reviewState: "pending", createdAt: "2026-09-19T00:00:00Z" });
   const opened = make("00000000-0000-4000-8000-0000000000c2", { createdAt: "2026-09-20T00:00:00Z" });
@@ -168,7 +164,7 @@ test("the inbox keeps the open record listed after it is confirmed, in date orde
   const archived = make("00000000-0000-4000-8000-0000000000c4", { archivedAt: "2026-09-21T00:00:00Z" });
   const task = make("00000000-0000-4000-8000-0000000000c5", { kind: "task", status: "review" });
   const all = [older, opened, newer, archived, task];
-  const ids = (id: string | null, params: Record<string, string> = { state: "pending" }) => listedFor({ view: "inbox", id, params }, all, "2026-09-22").map(item => item.id);
+  const ids = (id: string | null, params: Record<string, string> = { state: "pending" }) => listedFor({ view: "library", id, params }, all, "2026-09-22").map(item => item.id);
   // Then: under 미확인 the confirmed record is listed between its neighbours while it is the open one, and not otherwise.
   expect(ids(opened.id)).toEqual([newer.id, opened.id, older.id]);
   expect(ids(null)).toEqual([newer.id, older.id]);
@@ -179,24 +175,16 @@ test("the inbox keeps the open record listed after it is confirmed, in date orde
   expect(ids(opened.id, { state: "pending", q: "없는 검색어" })).toEqual([]);
 });
 
-test("the inbox 확인 filter lists every unarchived material by default, the queue for 미확인 and confirmed material for 확인함", () => {
-  // Given: pending, confirmed and rejected material, an archived record and a task under review.
-  const pending = make("00000000-0000-4000-8000-0000000000d1", { reviewState: "pending", createdAt: "2026-09-21T00:00:00Z" });
-  const approved = make("00000000-0000-4000-8000-0000000000d2", { title: "알파 메모", createdAt: "2026-09-20T00:00:00Z" });
-  const rejected = make("00000000-0000-4000-8000-0000000000d3", { reviewState: "rejected", createdAt: "2026-09-19T00:00:00Z" });
-  const archived = make("00000000-0000-4000-8000-0000000000d4", { archivedAt: "2026-09-21T00:00:00Z" });
-  const task = make("00000000-0000-4000-8000-0000000000d5", { kind: "task", status: "review" });
-  const all = [rejected, task, approved, archived, pending];
-  const ids = (params: Record<string, string>) => listedFor({ view: "inbox", id: null, params }, all, "2026-09-22").map(item => item.id);
-  // Then: no or an unknown state is 전체, all unarchived material newest first; 미확인 is the queue; 확인함 lists only approved material.
-  expect(ids({})).toEqual([pending.id, approved.id, rejected.id]);
-  expect(ids({ state: "bogus" })).toEqual([pending.id, approved.id, rejected.id]);
-  expect(ids({ state: "pending" })).toEqual([pending.id]);
-  expect(ids({ state: "approved" })).toEqual([approved.id]);
-  expect(inboxStateOf({})).toBe("all");
-  // And: the search narrows whichever filter is chosen.
-  expect(ids({ q: "알파" })).toEqual([approved.id]);
-  expect(ids({ state: "pending", q: "알파" })).toEqual([]);
+test("foldContinuations keeps only the latest record of each chain and counts the earlier ones under it, newest first", () => {
+  // Given: a chain c -> b -> a (c continues b, b continues a), a record continuing one that is not listed, and a lone record.
+  const a = make("00000000-0000-4000-8000-0000000000e1", { createdAt: "2026-09-18T00:00:00Z" });
+  const b = make("00000000-0000-4000-8000-0000000000e2", { fields: { previousId: a.id }, createdAt: "2026-09-19T00:00:00Z" });
+  const c = make("00000000-0000-4000-8000-0000000000e3", { fields: { previousId: b.id }, createdAt: "2026-09-21T00:00:00Z" });
+  const orphan = make("00000000-0000-4000-8000-0000000000e4", { fields: { previousId: "00000000-0000-4000-8000-0000000000ff" } });
+  const lone = make("00000000-0000-4000-8000-0000000000e5", { createdAt: "2026-09-20T00:00:00Z" });
+  // Then: c heads its chain with b and a under it; the others stand alone in the given order.
+  expect(foldContinuations([c, lone, b, a, orphan]).map(({ item, earlier }) => [item.id.slice(-2), earlier.map(each => each.id.slice(-2))]))
+    .toEqual([["e3", ["e2", "e1"]], ["e5", []], ["e4", []]]);
 });
 
 test("groupByDay labels Seoul days as 오늘, 어제 and dates", () => {

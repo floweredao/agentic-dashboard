@@ -1,20 +1,20 @@
 import { localized, strings } from "./i18n";
 
-export type View = "inbox" | "library" | "digest" | "work" | "more" | "archive" | "trash" | "channels" | "settings";
-export const views: readonly View[] = ["inbox", "library", "digest", "work", "more", "archive", "trash", "channels", "settings"];
+export type View = "today" | "library" | "digest" | "work" | "more" | "trash" | "channels" | "settings";
+export const views: readonly View[] = ["today", "library", "digest", "work", "more", "trash", "channels", "settings"];
 const text = strings<{ readonly views: Record<View, string>; readonly previous: string }>({
   en: {
-    views: { inbox: "Inbox", library: "Library", digest: "Digest", work: "Tasks", more: "More", archive: "Archive", trash: "Trash", channels: "Channels", settings: "Settings" },
+    views: { today: "Today", library: "Library", digest: "Digest", work: "Tasks", more: "More", trash: "Trash", channels: "Channels", settings: "Settings" },
     previous: "Previous record",
   },
   ko: {
-    views: { inbox: "받은 항목", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", archive: "보관함", trash: "휴지통", channels: "채널 관리", settings: "설정" },
+    views: { today: "오늘", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", trash: "휴지통", channels: "채널 관리", settings: "설정" },
     previous: "이전 기록",
   },
 });
 export const viewTitles: Record<View, string> = localized(() => text().views);
 /** The screens under More, in the order the phone's More tab and the desktop sidebar list them. */
-export const moreViews = ["archive", "trash", "channels", "settings"] as const satisfies readonly View[];
+export const moreViews = ["work", "trash", "channels", "settings"] as const satisfies readonly View[];
 /** The tab (bottom tab bar) that owns a view: the screens under More belong to it, every other view is its own tab. */
 export const sectionOf = (view: View): View => (moreViews as readonly View[]).includes(view) ? "more" : view;
 export type Params = Readonly<Record<string, string>>;
@@ -22,15 +22,36 @@ export type Params = Readonly<Record<string, string>>;
 export type Route = { readonly view: View; readonly id: string | null; readonly params: Params };
 
 const legacy: Record<string, string> = {
-  home: "#/inbox", mobile: "#/inbox", research: "#/library?type=research", social: "#/library?type=social",
-  tasks: "#/work", projects: "#/work?show=projects", archive: "#/archive",
+  home: "#/today", mobile: "#/today", research: "#/library", social: "#/library",
+  tasks: "#/work", projects: "#/work?show=projects", archive: "#/library?state=archived",
 };
 const isView = (value: string): value is View => (views as readonly string[]).includes(value);
+/** Library states an Inbox filter (`#/inbox?state=`) keeps; Reviewed and All open the whole Library list. */
+const inboxStates: Readonly<Record<string, string>> = { pending: "pending", starred: "starred" };
 
-/** Old single-word hashes (`#research`, `#home/queue`) map to their new location; anything else is null. */
+/**
+ * Addresses of screens that no longer exist map to where their content lives now, and null for anything else:
+ * old single-word hashes (`#research`, `#home/queue`); the Inbox (`#/inbox`, its record readers and filters) and
+ * the Archive (`#/archive`), both now in the Library; and the Library kind and channel filters, which are gone.
+ */
 export function legacyRedirect(hash: string): string | null {
-  const match = /^#([a-z]+)(?:\/.*)?$/.exec(hash);
-  return match?.[1] && !hash.startsWith("#/") ? legacy[match[1]] ?? null : null;
+  const word = /^#([a-z]+)(?:\/.*)?$/.exec(hash);
+  if (word?.[1] && !hash.startsWith("#/")) return legacy[word[1]] ?? null;
+  const route = /^#\/(inbox|archive|library)(?:\/([^?]*))?(?:\?(.*))?$/.exec(hash);
+  if (!route?.[1]) return null;
+  const [, view, id = "", query = ""] = route;
+  const params = new URLSearchParams(query);
+  if (view === "library") {
+    if (!params.has("type") && !params.has("channel")) return null;
+    params.delete("type"); params.delete("channel");
+  } else if (view === "archive") params.set("state", "archived");
+  else {
+    const state = inboxStates[params.get("state") ?? ""];
+    params.delete("state");
+    if (state) params.set("state", state);
+    else if (!id && !params.has("q")) return "#/today";
+  }
+  return formatRoute({ view: "library", id: /^[0-9a-f-]{36}$/i.test(id) ? id : null, params: Object.fromEntries(params) });
 }
 
 export function parseRoute(hash: string): Route {
@@ -38,7 +59,7 @@ export function parseRoute(hash: string): Route {
   const [candidate = "", id = ""] = path.split("/");
   const params: Record<string, string> = {};
   for (const [key, value] of new URLSearchParams(query)) if (value !== "") params[key] = value;
-  return { view: isView(candidate) ? candidate : "inbox", id: /^[0-9a-f-]{36}$/i.test(id) ? id : null, params };
+  return { view: isView(candidate) ? candidate : "today", id: /^[0-9a-f-]{36}$/i.test(id) ? id : null, params };
 }
 
 export function formatRoute(route: Route): string {

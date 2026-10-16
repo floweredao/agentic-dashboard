@@ -9,7 +9,7 @@ type ModelText = {
   readonly spaces: Record<Space, { readonly title: string; readonly short: string }>;
   readonly kinds: Record<RecordKind, string>;
   readonly share: string; readonly manual: string; readonly other: string;
-  readonly inboxStates: Record<InboxState, string>;
+  readonly libraryStates: Record<LibraryState, string>;
   readonly today: string; readonly yesterday: string;
   readonly projectStatuses: { readonly idea: string; readonly planning: string; readonly active: string; readonly paused: string; readonly done: string };
   readonly taskStatuses: { readonly todo: string; readonly active: string; readonly review: string; readonly paused: string; readonly done: string };
@@ -24,7 +24,7 @@ const text = strings<ModelText>({
     },
     kinds: { project: "Project", task: "Task", research: "Research", "work-report": "Work", note: "Note", social: "Link" },
     share: "Shared links", manual: "Written here", other: "Other",
-    inboxStates: { all: "All", pending: "To review", approved: "Reviewed", starred: "Favorites" },
+    libraryStates: { all: "All", pending: "To review", starred: "Favorites", archived: "Archived" },
     today: "Today", yesterday: "Yesterday",
     projectStatuses: { idea: "Idea", planning: "Planning", active: "In progress", paused: "On hold", done: "Done" },
     taskStatuses: { todo: "Not started", active: "In progress", review: "Needs review", paused: "On hold", done: "Done" },
@@ -43,7 +43,7 @@ const text = strings<ModelText>({
     },
     kinds: { project: "프로젝트", task: "할 일", research: "조사", "work-report": "작업", note: "메모", social: "링크" },
     share: "iPhone 공유", manual: "직접 작성", other: "기타",
-    inboxStates: { all: "전체", pending: "미확인", approved: "확인함", starred: "즐겨찾기" },
+    libraryStates: { all: "전체", pending: "미확인", starred: "즐겨찾기", archived: "보관됨" },
     today: "오늘", yesterday: "어제",
     projectStatuses: { idea: "아이디어", planning: "기획", active: "진행 중", paused: "보류", done: "완료" },
     taskStatuses: { todo: "시작 전", active: "진행 중", review: "확인 필요", paused: "보류", done: "끝남" },
@@ -107,17 +107,20 @@ export function inboxItems(records: readonly DashboardRecord[], today = localDat
   return records.filter(record => isRecord(record) && inQueue(record, today))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-/** The inbox's review filter (`?state=`): all (every unarchived material) is the default; pending is the queue above; approved is confirmed material; starred is starred material. */
-export type InboxState = "pending" | "approved" | "all" | "starred";
-export const inboxStates: readonly { readonly id: InboxState; readonly label: string }[] = localized(() =>
-  (["all", "pending", "approved", "starred"] as const).map(id => ({ id, label: text().inboxStates[id] })));
-export const inboxStateOf = (params: Readonly<Record<string, string>>): InboxState =>
-  params.state === "approved" || params.state === "pending" || params.state === "starred" ? params.state : "all";
-/** Unarchived material for one review filter, newest first. */
-export function inboxView(records: readonly DashboardRecord[], state: InboxState, today = localDate()) {
+/**
+ * The Library's state filter (`?state=`): all (every unarchived material) is the default; pending is the queue above;
+ * starred is starred unarchived material; archived is everything the owner archived, of any kind.
+ */
+export type LibraryState = "all" | "pending" | "starred" | "archived";
+export const libraryStates: readonly { readonly id: LibraryState; readonly label: string }[] = localized(() =>
+  (["all", "pending", "starred", "archived"] as const).map(id => ({ id, label: text().libraryStates[id] })));
+export const libraryStateOf = (params: Readonly<Record<string, string>>): LibraryState =>
+  params.state === "pending" || params.state === "starred" || params.state === "archived" ? params.state : "all";
+/** The records of one state filter: the queue and the archive in their own order, the rest newest first. */
+export function libraryView(records: readonly DashboardRecord[], state: LibraryState, today = localDate()) {
   if (state === "pending") return inboxItems(records, today);
-  return records.filter(record => isRecord(record) && record.archivedAt === null
-    && (state === "all" || (state === "starred" ? record.fields.starred === true : record.reviewState === "approved")))
+  if (state === "archived") return archivedItems(records);
+  return records.filter(record => isRecord(record) && record.archivedAt === null && (state === "all" || record.fields.starred === true))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 /** Case-insensitive match over the text a person remembers: title, body, summary, conclusion, tags, host. */
@@ -135,20 +138,22 @@ export const digestPartItems = (item: { readonly sections: readonly { kind: Dige
     : item.sections.reduce((sum, section) => sum + (section.kind === part ? section.items.length : 0), 0);
 /** Whether a summary has any section of a part, even an empty one. */
 export const digestHasPart = (item: Pick<DigestSummary, "outline">, part: DigestPart) => item.outline.some(section => section.kind === part);
-/** The inbox badge (tab, sidebar, document title): queued records. Digests count on the Digest tab. */
+/** The Library badge (tab, sidebar, document title): queued records. Digests count on the Digest tab. */
 export const inboxBadge = (records: readonly DashboardRecord[], today = localDate()) => inboxItems(records, today).length;
-export type LibraryFilter = {
-  readonly type?: string; readonly channel?: string; readonly starred?: boolean; readonly q?: string;
-};
-/** Unarchived saved material for the library, newest first; archived items live in the archive view. */
-export function libraryItems(records: readonly DashboardRecord[], filter: LibraryFilter) {
-  return records.filter(record => isRecord(record)
-    && record.archivedAt === null
-    && (!filter.type || record.kind === filter.type)
-    && (!filter.channel || channelOf(record) === filter.channel)
-    && (!filter.starred || record.fields.starred === true)
-    && matchesQuery(record, filter.q ?? ""))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+/**
+ * Folds continued records (fields.previousId) into their latest record: each listed record that a later listed one
+ * continues leaves the list and is counted under the record at the end of its chain, in `earlier`, newest first.
+ */
+export function foldContinuations<T extends Pick<DashboardRecord, "id" | "fields">>(items: readonly T[]) {
+  const byId = new Map(items.map(item => [item.id, item]));
+  const previousOf = (item: T) => { const id = textField(item, "previousId"); return id && id !== item.id ? byId.get(id) : undefined; };
+  const continued = new Set(items.flatMap(item => { const previous = previousOf(item); return previous ? [previous.id] : []; }));
+  return items.filter(item => !continued.has(item.id)).map(item => {
+    const earlier: T[] = [];
+    const seen = new Set([item.id]);
+    for (let previous = previousOf(item); previous && !seen.has(previous.id); previous = previousOf(previous)) { earlier.push(previous); seen.add(previous.id); }
+    return { item, earlier };
+  });
 }
 /** Group label for a timestamp relative to today in the dashboard's zone: today, yesterday, or a date. */
 export function dayLabel(iso: string, today = localDate()) {
@@ -172,38 +177,34 @@ export function archivedItems(records: readonly DashboardRecord[]) {
   return records.filter(record => record.archivedAt !== null)
     .sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
 }
-/** Which top-level view shows a record by default. */
-export function homeViewOf(record: DashboardRecord, today = localDate()): "inbox" | "library" | "archive" | "work" {
-  if (record.archivedAt) return "archive";
-  if (!isRecord(record)) return "work";
-  return inQueue(record, today) ? "inbox" : "library";
+/** Which list view shows a record by default: Tasks for live tasks and projects, the Library for the rest (its Archived for anything archived). */
+export function homeViewOf(record: DashboardRecord): "library" | "work" {
+  return !record.archivedAt && !isRecord(record) ? "work" : "library";
 }
 /** The records a list pane shows for a route (membership only; panes apply their own order). The trash is not a record list. */
 export function listedFor(route: Route, records: readonly DashboardRecord[], today = localDate()): DashboardRecord[] {
   const params = route.params;
-  if (route.view === "inbox") {
-    // The open record keeps its row after it is confirmed, so the reader does not lose its place until another one is opened.
-    const queue = inboxView(records, inboxStateOf(params), today);
-    const opened = route.id !== null && !queue.some(record => record.id === route.id)
+  if (route.view === "library") {
+    const state = libraryStateOf(params);
+    const listed = libraryView(records, state, today);
+    // Under To review and Favorites the open record keeps its row after it is confirmed or unstarred, so the reader does
+    // not lose its place until another one is opened.
+    const opened = state !== "all" && state !== "archived" && route.id !== null && !listed.some(record => record.id === route.id)
       ? records.find(record => record.id === route.id && isRecord(record) && record.archivedAt === null) : undefined;
-    return (opened ? [...queue, opened].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : queue)
+    return (opened ? [...listed, opened].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : listed)
       .filter(record => matchesQuery(record, params.q ?? ""));
   }
-  if (route.view === "library") {
-    return libraryItems(records, { type: params.type ?? "", channel: params.channel ?? "", starred: params.starred === "1", q: params.q ?? "" });
-  }
-  if (route.view === "archive") return archivedItems(records);
   if (route.view === "work") {
     return params.show === "projects" ? viewRecords(records, "projects", params.status ?? "all", today) : viewRecords(records, "tasks", params.filter ?? "all", today);
   }
   return [];
 }
-/** A list route without extra conditions that contains the record (the archive for anything archived, unarchived work items, all material). */
-export function homeRouteOf(record: DashboardRecord, today = localDate()): Pick<Route, "view" | "params"> {
-  if (record.archivedAt) return { view: "archive", params: {} };
+/** A list route without extra conditions that contains the record (Archived for anything archived, unarchived work items, all material). */
+export function homeRouteOf(record: DashboardRecord): Pick<Route, "view" | "params"> {
+  if (record.archivedAt) return { view: "library", params: { state: "archived" } };
   if (record.kind === "task") return { view: "work", params: { filter: "all" } };
   if (record.kind === "project") return { view: "work", params: { show: "projects" } };
-  return { view: homeViewOf(record, today), params: {} };
+  return { view: homeViewOf(record), params: {} };
 }
 /** After an item leaves a queue: the one below it, else the one above it, else none. */
 export function nextInQueue(queue: readonly DashboardRecord[], id: string): DashboardRecord | null {
