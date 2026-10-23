@@ -204,3 +204,28 @@ test("a second finger landing mid-drag lets the sidebar go back to where it belo
     expect(JSON.parse(await read(view, inline))).toEqual(["", ""]);
   });
 }, 30_000);
+
+test("a second finger landing on a row mid-swipe neither ends the swipe nor leaves the row pushed aside", async () => {
+  await withApp(390, 844, async view => {
+    await view.evaluate(`location.hash = "#/library"`);
+    await until(view, `() => document.querySelectorAll(".row-title").length === ${records.length}`);
+    await until(view, settled);
+    const fire = (type: string, pointerId: number, x: number, y: number) => view.evaluate(`(() => {
+      const row = document.querySelector(".swipe .row");
+      row.dispatchEvent(new PointerEvent(${JSON.stringify(type)}, { pointerId: ${pointerId}, isPrimary: ${pointerId === 1}, pointerType: "touch",
+        clientX: ${x}, clientY: ${y}, bubbles: true, cancelable: true }));
+    })()`);
+    const row = `JSON.stringify((item => [item.querySelector(".row").style.transform, item.dataset.phase ?? null, item.dataset.swipe ?? null])(document.querySelector(".swipe")))`;
+    // Given: a finger dragging the first row 40px right, short of archiving it.
+    await fire("pointerdown", 1, 100, 200);
+    await fire("pointermove", 1, 120, 201);
+    await fire("pointermove", 1, 140, 201);
+    expect(JSON.parse(await read(view, row))).toEqual(["translateX(40px)", "drag", "archive"]);
+    // When: a second finger touches the row, then the first one lifts.
+    await fire("pointerdown", 2, 200, 300);
+    await fire("pointerup", 1, 140, 201);
+    // Then: the row settles back in place with nothing of the swipe left on it.
+    await until(view, `() => !document.querySelector(".swipe").dataset.phase`);
+    expect(JSON.parse(await read(view, row))).toEqual(["", null, null]);
+  });
+}, 30_000);
