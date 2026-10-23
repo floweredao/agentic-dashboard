@@ -120,6 +120,8 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | `POST /api/v1/trash/:id/restore` | owner | `{ record }` |
 | `DELETE /api/v1/trash/:id`, `DELETE /api/v1/trash` | owner | permanent delete, 204 |
 
+`q` is trimmed (at most 200 characters; blank lists everything) and matches the title or body ignoring case, also beyond ASCII, and Unicode form (decomposed Hangul matches composed); it pages with `cursor` and the other filters like a plain list.
+
 Trashed records are purged after 30 days.
 
 ### Comments (task and project timelines)
