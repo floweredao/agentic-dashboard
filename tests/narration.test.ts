@@ -848,6 +848,24 @@ test("the daily limit refuses further generations with 429", async () => {
   expect(await refused.text()).toContain("narration_daily_limit");
 });
 
+test("at most 20 jobs wait in the queue; one more is refused with 429 narration_queue_full", async () => {
+  const { f, tts, idle } = setup(50);
+  const owner = await f.login();
+  const records = [];
+  for (let index = 0; index < 22; index++) records.push(await research(f, owner));
+  // Given: one job is speaking and 20 wait behind it.
+  const gate = hold(tts);
+  expect((await f.call(narration(records[0]?.id ?? ""), "POST", {}, owner)).status).toBe(202);
+  await gate.entered.promise;
+  for (const record of records.slice(1, 21)) expect((await read(await f.call(narration(record.id), "POST", {}, owner))).narration?.status).toBe("queued");
+  // When: a 21st job is asked for, it is refused.
+  const refused = await f.call(narration(records[21]?.id ?? ""), "POST", {}, owner);
+  expect(refused.status).toBe(429);
+  expect(await refused.text()).toContain("narration_queue_full");
+  gate.release.resolve();
+  await idle();
+});
+
 test("audio survives the trash and is removed with the record or on request", async () => {
   const { f, audioFiles, idle } = setup();
   const owner = await f.login();
