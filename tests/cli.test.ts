@@ -161,6 +161,18 @@ function describeConnect() {
     expect(existsSync(join(desk, ".agents", "skills", "agentic-dashboard", "SKILL.md"))).toBe(true);
   });
 
+  test("a mistyped --skills target fails before the one-time code is spent, so the same code still connects", async () => {
+    const issued = await cli(join(dir, "host"), ["invite", "typo-laptop"]);
+    const code = /code for the agent "typo-laptop": (\S+)/.exec(issued.stdout)?.[1] ?? "";
+    const typo = join(dir, "typo");
+    const failed = await cli(typo, ["connect", "--url", `http://127.0.0.1:${port}`, "--code", code, "--key-store", "file", "--skills", "claude"]);
+    expect([failed.code, failed.stderr.trim()]).toEqual([1, "Unknown target claude; use claude-code, codex, omo or agents."]);
+    expect(existsSync(join(typo, ".agentic-dashboard", "client.json"))).toBe(false);
+    const fixed = await cli(typo, ["connect", "--url", `http://127.0.0.1:${port}`, "--code", code, "--key-store", "file", "--skills", "claude-code"]);
+    expect([fixed.code, fixed.stderr]).toEqual([0, ""]);
+    expect(existsSync(join(typo, ".claude", "skills", "agentic-dashboard", "SKILL.md"))).toBe(true);
+  });
+
   test("without a terminal the first run neither prompts nor hangs, and setup asks for --yes", async () => {
     const fresh = join(dir, "fresh");
     const first = await cli(fresh, []);
