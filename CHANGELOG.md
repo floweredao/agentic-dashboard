@@ -32,6 +32,7 @@ On first start the server adds the `narration_auto` and `digest_reactions` table
 - `server.env` reads a line copied from `.env.example` the way `.env` does: a ` # comment` after a value and 'single quotes' around it are no longer part of the value, so `PUSH=on   # web push` no longer stops the dashboard from starting and `GEMINI_API_KEY=   # turns on "Listen"` no longer sets the comment as the key.
 - `agentic-dashboard connect --skills` with an unknown target fails before it contacts the dashboard. It used to spend the one-time code and save the connection, then exit with an error, so running it again with the target fixed answered that the code was already used.
 - `agentic-dashboard service`, `setup --service` and `status` report a `launchctl` or `systemctl` that fails or is missing (a container, WSL without systemd) in one line instead of crashing with a stack trace; `status` then shows the service as installed, not running.
+- `install.sh` makes a relative `AGENTIC_DASHBOARD_HOME` or `AGENTIC_DASHBOARD_BIN_DIR` absolute. The `agentic-dashboard` command it wrote pointed at the app by the relative path and failed when run from any other folder, and setup saved the relative home for the service and the agent skills.
 
 ## [0.3.0] - 2026-10-07
 
