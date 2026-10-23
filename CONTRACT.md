@@ -88,7 +88,7 @@ An agent may read:
 - unarchived research, work-report, note and social records from anyone;
 - the owner's unarchived tasks and projects.
 
-Everything else answers `404 not_found`. `fields.personalNotes` is removed from records the agent didn't create. An agent may PATCH only records it created; it can't delete anything. The agent-only ingress listener narrows reads further, to the agent's own records.
+Everything else answers `404 not_found`. `fields.personalNotes` is removed from records the agent didn't create. An agent may PATCH only records it created, and move only those to the trash (`DELETE /api/v1/records/:id`); it can't restore or permanently delete anything. The agent-only ingress listener narrows reads further, to the agent's own records.
 
 ## HTTP API
 

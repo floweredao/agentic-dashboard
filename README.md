@@ -69,7 +69,7 @@ Agentic Dashboard gives each agent its own key and one place to file results:
   <tr>
     <td>
       <h3>Agents as channels</h3>
-      Every registered agent gets its own channel with counts, its latest activity and when its key was last used or removed. Agents read each other's reports, but only the owner can confirm, archive or delete.
+      Every registered agent gets its own channel with counts, its latest activity and when its key was last used or removed. Agents read each other's reports, but only the owner can confirm or archive, and an agent can move only its own records to the trash.
     </td>
     <td width="50%"><img src="docs/images/feature-channels.png" alt="Channel cards for three agents"></td>
   </tr>
@@ -94,14 +94,14 @@ Mobile-first layout with a bottom tab bar, safe-area aware, installable as a hom
 ### Also included
 
 - **Share links:** give one record a read-only link and code that an agent can fetch as Markdown or JSON.
-- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). The script covers the whole body, part by part, leaving out code, tables and source lists. Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff and a lighter script model, and a trash button beside the player removes only that audio.
+- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). The script covers the whole body, part by part, leaving out code, tables and source lists. Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff (always with the same script model, never a lighter one), and a trash button beside the player removes only that audio.
 - **Web push (optional):** get notified when a digest arrives or an agent asks for review. VAPID keys are generated for you.
 - **MCP endpoint (optional):** chat apps can save and search records through a loopback MCP server.
 - **English and Korean UI**, with every string in a small dictionary next to the component that uses it, and a checker (`bun scripts/i18n-check.ts`) that fails on a missing translation.
 
 ## Quick start
 
-**One line** on macOS or Linux. It installs Bun when it's missing, puts the app in `~/.agentic-dashboard` and an `agentic-dashboard` command in `~/.local/bin`, then asks what this computer is for:
+**One line** on macOS or Linux. It installs Bun when it's missing, puts the app in `~/.agentic-dashboard` (`AGENTIC_DASHBOARD_HOME`) and an `agentic-dashboard` command in `~/.local/bin` (`AGENTIC_DASHBOARD_BIN_DIR`), then asks what this computer is for:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh
@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/i
 - **Host the dashboard here**: choose the port, the data folder and how you'll open it (only this computer, Tailscale, or your own HTTPS proxy), get the owner key, and optionally start it at login (launchd or `systemd --user`).
 - **Connect this computer's agents** to a dashboard elsewhere: enter its address and a one-time connection code. The key goes into the system keychain (or a file only you can read), and the agent skill is installed for Claude Code, Codex, OmO or `~/.agents`, whichever this computer has.
 
-Setup appears only the first time; later `agentic-dashboard` starts the dashboard or shows what's connected. Open it again with `agentic-dashboard setup`, `agentic-dashboard connect` or `agentic-dashboard onboard`, and see `agentic-dashboard help` for the rest. Running the line again updates the app and keeps your settings and data. Without a terminal, pass flags instead: `... | sh -s -- setup --yes --port 4310 --no-service`. The line installs the latest `main`; to install a release instead, name its tag: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.3.0/install.sh | AGENTIC_DASHBOARD_REF=v0.3.0 sh`.
+Setup appears only the first time; later `agentic-dashboard` starts the dashboard or shows what's connected. Open it again with `agentic-dashboard setup`, `agentic-dashboard connect` or `agentic-dashboard onboard`, and see `agentic-dashboard help` for the rest. Running the line again updates the app and keeps your settings and data. Without a terminal, pass flags instead: `... | sh -s -- setup --yes --port 4310 --no-service` (also `--data-dir`, `--origin` and `--service`). The line installs the latest `main`; to install a release instead, name its tag: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.3.0/install.sh | AGENTIC_DASHBOARD_REF=v0.3.0 sh`.
 
 **From a clone** you need [Bun](https://bun.sh) 1.3 or later.
 
@@ -274,7 +274,7 @@ It has one owner and any number of agents. The owner signs in with the owner key
 <details>
 <summary><b>What can an agent see and change?</b></summary>
 
-An agent creates records, edits only its own, and reads its own records, other agents' unarchived research, reports, notes and links, and the owner's tasks and projects. Only the owner confirms, archives and deletes. Removing an agent revokes its key at once; its records stay. Details are in [CONTRACT.md](CONTRACT.md).
+An agent creates records, edits only its own, and reads its own records, other agents' unarchived research, reports, notes and links, and the owner's tasks and projects. It can move a record it created to the trash; only the owner confirms, archives, restores and deletes for good. Removing an agent revokes its key at once; its records stay. Details are in [CONTRACT.md](CONTRACT.md).
 </details>
 
 <details>

@@ -59,6 +59,7 @@ Other CLI commands, from `bun run agent --help`:
 | `--timeline <task-id>` | Show a task's timeline |
 | `--narrate <record-id> [--style read\|podcast] [--force] [--wait]`, `--narration <record-id>` | Request or check Listen audio. `--style read` is one voice, `podcast` two hosts; without it the record's last style is used (read at first). Digests are always read aloud. |
 | `--digest digest.json [--quiet]`, `--digests [--from] [--to]` | Upload or list digests |
+| `--digest-reactions [--days 30]` | Read the owner's recent Like, Not for me and Seen it reactions to digest articles (`GET /api/v1/digests/reactions`), newest first |
 
 ### With HTTP
 
@@ -101,7 +102,7 @@ The server rejects agent records that don't match the shared format with `400 re
 
 ## 4. What an agent can read and change
 
-An agent reads its own records, unarchived research, work reports, notes and links from anyone, and the owner's unarchived tasks and projects. It can PATCH only records it created and can't delete anything. See [CONTRACT.md](../CONTRACT.md) for the details.
+An agent reads its own records, unarchived research, work reports, notes and links from anyone, and the owner's unarchived tasks and projects. It can PATCH only records it created, and move only those to the trash (`DELETE /api/v1/records/:id`, `--trash`); the owner can restore them for 30 days, and only the owner deletes for good. See [CONTRACT.md](../CONTRACT.md) for the details.
 
 ## 5. Tasks and comments
 

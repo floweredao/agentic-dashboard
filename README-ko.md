@@ -49,7 +49,7 @@ Agentic Dashboard는 에이전트마다 키를 하나씩 주고, 결과를 한�
     <td width="50%"><img src="docs/images/desktop-light.png" alt="조사 보고를 연 받은 항목 화면"></td>
     <td>
       <h3>받은 항목과 본문</h3>
-      결론과 요약이 먼저 보이고, 그 아래에 표·코드·링크가 들어간 본문이 이어집니다. 확인, 별표, 다시 볼 날짜, 보관, 휴지통(30일 보관)을 지원합니다. 검색은 제목, 본문, 요약, 태그를 함께 찾습니다.
+      결론과 요약이 먼저 보이고, 그 아래에 표·코드·링크가 들어간 본문이 이어집니다. 에이전트가 조사를 HTML 페이지로 붙일 수 있습니다. 그런 기록은 스크립트가 돌지 않는 프레임에 그 전체 문서를 띄워 열리고, 요약으로 바꿔 보기와 전체 화면 보기를 지원합니다. 확인, 별표, 다시 볼 날짜, 보관, 휴지통(30일 보관)을 지원합니다. 검색은 제목, 본문, 요약, 태그를 함께 찾습니다.
     </td>
   </tr>
   <tr>
@@ -69,7 +69,7 @@ Agentic Dashboard는 에이전트마다 키를 하나씩 주고, 결과를 한�
   <tr>
     <td>
       <h3>에이전트별 채널</h3>
-      등록한 에이전트마다 채널이 생겨 기록 수, 최근 활동, 키를 마지막으로 쓴 때나 제거한 때를 보여 줍니다. 에이전트끼리는 서로의 보고를 읽을 수 있지만, 확인·보관·삭제는 소유자만 할 수 있습니다.
+      등록한 에이전트마다 채널이 생겨 기록 수, 최근 활동, 키를 마지막으로 쓴 때나 제거한 때를 보여 줍니다. 에이전트끼리는 서로의 보고를 읽을 수 있지만, 확인·보관은 소유자만 할 수 있고 에이전트는 자기 기록만 휴지통으로 옮길 수 있습니다.
     </td>
     <td width="50%"><img src="docs/images/feature-channels.png" alt="에이전트 세 개의 채널 카드"></td>
   </tr>
@@ -94,14 +94,14 @@ Agentic Dashboard는 에이전트마다 키를 하나씩 주고, 결과를 한�
 ### 그 밖에
 
 - **공유 링크:** 기록 하나에 읽기 전용 링크와 코드를 붙여, 에이전트가 Markdown이나 JSON으로 가져가게 합니다.
-- **듣기(선택):** 음성 합성(TTS) 공급자로 보고서 오디오를 만듭니다. Gemini 예시가 들어 있습니다. 한 목소리로 읽어 주기, 두 진행자가 대화하는 팟캐스트 중에 고릅니다. 다이제스트는 전체 또는 부분별로 들을 수 있습니다. 작업은 진행 막대로 보이고, 바쁜 공급자는 간격을 늘려 다시 시도하며 가벼운 대본 모델로 넘어갑니다. 플레이어 옆 휴지통 버튼은 그 오디오만 지웁니다.
+- **듣기(선택):** 음성 합성(TTS) 공급자로 보고서 오디오를 만듭니다. Gemini 예시가 들어 있습니다. 한 목소리로 읽어 주기, 두 진행자가 대화하는 팟캐스트 중에 고릅니다. 다이제스트는 전체 또는 부분별로 들을 수 있습니다. 작업은 진행 막대로 보이고, 바쁜 공급자는 간격을 늘려 다시 시도합니다(대본은 늘 같은 모델이 쓰고, 더 가벼운 모델로 넘어가지 않습니다). 플레이어 옆 휴지통 버튼은 그 오디오만 지웁니다.
 - **웹 푸시(선택):** 다이제스트가 오거나 에이전트가 확인을 요청하면 알림을 받습니다. VAPID 키는 자동으로 만들어집니다.
 - **MCP 엔드포인트(선택):** 채팅 앱이 로컬 MCP 서버를 통해 기록을 저장하고 검색합니다.
 - **영어·한국어 화면.** 문구는 각 컴포넌트 옆의 작은 사전에 들어 있고, 번역이 빠지면 검사 스크립트(`bun scripts/i18n-check.ts`)가 실패합니다.
 
 ## 빠른 시작
 
-macOS나 Linux에서 **한 줄로** 설치합니다. Bun이 없으면 설치하고, 앱을 `~/.agentic-dashboard`에, `agentic-dashboard` 명령을 `~/.local/bin`에 둔 뒤 이 컴퓨터를 어디에 쓸지 묻습니다.
+macOS나 Linux에서 **한 줄로** 설치합니다. Bun이 없으면 설치하고, 앱을 `~/.agentic-dashboard`(`AGENTIC_DASHBOARD_HOME`)에, `agentic-dashboard` 명령을 `~/.local/bin`(`AGENTIC_DASHBOARD_BIN_DIR`)에 둔 뒤 이 컴퓨터를 어디에 쓸지 묻습니다.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh
@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/i
 - **여기서 대시보드 돌리기**: 포트, 데이터 폴더, 여는 방법(이 컴퓨터에서만, Tailscale, 내 HTTPS 프록시)을 고르고 소유자 키를 받습니다. 원하면 로그인할 때 자동으로 시작합니다(launchd 또는 `systemd --user`).
 - **이 컴퓨터의 에이전트 연결하기**: 다른 곳의 대시보드 주소와 1회용 연결 코드를 넣습니다. 키는 시스템 키체인(또는 나만 읽을 수 있는 파일)에 저장되고, 이 컴퓨터에 있는 Claude Code, Codex, OmO, `~/.agents`에 에이전트 스킬이 설치됩니다.
 
-설정 화면은 처음에만 뜹니다. 그다음부터 `agentic-dashboard`는 대시보드를 시작하거나 연결 상태를 보여 줍니다. `agentic-dashboard setup`, `agentic-dashboard connect`, `agentic-dashboard onboard`로 다시 열 수 있고, 나머지 명령은 `agentic-dashboard help`에 있습니다. 같은 줄을 다시 실행하면 설정과 데이터는 그대로 두고 앱만 새로 받습니다. 터미널이 없으면 옵션으로 줍니다: `... | sh -s -- setup --yes --port 4310 --no-service`. 이 줄은 최신 `main`을 설치합니다. 릴리스를 설치하려면 태그를 지정합니다: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.3.0/install.sh | AGENTIC_DASHBOARD_REF=v0.3.0 sh`.
+설정 화면은 처음에만 뜹니다. 그다음부터 `agentic-dashboard`는 대시보드를 시작하거나 연결 상태를 보여 줍니다. `agentic-dashboard setup`, `agentic-dashboard connect`, `agentic-dashboard onboard`로 다시 열 수 있고, 나머지 명령은 `agentic-dashboard help`에 있습니다. 같은 줄을 다시 실행하면 설정과 데이터는 그대로 두고 앱만 새로 받습니다. 터미널이 없으면 옵션으로 줍니다: `... | sh -s -- setup --yes --port 4310 --no-service`(그 밖에 `--data-dir`, `--origin`, `--service`). 이 줄은 최신 `main`을 설치합니다. 릴리스를 설치하려면 태그를 지정합니다: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.3.0/install.sh | AGENTIC_DASHBOARD_REF=v0.3.0 sh`.
 
 **저장소에서 직접** 띄우려면 [Bun](https://bun.sh) 1.3 이상이 필요합니다.
 
@@ -126,7 +126,7 @@ http://127.0.0.1:4310 을 열고 소유자 키로 로그인합니다. 브라우�
 
 미리 빌드한 실행 파일은 [Releases](https://github.com/floweredao/agentic-dashboard/releases)에, 버전별 변경 내용은 [CHANGELOG.md](CHANGELOG.md)(영어)에 있습니다.
 
-**먼저 둘러보고 싶다면** [공개 데모](https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app)를 열어 보세요. 로그인 없이 바로 둘러볼 수 있습니다. 예시 데이터로 채운 읽기 전용 데모라 무엇을 눌러도 저장되지 않고, 서버가 다시 뜨면(쓰는 사람이 없으면 잠들었다가 다시 뛹니다) 같은 데이터로 처음부터 다시 시작합니다. 구성은 [docs/demo.md](docs/demo.md)에 있습니다.
+**먼저 둘러보고 싶다면** [공개 데모](https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app)를 열어 보세요. 로그인 없이 바로 둘러볼 수 있습니다. 예시 데이터로 채운 읽기 전용 데모라 무엇을 눌러도 저장되지 않고, 서버가 다시 뜨면(쓰는 사람이 없으면 잠들었다가 다시 뜹니다) 같은 데이터로 처음부터 다시 시작합니다. 구성은 [docs/demo.md](docs/demo.md)에 있습니다.
 
 내 컴퓨터에서 띄우려면 데모 데이터를 별도 폴더에 넣습니다.
 
@@ -274,7 +274,7 @@ localhost 밖으로 열기 전에 [docs/security.md](docs/security.md)를 꼭 �
 <details>
 <summary><b>에이전트는 무엇을 보고 바꿀 수 있나요?</b></summary>
 
-에이전트는 기록을 만들고, 자기가 만든 기록만 고칠 수 있습니다. 읽을 수 있는 것은 자기 기록, 다른 에이전트의 보관되지 않은 조사·보고·메모·링크, 소유자의 할 일과 프로젝트입니다. 확인·보관·삭제는 소유자만 합니다. 에이전트를 제거하면 키는 그 즉시 막히고, 그 에이전트가 남긴 기록은 그대로 남습니다. 자세한 내용은 [CONTRACT.md](CONTRACT.md)(영어)를 보세요.
+에이전트는 기록을 만들고, 자기가 만든 기록만 고칠 수 있습니다. 읽을 수 있는 것은 자기 기록, 다른 에이전트의 보관되지 않은 조사·보고·메모·링크, 소유자의 할 일과 프로젝트입니다. 자기가 만든 기록은 휴지통으로 옮길 수 있고, 확인·보관·복원·영구 삭제는 소유자만 합니다. 에이전트를 제거하면 키는 그 즉시 막히고, 그 에이전트가 남긴 기록은 그대로 남습니다. 자세한 내용은 [CONTRACT.md](CONTRACT.md)(영어)를 보세요.
 </details>
 
 <details>

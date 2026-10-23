@@ -18,7 +18,7 @@ The dashboard is built for one owner and a handful of agents on infrastructure t
 
 ## Built-in protections
 
-- **Scoped agents.** An agent sees only its own records, shared material and the owner's open tasks and projects. It can change only what it wrote and can't delete anything. See [CONTRACT.md](../CONTRACT.md).
+- **Scoped agents.** An agent sees only its own records, shared material and the owner's open tasks and projects. It can change only what it wrote, and move only that to the trash, where the owner can restore it; only the owner deletes for good. See [CONTRACT.md](../CONTRACT.md).
 - **Sessions.** Owner sessions use an `HttpOnly`, `SameSite=Strict` cookie (`Secure` over HTTPS) that lasts 7 days, plus a CSRF token on every change.
 - **Origin and Host checks.** Requests must use an allowed `Host` and, when a browser sends one, an allowed `Origin`: the loopback addresses and `APP_ORIGIN`.
 - **Rate limits.** 300 requests per minute per credential. Unknown credentials share one bucket, so guessing keys doesn't buy extra attempts.
