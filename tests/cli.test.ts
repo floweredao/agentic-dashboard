@@ -24,6 +24,17 @@ test("server.env values survive a write and read, quotes and spaces included", (
   expect(parseEnv("# note\nPORT=4310\nEMPTY=\nbad line\n")).toEqual({ PORT: "4310", EMPTY: "" });
 });
 
+test("server.env reads lines copied from .env.example: a comment after a value and single quotes are not part of it", () => {
+  const example = readFileSync(join(import.meta.dir, "..", ".env.example"), "utf8").split("\n")
+    .filter(line => /^# [A-Z_]+=/.test(line)).map(line => line.slice(2)).join("\n");
+  const values = parseEnv(example);
+  expect([values["PUSH"], values["DIGEST"], values["GEMINI_API_KEY"], values["NARRATION_PODCAST_VOICE"], values["AI_FILL_COMMAND"]])
+    .toEqual(["on", "on", "", "Puck", "llm -m gpt-4o-mini"]);
+  expect(Object.entries(values).filter(([, value]) => value.includes("#"))).toEqual([]);
+  expect(parseEnv("GEMINI_API_KEY='a b#c'\nOWNER_LOGIN=\"you@example.com\"  # me\nAPP_NAME=Desk#2\n"))
+    .toEqual({ GEMINI_API_KEY: "a b#c", OWNER_LOGIN: "you@example.com", APP_NAME: "Desk#2" });
+});
+
 test("the launchd and systemd definitions run `start` with the home folder and escape what needs it", () => {
   const spec = { bun: "/opt/b&n/bun", main: "/app/cli/main.ts", home: "/home/u/<dash>", log: "/home/u/logs/server.log", path: "/usr/bin:/bin" };
   const plist = renderPlist(spec);
