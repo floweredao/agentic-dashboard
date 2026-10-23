@@ -200,7 +200,7 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 ## Other listeners
 
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`, `127.0.0.1:AGENT_PORT`): only `POST /api/v1/records` and `GET /api/v1/records/:id` with an agent key.
-- **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`, all attributed to `MCP_AGENT`, which must be an active registered agent.
+- **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`, all attributed to `MCP_AGENT`, which must be an active registered agent; once it is removed every request answers `403 forbidden` until its key is rotated.
 
 ## Demo mode
 
