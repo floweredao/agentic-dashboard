@@ -198,6 +198,15 @@ function describeConnect() {
     expect(existsSync(join(desk, ".agents", "skills", "agentic-dashboard", "SKILL.md"))).toBe(true);
   });
 
+  test("agentic-dashboard agents names its own commands, not the repository's bun run agents", async () => {
+    const added = await cli(join(dir, "host"), ["agents", "add", "cli-bot"]);
+    expect([added.code, added.stderr]).toEqual([0, ""]);
+    expect(added.stdout).toContain("Lost it? Run: agentic-dashboard agents rotate cli-bot");
+    const usage = await cli(join(dir, "host"), ["agents", "help"]);
+    expect(usage.stdout).toContain("  agentic-dashboard agents add <name>");
+    expect(`${added.stdout}${usage.stdout}`).not.toContain("bun run");
+  });
+
   test("a mistyped --skills target fails before the one-time code is spent, so the same code still connects", async () => {
     const issued = await cli(join(dir, "host"), ["invite", "typo-laptop"]);
     const code = /code for the agent "typo-laptop": (\S+)/.exec(issued.stdout)?.[1] ?? "";
