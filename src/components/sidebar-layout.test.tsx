@@ -179,3 +179,28 @@ test("a phone keeps its tab bar and opens the sidebar as a drawer that closes on
     expect(JSON.parse(String(await view.evaluate(boxes)))[".tabbar"]).toEqual(rest[".tabbar"]);
   });
 }, 30_000);
+
+test("a second finger landing mid-drag lets the sidebar go back to where it belongs instead of staying where the drag left it", async () => {
+  await withApp(390, 844, async view => {
+    await view.evaluate(`location.hash = "#/library"`);
+    await until(view, `() => document.querySelectorAll(".row-title").length === ${records.length}`);
+    await until(view, settled);
+    const touches = `(points => points.map(([x, y], identifier) => new Touch({ identifier, target: document.body, clientX: x, clientY: y })))`;
+    const fire = (type: string, points: readonly (readonly [number, number])[]) => view.evaluate(`(() => {
+      const touches = ${touches}(${JSON.stringify(points)});
+      document.body.dispatchEvent(new TouchEvent(${JSON.stringify(type)}, { touches, targetTouches: touches, changedTouches: touches, bubbles: true, cancelable: true }));
+    })()`);
+    const inline = `JSON.stringify([document.querySelector("#sidebar").style.transform, document.querySelector(".sidebar-scrim").style.opacity])`;
+    // Given: a phone, the drawer hidden, and a finger dragging it out from the left edge.
+    await fire("touchstart", [[5, 400]]);
+    await fire("touchmove", [[60, 402]]);
+    await fire("touchmove", [[120, 404]]);
+    expect(JSON.parse(await read(view, inline))[0]).toStartWith("translateX(");
+    // When: a second finger lands, and then both lift.
+    await fire("touchstart", [[120, 404], [200, 500]]);
+    await fire("touchend", []);
+    // Then: the drawer is no longer held by the drag: it stays hidden and nothing inline keeps it half out.
+    expect(await read(view, state)).toBe("hidden");
+    expect(JSON.parse(await read(view, inline))).toEqual(["", ""]);
+  });
+}, 30_000);
