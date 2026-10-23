@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { digestOfPartId, digestPartId, NARRATION_LIMITS, NarrationStateSchema, NarrationVoiceSettingsSchema } from "../shared/contracts";
 import { DIGEST_SCRIPT_SYSTEM, dialogueChunks, KOREAN_POLITE, listeningSource, missingFigures, normalizeScript, oneSidedTone, plainSentences, PODCAST_SCRIPT_SYSTEM, PODCAST_STYLE, ProviderError, SCRIPT_SYSTEM, SPEECH_STYLE, scriptParts, splitChunks } from "../server/narration";
@@ -1203,6 +1203,26 @@ test("a part script far shorter than its source is written once more, and the fu
   expect(tts.calls.script).toBe(2);
   expect(tts.calls.systems[1]).not.toBe(tts.calls.systems[0]);
   expect(state.narration?.script).toBe(COVER_FULL);
+});
+
+test("audio whose file is gone from the audio folder is not offered, answers 404 and is made again on the next request", async () => {
+  const { f, tts, audioFiles, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await idle();
+  const [file] = audioFiles();
+  rmSync(join(f.dir, "audio", file ?? ""));
+
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration?.audio).toBeNull();
+  expect((await f.call(`${narration(record.id)}/audio`, "GET", undefined, owner)).status).toBe(404);
+  expect((await f.call(narration(record.id), "POST", {}, bearer("codex"))).status).toBe(202);
+  await idle();
+  expect(tts.calls.speak.length).toBe(2);
+  const remade = (await read(await f.call(narration(record.id), "GET", undefined, owner))).narration;
+  expect(remade?.status).toBe("ready");
+  expect((await f.call(remade?.audio?.url ?? "", "GET", undefined, owner)).status).toBe(200);
+  expect(audioFiles()).toHaveLength(1);
 });
 
 test("a script saved under earlier script rules is written again instead of reused", async () => {
