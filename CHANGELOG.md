@@ -34,6 +34,7 @@ On first start the server adds the `narration_auto` and `digest_reactions` table
 - `agentic-dashboard service`, `setup --service` and `status` report a `launchctl` or `systemctl` that fails or is missing (a container, WSL without systemd) in one line instead of crashing with a stack trace; `status` then shows the service as installed, not running.
 - `install.sh` makes a relative `AGENTIC_DASHBOARD_HOME` or `AGENTIC_DASHBOARD_BIN_DIR` absolute. The `agentic-dashboard` command it wrote pointed at the app by the relative path and failed when run from any other folder, and setup saved the relative home for the service and the agent skills.
 - `bun run agent` (and `agentic-dashboard agent`) reports a missing option value or an unknown option as such with a pointer to `--help`, instead of "Save failed: …" whatever the command was, and invalid input to `--trash`, `--digest-reactions`, `--seen`/`--done` and `--timeline` names that command's options instead of `--file and --request-id`.
+- `agentic-dashboard agents` (installed command and single binary) names its own commands in its help and hints, such as `agentic-dashboard agents rotate <name>`, instead of `bun run agents`, which works only inside the repository.
 
 ## [0.3.0] - 2026-10-07
 
