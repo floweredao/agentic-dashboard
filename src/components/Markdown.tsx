@@ -18,7 +18,9 @@ type Block =
 type Item = { readonly text: string; readonly checked: boolean | null; readonly children: readonly Block[] };
 
 const fence = /^\s{0,3}(`{3,}|~{3,})\s*([\w+-]*)/;
-const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*$/;
+/** A closing run of # ends a heading only after a space (`# C#` keeps its #). */
+const closingHashes = /(?:^|\s+)#+$/;
 const rule = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const bullet = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 const quote = /^\s{0,3}>\s?(.*)$/;
@@ -41,13 +43,15 @@ function parse(source: string): Block[] {
       const marker = open[1] ?? "```";
       const body: string[] = [];
       i += 1;
-      while (i < lines.length && !(lines[i] ?? "").trim().startsWith(marker)) { body.push(lines[i] ?? ""); i += 1; }
+      // Only a bare run of the same mark, at least as long, closes the block; "```js" inside it is content.
+      const closes = (entry: string) => { const bare = entry.trim(); return bare.length >= marker.length && bare === (marker[0] ?? "`").repeat(bare.length); };
+      while (i < lines.length && !closes(lines[i] ?? "")) { body.push(lines[i] ?? ""); i += 1; }
       blocks.push({ type: "code", lang: open[2] ?? "", text: body.join("\n") });
       i += 1;
       continue;
     }
     const title = heading.exec(line);
-    if (title) { blocks.push({ type: "heading", level: title[1]?.length ?? 1, text: title[2] ?? "" }); i += 1; continue; }
+    if (title) { blocks.push({ type: "heading", level: title[1]?.length ?? 1, text: (title[2] ?? "").replace(closingHashes, "") }); i += 1; continue; }
     if (rule.test(line)) { blocks.push({ type: "hr" }); i += 1; continue; }
     if (line.includes("|") && separator.test(next)) {
       const head = cells(line);
@@ -83,7 +87,7 @@ function parse(source: string): Block[] {
         break;
       }
       blocks.push({
-        type: "list", ordered, start: ordered ? Number.parseInt(first[2] ?? "1", 10) || 1 : 1,
+        type: "list", ordered, start: ordered ? Number.parseInt(first[2] ?? "1", 10) : 1,
         items: items.map(({ text, rest }) => {
           const task = /^\[([ xX])\]\s+/.exec(text);
           const pad = Math.min(...rest.filter(entry => entry.trim()).map(indentOf), Number.MAX_SAFE_INTEGER);
@@ -103,7 +107,7 @@ function parse(source: string): Block[] {
 }
 
 const safeHref = (url: string) => /^https?:\/\//i.test(url) ? url : null;
-const inlinePattern = /(`+)([^`]+?)\1|\*\*(.+?)\*\*|__(.+?)__|(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?!\w)|(?<![\w_])_(?!\s)(.+?)(?<!\s)_(?!\w)|\[([^\]]+)\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)|(https?:\/\/[^\s<>()"']+[^\s<>()"'.,;:!?])/;
+const inlinePattern = /(`+)([^`]+?)\1|\*\*(.+?)\*\*|__(.+?)__|(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?!\w)|(?<![\w_])_(?!\s)(.+?)(?<!\s)_(?!\w)|\[([^\]]+)\]\(\s*((?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\s*\)|(https?:\/\/(?:[^\s<>()"']|\([^\s<>()"']*\))*(?:[^\s<>()"'.,;:!?]|\([^\s<>()"']*\)))/;
 
 /** A loaded record an inline id names; `href` is the in-app hash route that opens it. */
 export type RecordRef = { readonly id: string; readonly title: string; readonly href: string };

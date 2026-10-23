@@ -26,6 +26,10 @@ On first start the server adds the `narration_auto` and `digest_reactions` table
 - Digests are listed only in the Digest tab: the inbox shows records alone, and its badge, filter chips and title count only records.
 - The app opens on Today, and the tabs are Today, Digest, Library and More. Today shows today's digests (else the latest), up to five records to review, the audio you are listening to and tasks to check. The Inbox, Library and Archive merge into the Library, filtered by All, To review, Favorites and Archived, with continued records folded under their latest record; the kind and channel chips and the sidebar's channel list are gone, and Tasks moves under More. Old `#/inbox` and `#/archive` addresses redirect.
 
+### Fixed
+
+- Markdown in the reader: a heading keeps a `#` that ends a word (`# C#`), an ordered list that starts at 0 keeps its start, a fence line with a language (```` ```js ````) inside a code block stays code, and link addresses with balanced parentheses (`…/wiki/Bun_(software)`) stay whole.
+
 ## [0.3.0] - 2026-10-07
 
 One-line install with first-run setup, one-time codes that connect another computer's agents, audio that keeps playing across screens, and narration voices in Settings. On first start the server adds the `agent_invites` and `narration_settings` tables to the database; back up the data folder before you upgrade.
