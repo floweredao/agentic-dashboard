@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,7 +24,8 @@ function run(command: string[], cwd: string, env: Record<string, string>) {
 }
 
 test("install.sh with a relative home and command folder writes a command that works from any folder", () => {
-  const dir = mkdtempSync(join(tmpdir(), "agentic install-"));
+  // realpath: macOS tmpdir() is /var/..., which install.sh resolves to /private/var/...
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "agentic install-")));
   try {
     const stubs = join(dir, "stubs");
     mkdirSync(stubs);
