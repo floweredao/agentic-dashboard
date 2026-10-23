@@ -35,6 +35,25 @@ test("the launchd and systemd definitions run `start` with the home folder and e
   expect(unit).toContain("Environment=\"AGENTIC_DASHBOARD_HOME=/home/u/50%%\\\"q\\\"\"");
 });
 
+test("the systemd unit names its working folder and log as plain paths, so systemd loads it with spaces and % in the home", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentic-unit-"));
+  try {
+    const home = join(dir, "my 50% home", ".agentic-dashboard");
+    const unit = renderUnit({ bun: process.execPath, main: "/app/cli/main.ts", home, log: join(home, "logs", "server.log"), path: "/usr/bin:/bin" });
+    const escaped = home.replace(/%/g, "%%");
+    expect(unit).toContain(`\nWorkingDirectory=${escaped}\n`);
+    expect(unit).toContain(`\nStandardOutput=append:${escaped}/logs/server.log\n`);
+    expect(unit).toContain(`\nStandardError=append:${escaped}/logs/server.log\n`);
+    // systemd-analyze is on most Linux hosts (not macOS); there it checks the unit the way `systemctl --user` loads it.
+    const analyze = Bun.which("systemd-analyze");
+    if (analyze) {
+      writeFileSync(join(dir, "agentic-dashboard.service"), unit);
+      const verified = Bun.spawnSync([analyze, "verify", "--man=no", join(dir, "agentic-dashboard.service")], { stdout: "pipe", stderr: "pipe" });
+      expect([verified.exitCode, verified.stderr.toString()]).toEqual([0, ""]);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("the shipped skill is rewritten for this computer and never replaces a file someone else wrote", () => {
   const rendered = renderSkill(readFileSync(SKILL_SOURCE, "utf8"), { launcher: "/home/u/.local/bin/agentic-dashboard", url: "https://desk.example.com", agent: "laptop" });
   expect(rendered.startsWith("---\nname: agentic-dashboard\n")).toBe(true);

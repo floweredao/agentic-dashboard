@@ -16,6 +16,8 @@ export interface ServiceSpec {
 const xml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 // systemd unquotes "..." with C-style escapes and expands % specifiers, so both are escaped.
 const unitQuote = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/%/g, "%%")}"`;
+// WorkingDirectory= and append: take the path as written (quotes would make it relative, a fatal error), still expanding % specifiers.
+const unitPath = (value: string) => value.replace(/%/g, "%%");
 
 export function renderPlist(spec: ServiceSpec) {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -53,11 +55,11 @@ After=network-online.target
 ExecStart=${unitQuote(spec.bun)} ${unitQuote(spec.main)} start
 Environment=${unitQuote(`AGENTIC_DASHBOARD_HOME=${spec.home}`)}
 Environment=${unitQuote(`PATH=${spec.path}`)}
-WorkingDirectory=${unitQuote(spec.home)}
+WorkingDirectory=${unitPath(spec.home)}
 Restart=on-failure
 RestartSec=5
-StandardOutput=append:${spec.log}
-StandardError=append:${spec.log}
+StandardOutput=append:${unitPath(spec.log)}
+StandardError=append:${unitPath(spec.log)}
 
 [Install]
 WantedBy=default.target
