@@ -219,4 +219,4 @@ With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](doc
 
 ## Time
 
-Calendar days (Today, digests, the daily narration limit) use `TIME_ZONE`, which defaults to the host's zone. Weeks start on Monday.
+Calendar days (Today, digests, the daily narration limit) use `TIME_ZONE`, which defaults to the host's zone. Weeks start on Monday. A day whose clocks jump past midnight starts when they do (01:00); a local time the clocks skip reads as far past the change, and a time they repeat is its first occurrence.
