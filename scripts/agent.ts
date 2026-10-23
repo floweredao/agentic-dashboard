@@ -288,16 +288,22 @@ try {
     if (action === "update" && error.response.status === 409) {
       console.error("Someone changed it first. Read it again with --get, rebuild the changes on the latest content and send them with the new --expected-version.");
     }
+  } else if (error instanceof TypeError && "code" in error && String(error.code).startsWith("ERR_PARSE_ARGS")) {
+    console.error(`${error.message}. Run with --help to see every option.`);
   } else if (error instanceof z.ZodError) {
     const hint: Partial<Record<Action, string>> = {
       update: "the record id, --expected-version, --file (changes.json)",
       search: "the search words, --kind, --limit (1-50)",
       get: "the record id",
+      trash: "the record id, --expected-version",
       task: "the title or target id, --status (todo|active|review|paused|done)",
       report: "the title or target id, --status (todo|active|review|paused|done)",
       reply: "the title or target id, --status (todo|active|review|paused|done)",
       digest: "the digest JSON file, --quiet",
       digests: "--from/--to (YYYY-MM-DD)",
+      reactions: "--days (1-92)",
+      mark: "the comment id",
+      timeline: "the task id",
       comments: "--state (new|open|all), --interval (2-300 s), --timeout (s)",
       narrate: "the record id, --style (read|podcast), --interval (2-300 s), --timeout (s)",
     };
