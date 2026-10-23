@@ -418,10 +418,12 @@ export function createApp(options: AppOptions = {}) {
       });
       /** Like · Not for me · Seen it on one article: owner only, with CSRF. */
       app.put("/api/v1/digests/:id/reactions", async c => {
+        digestRoute();
         owner(c.req.raw, true);
         return c.json({ reactions: digests.react(c.req.param("id"), await json(c.req.raw)) });
       });
       app.post("/api/v1/digests/:id/read", async c => {
+        digestRoute();
         owner(c.req.raw, true);
         const input = z.object({ read: z.boolean(), part: DigestPartSchema.optional() }).strict().parse(await json(c.req.raw));
         return c.json({ digest: digests.markRead(c.req.param("id"), input.read, input.part) });
@@ -462,6 +464,7 @@ export function createApp(options: AppOptions = {}) {
         return c.json({ device: push.subscribe(input.subscription, input.kinds) });
       });
       app.delete("/api/v1/push/subscription", async c => {
+        pushRoute();
         owner(c.req.raw, true);
         push.unsubscribe(z.object({ endpoint: z.string().max(2048) }).strict().parse(await json(c.req.raw)).endpoint);
         return c.body(null, 204);
