@@ -71,6 +71,27 @@ test("A device subscribes with every kind on, changes its kinds, and unsubscribe
   expect(deviceView.parse(await (await f.call(query, "GET", undefined, fresh)).json()).device).toBeNull();
 });
 
+test("With PUSH turned off later, unsubscribing answers 404 feature_disabled like every other push route", async () => {
+  // Given: a device subscribed while push was on.
+  const { subscription } = device();
+  expect((await subscribe({ subscription })).status).toBe(200);
+  // When: the dashboard restarts with PUSH off.
+  Object.assign(f.options, { pushEnabled: false });
+  f.restart();
+  const owner = await f.login();
+  // Then: every push route, the unsubscribe included, is turned off, and the device stays for when push comes back.
+  for (const [method, path, body] of [["GET", "/api/v1/push", undefined], ["PUT", "/api/v1/push/subscription", { subscription }],
+    ["DELETE", "/api/v1/push/subscription", { endpoint: subscription.endpoint }], ["POST", "/api/v1/push/test", { endpoint: subscription.endpoint }]] as const) {
+    const response = await f.call(path, method, body, owner);
+    expect(response.status).toBe(404);
+    expect(z.object({ error: z.object({ code: z.string() }) }).parse(await response.json()).error.code).toBe("feature_disabled");
+  }
+  Object.assign(f.options, { pushEnabled: true });
+  f.restart();
+  const query = `/api/v1/push?endpoint=${encodeURIComponent(subscription.endpoint)}`;
+  expect(deviceView.parse(await (await f.call(query, "GET", undefined, await f.login())).json()).device).not.toBeNull();
+});
+
 test("Subscriptions need the owner, CSRF, a push-service endpoint and valid keys", async () => {
   const owner = await f.login();
   const { "X-CSRF-Token": _csrf, ...noCsrf } = owner;
