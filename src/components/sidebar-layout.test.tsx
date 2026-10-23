@@ -185,10 +185,14 @@ test("a second finger landing mid-drag lets the sidebar go back to where it belo
     await view.evaluate(`location.hash = "#/library"`);
     await until(view, `() => document.querySelectorAll(".row-title").length === ${records.length}`);
     await until(view, settled);
-    const touches = `(points => points.map(([x, y], identifier) => new Touch({ identifier, target: document.body, clientX: x, clientY: y })))`;
+    // A desktop Chrome without touch emulation has no Touch constructor, so the touch lists are plain
+    // objects on a normal event: the drawer's handlers read identifier, clientX and clientY from them.
+    const touches = `(points => points.map(([x, y], identifier) => ({ identifier, target: document.body, clientX: x, clientY: y })))`;
     const fire = (type: string, points: readonly (readonly [number, number])[]) => view.evaluate(`(() => {
       const touches = ${touches}(${JSON.stringify(points)});
-      document.body.dispatchEvent(new TouchEvent(${JSON.stringify(type)}, { touches, targetTouches: touches, changedTouches: touches, bubbles: true, cancelable: true }));
+      const event = new Event(${JSON.stringify(type)}, { bubbles: true, cancelable: true });
+      for (const name of ["touches", "targetTouches", "changedTouches"]) Object.defineProperty(event, name, { value: touches });
+      document.body.dispatchEvent(event);
     })()`);
     const inline = `JSON.stringify([document.querySelector("#sidebar").style.transform, document.querySelector(".sidebar-scrim").style.opacity])`;
     // Given: a phone, the drawer hidden, and a finger dragging it out from the left edge.
