@@ -56,7 +56,7 @@ RecordInput plus `id` (UUID), `source`, `createdBy`, `reviewState` (`pending | a
 
 Every record an agent creates follows one format, whatever the agent's style. Violations fail with `400 record_incomplete` and a message listing every item to fix. The rules are `AGENT_RECORD_RULES`, `AGENT_TAGS` and `AGENT_TEXT`, also published under `agentRecord` in `GET /api/v1/schema`.
 
-- Title: display width at most 40 columns (wide CJK characters and emoji count 2), else `400 title_too_long`.
+- Title: display width at most 40 columns (wide CJK characters and emoji count 2; measured after NFC composition, so decomposed Hangul counts as its syllables, and combining marks such as accents and emoji variation selectors count 0), else `400 title_too_long`.
 - Tags: 1 to 5, one word each, no `#`, spaces or commas, at most 20 columns, no duplicates.
 - Links: every link has a non-empty label.
 - Only the kind's field keys, and `status` only on tasks and projects.
