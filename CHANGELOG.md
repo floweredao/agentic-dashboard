@@ -29,6 +29,7 @@ On first start the server adds the `narration_auto` and `digest_reactions` table
 ### Fixed
 
 - Markdown in the reader: a heading keeps a `#` that ends a word (`# C#`), an ordered list that starts at 0 keeps its start, a fence line with a language (```` ```js ````) inside a code block stays code, and link addresses with balanced parentheses (`…/wiki/Bun_(software)`) stay whole.
+- New record: a first line longer than the 200-character title is kept whole in the body instead of losing what follows character 200, and a title cut at 200 no longer ends in half an emoji.
 
 ## [0.3.0] - 2026-10-07
 
