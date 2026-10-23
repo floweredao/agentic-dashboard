@@ -653,11 +653,11 @@ export function createNarration(options: NarrationOptions) {
     catch (error) {
       if (!(error instanceof ApiError) || error.status !== 404) throw error;
       const source = options.lookup?.(id);
-      if (!source) { set(id, { status: "failed", error: "record_missing" }); return; }
+      if (!source) { set(id, { status: "failed", error: "record_missing", progress_done: null, progress_total: null }); return; }
       record = source.record;
       label = source.label;
     }
-    if (!provider || !await available()) { if (!cancel.aborted) set(id, { status: "failed", error: "no_key" }); return; }
+    if (!provider || !await available()) { if (!cancel.aborted) set(id, { status: "failed", error: "no_key", progress_done: null, progress_total: null }); return; }
     if (cancel.aborted) return;
     const hash = sourceHash(record);
     const style = job.style;
@@ -816,11 +816,11 @@ export function createNarration(options: NarrationOptions) {
     autoRuns.add(work);
     void work.finally(() => autoRuns.delete(work));
   }
-  /** Jobs cut off by a restart start again; they were already counted against the daily limit. */
+  /** Jobs cut off by a restart start again from the queue, without the cut-off run's progress; they were already counted against the daily limit. */
   function resume() {
     for (const value of store.db.query("SELECT record_id FROM narrations WHERE status IN ('queued','scripting','speaking') ORDER BY requested_at").all()) {
       const { record_id } = z.object({ record_id: z.string() }).parse(value);
-      set(record_id, { status: "queued" });
+      set(record_id, { status: "queued", progress_done: null, progress_total: null });
       enqueue(record_id);
     }
   }

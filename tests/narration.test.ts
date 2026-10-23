@@ -796,6 +796,47 @@ test("no TTS key answers 503 and makes nothing", async () => {
   expect(audioFiles()).toEqual([]);
 });
 
+test("a job cut off by a restart while the key is gone fails as no_key without an attempt and without the old run's progress", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+  await idle();
+  // The server stopped halfway through speaking, and comes back without a key.
+  const db = new Database(f.options.databasePath);
+  db.query("UPDATE narrations SET status='speaking', progress_done=1, progress_total=2, audio_file=NULL, audio_hash=NULL WHERE record_id=?").run(record.id);
+  db.close();
+  tts.available = false;
+  f.restart();
+  await f.app.narration.idle();
+  const state = (await read(await f.call(narration(record.id), "GET", undefined, owner))).narration;
+  expect(state).toMatchObject({ status: "failed", error: "no_key", attempts: 0, progress: null, audio: null });
+});
+
+test("jobs cut off by a restart wait in the queue without the cut-off run's progress, then finish", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const first = await research(f, owner);
+  const second = await research(f, owner);
+  for (const record of [first, second]) {
+    expect((await f.call(narration(record.id), "POST", {}, owner)).status).toBe(202);
+    await idle();
+  }
+  const db = new Database(f.options.databasePath);
+  db.query("UPDATE narrations SET status='speaking', progress_done=1, progress_total=2").run();
+  db.close();
+  const gate = hold(tts);
+  f.restart();
+  await gate.entered.promise;
+  const states = await Promise.all([first, second].map(async record => (await read(await f.call(narration(record.id), "GET", undefined, owner))).narration));
+  expect(states.filter(state => state?.status === "queued")).toEqual([expect.objectContaining({ progress: null })]);
+  gate.release.resolve();
+  await f.app.narration.idle();
+  for (const record of [first, second]) {
+    expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", progress: null });
+  }
+});
+
 test("the daily limit refuses further generations with 429", async () => {
   const { f, idle } = setup(1);
   const owner = await f.login();
