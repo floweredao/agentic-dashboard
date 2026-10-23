@@ -124,6 +124,21 @@ test("save_record rejects invalid input without persisting", async () => {
   expect(z.object({ items: z.array(z.unknown()) }).parse(await list.json()).items).toHaveLength(0);
 });
 
+test("removing the MCP agent stops the connector at once, and rotating its key brings it back", async () => {
+  // Given: the owner removes MCP_AGENT (bun run agents remove chatgpt) while the server runs.
+  f.app.agents.revoke("chatgpt");
+  // When: the connector tries to save.
+  const refused = await post({ jsonrpc: "2.0", id: nextId++, method: "tools/call", params: { name: "save_record", arguments: payload(agentRecord()) } },
+    { "MCP-Protocol-Version": legacy });
+  // Then: nothing is saved under the removed agent's name.
+  expect(refused.status).toBe(403);
+  const list = await f.call("/api/v1/records?archived=all", "GET", undefined, await f.login());
+  expect(z.object({ items: z.array(z.unknown()) }).parse(await list.json()).items).toHaveLength(0);
+  // Rotating its key reactivates the agent, and with it the connector.
+  f.app.agents.rotate("chatgpt");
+  expect((await call("save_record", payload(agentRecord()))).isError).toBe(false);
+});
+
 test("get_record reads own records, unarchived reports, memos and links, and the owner's tasks and projects", async () => {
   const saved = await call("save_record", { requestId: "own-note", record: agentRecord({ kind: "note", title: "ChatGPT note" }) });
   const ownId = z.object({ id: z.string() }).parse(saved.structuredContent).id;
