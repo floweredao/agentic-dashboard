@@ -29,6 +29,7 @@ On first start the server adds the `narration_auto` and `digest_reactions` table
 ### Fixed
 
 - The `systemd --user` service that `agentic-dashboard setup` installs on Linux loads again: its working folder was written in quotes, which systemd reads as a relative path and refuses the whole unit, and its log path now also keeps a `%` in the home folder.
+- `server.env` reads a line copied from `.env.example` the way `.env` does: a ` # comment` after a value and 'single quotes' around it are no longer part of the value, so `PUSH=on   # web push` no longer stops the dashboard from starting and `GEMINI_API_KEY=   # turns on "Listen"` no longer sets the comment as the key.
 
 ## [0.3.0] - 2026-10-07
 
