@@ -126,7 +126,7 @@ Trashed records are purged after 30 days.
 
 | Route | Who | Result |
 |---|---|---|
-| `GET /api/v1/comments` | owner, agent | timeline or queue; `state` is `new`, `open` or `all` |
+| `GET /api/v1/comments` | owner, agent | timeline or queue; `state` is `new`, `open` or `all`; without `recordId` the owner gets the newest 2000 entries, oldest first |
 | `POST /api/v1/comments` | owner, agent | `{ requestId, recordId?, replyTo?, body, status?, done? }`; body at most 4000 characters |
 | `POST /api/v1/comments/:id/seen` | owner, agent | marks an owner comment seen |
 | `POST /api/v1/comments/:id/done` | owner, agent | marks it handled |
