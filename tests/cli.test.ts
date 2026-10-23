@@ -88,6 +88,43 @@ test("the shipped skill is rewritten for this computer and never replaces a file
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
+test("a service manager that is missing or refuses answers with a message, not a crash", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentic-service-"));
+  try {
+    const home = join(dir, "home");
+    const appHome = join(home, ".agentic-dashboard");
+    mkdirSync(appHome, { recursive: true });
+    writeFileSync(join(appHome, "server.env"), formatEnv("# test", { PORT: "4399", DATA_DIR: join(appHome, "data") }));
+    // An installed service on either system: the launch agent on macOS, the user unit on Linux.
+    for (const file of [join(home, "Library", "LaunchAgents", "dev.agentic-dashboard.server.plist"), join(home, ".config", "systemd", "user", "agentic-dashboard.service")]) {
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, "installed");
+    }
+    const refusing = join(dir, "refusing");
+    mkdirSync(refusing);
+    for (const name of ["launchctl", "systemctl"]) {
+      writeFileSync(join(refusing, name), "#!/bin/sh\necho 'Failed to connect to bus: No medium found' >&2\nexit 1\n", { mode: 0o755 });
+    }
+    const missing = join(dir, "missing");
+    mkdirSync(missing);
+    const cli = async (path: string, args: string[]) => {
+      const child = Bun.spawn([process.execPath, main, ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe",
+        env: { ...process.env, HOME: home, AGENTIC_DASHBOARD_HOME: appHome, AGENTIC_DASHBOARD_LANG: "en", XDG_CONFIG_HOME: "", PATH: path } });
+      const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+      return { code: await child.exited, stdout, stderr };
+    };
+    for (const path of [refusing, missing]) {
+      const status = await cli(path, ["status"]);
+      expect([status.code, status.stderr]).toEqual([0, ""]);
+      expect(status.stdout).toContain("background service installed, not running");
+      const restart = await cli(path, ["service", "restart"]);
+      expect(restart.code).toBe(1);
+      expect(restart.stderr).toContain(path === refusing ? "Failed to connect to bus" : "failed");
+      expect(restart.stderr).not.toMatch(/^\s+at /m);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 describeConnect();
 function describeConnect() {
   let dir = "";
