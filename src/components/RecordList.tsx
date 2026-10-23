@@ -96,6 +96,8 @@ export function RecordRow({ record, kinds = false }: { readonly record: Dashboar
   };
   const onPointerDown = (event: RowPointerEvent<HTMLLIElement>) => {
     const state = swipe.current;
+    // Another finger landing mid-swipe leaves the swipe to the finger that started it: its pointer is captured, so its up or cancel still comes here.
+    if (state.gesture?.axis === "horizontal" && event.pointerId !== state.gesture.pointerId) return;
     state.suppressClick = false;
     state.gesture = null;
     const row = rowRef.current;
