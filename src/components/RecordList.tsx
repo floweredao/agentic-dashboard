@@ -24,7 +24,8 @@ const text = strings({
   },
 });
 
-const plain = (text: string) => text.replace(/[#*_`>|]+/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim().slice(0, 280);
+// At most 280 UTF-16 units, dropping the first half of an emoji the cut would split.
+const plain = (text: string) => text.replace(/[#*_`>|]+/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim().slice(0, 280).replace(/[\uD800-\uDBFF]$/, "");
 const statusLabel = (record: DashboardRecord) => record.kind === "project"
   ? projectStatuses[record.status as keyof typeof projectStatuses] ?? record.status
   : taskStatuses[record.status as keyof typeof taskStatuses] ?? record.status;
