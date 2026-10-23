@@ -116,6 +116,22 @@ test("Malformed digests are refused before anything is written: unknown kind, du
   expect(list.parse(await (await f.call("/api/v1/digests?from=2026-09-01&to=2026-10-31", "GET", undefined, await f.login())).json()).items).toEqual([]);
 });
 
+test("Uploads with new section keys cannot grow a digest past 12 sections", async () => {
+  // Given: a morning digest that already has the most sections a digest may have.
+  const full = await upload(morning(Array.from({ length: 12 }, (_, index) => articles(`a${index}`, `A${index}`, [article("x", "소식")]))));
+  // When: a later upload adds one more key.
+  const response = await f.call("/api/v1/digests", "POST", morning([articles("extra", "Extra", [article("y", "추가 소식")])]), bearer("omo"));
+  // Then: it is refused and the stored digest keeps its 12 sections and version.
+  expect(response.status).toBe(400);
+  expect(await errorCode(response)).toBe("invalid_input");
+  const stored = detailOf.parse(await (await f.call(`/api/v1/digests/${full.digest.id}`, "GET", undefined, bearer("omo"))).json()).digest;
+  expect(stored.sections.map(section => section.key)).toEqual(full.digest.sections.map(section => section.key));
+  expect(stored.version).toBe(full.digest.version);
+  // An upload that replaces existing keys still works.
+  const replaced = await upload(morning([articles("a0", "A0", [article("z", "고친 소식")])]), 200);
+  expect(replaced.digest.sections).toHaveLength(12);
+});
+
 test("A digest larger than the 32 KiB record limit is accepted", async () => {
   const items = Array.from({ length: 50 }, (_, index) => article(`k${index}`, `긴 소식 ${index}`, { summary: "가".repeat(400) }));
   const body = morning([articles("domestic", "Domestic", items)]);
