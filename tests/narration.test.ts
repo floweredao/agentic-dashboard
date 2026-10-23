@@ -711,6 +711,46 @@ test("a digest script may run past a record's cap up to the digest cap", () => {
   expect(digest.length).toBeLessThanOrEqual(NARRATION_LIMITS.digestScriptChars);
 });
 
+test("a digest's saved script keeps up to 20,000 characters and is cut there", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const story = (index: number) => `Story ${index} is told in full with every fact the summary gives. ${"It goes on. ".repeat(14)}`.trim();
+  const script = (chars: number) => { const parts: string[] = []; for (let i = 0; parts.join("\n\n").length < chars; i++) parts.push(story(i)); return parts.join("\n\n"); };
+  const narrate = async (date: string, text: string) => {
+    const created = await f.call("/api/v1/digests", "POST", { date, slot: "morning", notify: false, sections: [
+      { key: "world", title: "World", kind: "articles", items: [{ key: "a", title: "World news", source: "Wire", summary: "Summary.", url: "https://news.example.com/a" }] }] }, bearer("omo"));
+    const id = (await created.json() as { digest: { id: string } }).digest.id;
+    tts.scriptText = text;
+    await f.call(`/api/v1/digests/${id}/narration`, "POST", {}, owner);
+    await idle();
+    return (await read(await f.call(`/api/v1/digests/${id}/narration`, "GET", undefined, owner))).narration;
+  };
+  // When: the script model writes 15,000 characters, the whole script is kept and spoken.
+  const long = script(15_000);
+  const kept = await narrate("2026-10-03", long);
+  expect(kept?.status).toBe("ready");
+  expect(kept?.script).toBe(long);
+  // When: it writes 25,000, the script is cut at a paragraph within 20,000.
+  const longer = script(25_000);
+  const cut = (await narrate("2026-10-04", longer))?.script ?? "";
+  expect(tts.calls.script).toBe(2);
+  expect(cut.length).toBeGreaterThan(19_000);
+  expect(cut.length).toBeLessThanOrEqual(20_000);
+  expect(longer.startsWith(cut)).toBe(true);
+});
+
+test("a record part's script is kept whole up to the 18,000-character part cap, far past 6,000", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  const record = await research(f, owner);
+  tts.scriptText = Array.from({ length: 60 }, (_, index) => `${index}번 문단은 원문의 설명을 그대로 전합니다. ${"내용이 이어집니다. ".repeat(18)}`.trim()).join("\n\n");
+  expect(tts.scriptText.length).toBeGreaterThan(10_000);
+  expect(tts.scriptText.length).toBeLessThan(NARRATION_LIMITS.partScriptChars);
+  await f.call(narration(record.id), "POST", {}, owner);
+  await idle();
+  expect((await read(await f.call(narration(record.id), "GET", undefined, owner))).narration).toMatchObject({ status: "ready", script: tts.scriptText });
+});
+
 test("a failed TTS reuses the saved script, retries each chunk, and stops after the attempt limit", async () => {
   const { f, tts, idle } = setup();
   const owner = await f.login();
@@ -806,6 +846,24 @@ test("the daily limit refuses further generations with 429", async () => {
   const refused = await f.call(narration(second.id), "POST", {}, owner);
   expect(refused.status).toBe(429);
   expect(await refused.text()).toContain("narration_daily_limit");
+});
+
+test("at most 20 jobs wait in the queue; one more is refused with 429 narration_queue_full", async () => {
+  const { f, tts, idle } = setup(50);
+  const owner = await f.login();
+  const records = [];
+  for (let index = 0; index < 22; index++) records.push(await research(f, owner));
+  // Given: one job is speaking and 20 wait behind it.
+  const gate = hold(tts);
+  expect((await f.call(narration(records[0]?.id ?? ""), "POST", {}, owner)).status).toBe(202);
+  await gate.entered.promise;
+  for (const record of records.slice(1, 21)) expect((await read(await f.call(narration(record.id), "POST", {}, owner))).narration?.status).toBe("queued");
+  // When: a 21st job is asked for, it is refused.
+  const refused = await f.call(narration(records[21]?.id ?? ""), "POST", {}, owner);
+  expect(refused.status).toBe(429);
+  expect(await refused.text()).toContain("narration_queue_full");
+  gate.release.resolve();
+  await idle();
 });
 
 test("audio survives the trash and is removed with the record or on request", async () => {

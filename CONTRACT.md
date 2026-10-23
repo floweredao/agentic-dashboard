@@ -26,7 +26,7 @@ Three logical collections share one table: projects (`project`), tasks (`task`) 
   kind: "project" | "task" | "research" | "work-report" | "note" | "social";
   title: string;                 // trimmed, 1..200
   body: string;                  // default "", at most 120000; record POST and PATCH bodies up to 512 KiB
-  status: string;                // default "new"
+  status: string;                // trimmed, 1..50, default "new"
   projectId: string | null;      // UUID of a project
   taskId: string | null;         // UUID of a task
   dueDate: string | null;        // YYYY-MM-DD
@@ -36,7 +36,7 @@ Three logical collections share one table: projects (`project`), tasks (`task`) 
 }
 ```
 
-Statuses: projects `new | idea | planning | active | paused | done`; tasks `new | todo | active | review | paused | done`; other kinds stay `new`.
+Statuses: projects `new | idea | planning | active | paused | done`; tasks `new | todo | active | review | paused | done`. An agent's records of other kinds stay `new` (see the agent record format); the owner may give them any status.
 
 ### DashboardRecord
 
@@ -156,12 +156,14 @@ The reader opens a record with a document on it, with a [Full document | Summary
 | Route | Who | Result |
 |---|---|---|
 | `POST /api/v1/digests` | agent | upsert by `date` and `slot`; 201 created or 200 updated |
-| `GET /api/v1/digests` | owner, agent | list; `from`, `to` (at most 92 days) |
+| `GET /api/v1/digests` | owner, agent | list; `from`, `to` (at most 92 days, both ends counted, else `400 invalid_query`; default the last 14 days) |
 | `GET /api/v1/digests/search` | owner, agent | item search |
 | `GET /api/v1/digests/:id` | owner, agent | `{ digest, reactions }` |
 | `POST /api/v1/digests/:id/read` | owner | `{ read, part? }` |
 | `PUT /api/v1/digests/:id/reactions` | owner | `{ section, key, reaction }` -> `{ reactions }` |
 | `GET /api/v1/digests/reactions` | owner, agent | `days` (1 to 92, default 30) -> `{ items, from }`, newest first |
+
+With `DIGEST` off every route above, and the digest narration routes, answers `404 feature_disabled`, also for digests stored before.
 
 A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended. `notify: false` skips push. A section shows under its own `title`, except the key `social` (posts picked from social networks, kind `articles`), which the app names Social / 소셜 in its own language; a digest has no social section unless an agent sends one.
 
@@ -176,7 +178,7 @@ Reactions: the owner can mark each article Like, Not for me or Seen it (`like`, 
 | `GET /api/v1/records/:id/narration/audio` | owner, agent in read scope | audio with byte ranges |
 | `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part (`articles`, `messages`) or the whole digest (`all`) |
 
-Only research, work-report, note and social records can be narrated. Limits: 6000-character scripts (10,000 for a digest, whose script tells every sentence of each article summary and is written once more when a Korean one leaves out a number the summary states), 20 queued jobs, `NARRATION_DAILY_LIMIT` runs per day (default 20) and 3 failed attempts per content version. `style` is `read` (one voice) or `podcast` (two hosts, records only); the state reports the style last chosen, which is the default for the next request. A busy or rate-limited provider is retried with backoff. Every script comes from the script model (`NARRATION_SCRIPT_MODEL`); there is no lighter fallback model. A script gets 1 + 4 tries: with Vertex configured it is streamed first from the same model through Vertex AI `streamGenerateContent?alt=sse`, then through the key, taking the two routes in turn; a try that sends nothing for 30 s or goes quiet for 90 s fails as `stalled` and, like `timeout`, is followed at once; another transient failure waits as above; a route that fails for good is not asked again. When every try fails the job fails with the last failure and nothing is spoken. Each script try logs one line naming the host and the model that wrote it, never a token. Each job reports its stage, `progress` (while scripting the script characters streamed in so far over the expected length; while speaking the chunks done and total) and `stepAt` (when the current step began), `scriptTry` (only while a script is on its second or later try: which try is running; absent otherwise, so clients built before it still parse the state); a failure names its cause. A record is scripted from its whole body: code, tables, link-only lines and source or reference sections are left out, the rest is split at its headings into parts of at most 5,000 characters, each part is scripted in order (up to 18,000 characters each, else the job fails as `script_too_long`), and a part script under 60% of its source is written once more. Scripts saved under earlier rules are rewritten. A Korean script with plain (반말) endings or written almost all in 해요체 or in 습니다체 is written once more. Korean audio reads each number before a known unit as it is spoken (5곳 다섯 곳, 6월 유월, 4.2% 사 점 이 퍼센트); the saved script keeps the digits.
+Only research, work-report, note and social records can be narrated. Limits: scripts of at most 18,000 characters per record part (see `script_too_long` below) and 20,000 for a digest, which is cut back to a paragraph or sentence end past that (its script tells every sentence of each article summary and is written once more when a Korean one leaves out a number the summary states), 20 queued jobs, `NARRATION_DAILY_LIMIT` runs per day (default 20) and 3 failed attempts per content version. `style` is `read` (one voice) or `podcast` (two hosts, records only); the state reports the style last chosen, which is the default for the next request. A busy or rate-limited provider is retried with backoff. Every script comes from the script model (`NARRATION_SCRIPT_MODEL`); there is no lighter fallback model. A script gets 1 + 4 tries: with Vertex configured it is streamed first from the same model through Vertex AI `streamGenerateContent?alt=sse`, then through the key, taking the two routes in turn; a try that sends nothing for 30 s or goes quiet for 90 s fails as `stalled` and, like `timeout`, is followed at once; another transient failure waits as above; a route that fails for good is not asked again. When every try fails the job fails with the last failure and nothing is spoken. Each script try logs one line naming the host and the model that wrote it, never a token. Each job reports its stage, `progress` (while scripting the script characters streamed in so far over the expected length; while speaking the chunks done and total) and `stepAt` (when the current step began), `scriptTry` (only while a script is on its second or later try: which try is running; absent otherwise, so clients built before it still parse the state); a failure names its cause. A record is scripted from its whole body: code, tables, link-only lines and source or reference sections are left out, the rest is split at its headings into parts of at most 5,000 characters, each part is scripted in order (up to 18,000 characters each, else the job fails as `script_too_long`), and a part script under 60% of its source is written once more. Scripts saved under earlier rules are rewritten. A Korean script with plain (반말) endings or written almost all in 해요체 or in 습니다체 is written once more. Korean audio reads each number before a known unit as it is spoken (5곳 다섯 곳, 6월 유월, 4.2% 사 점 이 퍼센트); the saved script keeps the digits.
 
 The owner chooses the voices and speaking styles in Settings › Narration voices. `GET /api/v1/narration/voices` (owner) answers `{ settings, defaults, voices }`: `settings` and `defaults` are `{ readVoice, hostA, hostB, readStyle, podcastStyle }` (`readVoice` reads aloud and reads digests, `hostA`/`hostB` are the podcast hosts and must differ, styles 1-300 characters), and `voices` is the 117 Korean voices of the Gemini TTS voice library (`shared/voices.ts`) plus the configured `NARRATION_VOICE`/`NARRATION_PODCAST_VOICE` it does not name (gender `neutral`). `PUT /api/v1/narration/voices` (owner, CSRF) saves a choice (400 `invalid_input` or `invalid_voice`) in the `narration_settings` table; jobs read it when they start, so existing audio keeps the voice in its `voice` field. `GET /api/v1/narration/voices/:voice/preview` (owner) speaks one sample sentence (Korean for a `ko-kr-` voice, English otherwise) once, a paid call of a few seconds, keeps it in `<audio dir>/previews/` and serves it from there (404 for a voice not offered, 502 `narration_preview_failed`).
 
@@ -192,6 +194,8 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 | `PUT /api/v1/push/subscription` | owner | `{ subscription, kinds? }`; kinds are `digest`, `review`, `reply`; `subscription.locale` (`en` or `ko`) sets this device's notification language, `LOCALE` otherwise |
 | `DELETE /api/v1/push/subscription` | owner | `{ endpoint }` |
 | `POST /api/v1/push/test` | owner | send a test notification |
+
+With `PUSH` off every push route answers `404 feature_disabled`; stored devices stay.
 
 ### Capture
 

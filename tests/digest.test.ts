@@ -266,3 +266,35 @@ test("The owner marks an article liked, not for them or seen; the digest reads b
   expect(body.items).toEqual([expect.objectContaining({ digestId: id, section: "domestic", key: "a", reaction: "dislike", title: "First story", source: "Newswire", url: "https://news.example.com/a" })]);
   expect((await f.call("/api/v1/digests/reactions?days=0", "GET", undefined, bearer("omo"))).status).toBe(400);
 });
+
+test("With DIGEST turned off later, a stored digest can no longer be marked read or reacted to", async () => {
+  // Given: a digest stored while digests were on.
+  const am = await upload(morning([articles("domestic", "Domestic", [article("a", "소식")])]));
+  const id = am.digest.id;
+  // When: the dashboard restarts with DIGEST off.
+  Object.assign(f.options, { digestEnabled: false });
+  f.restart();
+  const owner = await f.login();
+  // Then: the owner's digest writes answer 404 feature_disabled like every other digest route, and change nothing.
+  for (const [method, path, body] of [["POST", `/api/v1/digests/${id}/read`, { read: true }],
+    ["PUT", `/api/v1/digests/${id}/reactions`, { section: "domestic", key: "a", reaction: "like" }]] as const) {
+    const response = await f.call(path, method, body, owner);
+    expect([response.status, await errorCode(response)]).toEqual([404, "feature_disabled"]);
+  }
+  Object.assign(f.options, { digestEnabled: true });
+  f.restart();
+  const again = await f.login();
+  const detail = z.object({ digest: DigestSchema, reactions: z.record(z.string(), z.string()) }).parse(await (await f.call(`/api/v1/digests/${id}`, "GET", undefined, again)).json());
+  expect([detail.digest.readAt, detail.reactions]).toEqual([null, {}]);
+});
+
+test("A digest list asks for at most 92 days, counting both ends like the default 14", async () => {
+  const owner = await f.login();
+  // 2026-01-01 to 2026-04-02 is 92 days with both ends; one more day is refused.
+  expect((await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-02", "GET", undefined, owner)).status).toBe(200);
+  const over = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-03", "GET", undefined, owner);
+  expect([over.status, await errorCode(over)]).toEqual([400, "invalid_query"]);
+  // The default range is the last 14 days: today and the 13 before it.
+  const page = z.object({ from: z.string(), to: z.string() }).parse(await (await f.call("/api/v1/digests", "GET", undefined, owner)).json());
+  expect((Date.parse(page.to) - Date.parse(page.from)) / 86_400_000 + 1).toBe(14);
+});
