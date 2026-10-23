@@ -287,3 +287,14 @@ test("With DIGEST turned off later, a stored digest can no longer be marked read
   const detail = z.object({ digest: DigestSchema, reactions: z.record(z.string(), z.string()) }).parse(await (await f.call(`/api/v1/digests/${id}`, "GET", undefined, again)).json());
   expect([detail.digest.readAt, detail.reactions]).toEqual([null, {}]);
 });
+
+test("A digest list asks for at most 92 days, counting both ends like the default 14", async () => {
+  const owner = await f.login();
+  // 2026-01-01 to 2026-04-02 is 92 days with both ends; one more day is refused.
+  expect((await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-02", "GET", undefined, owner)).status).toBe(200);
+  const over = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-03", "GET", undefined, owner);
+  expect([over.status, await errorCode(over)]).toEqual([400, "invalid_query"]);
+  // The default range is the last 14 days: today and the 13 before it.
+  const page = z.object({ from: z.string(), to: z.string() }).parse(await (await f.call("/api/v1/digests", "GET", undefined, owner)).json());
+  expect((Date.parse(page.to) - Date.parse(page.from)) / 86_400_000 + 1).toBe(14);
+});
