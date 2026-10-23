@@ -159,7 +159,7 @@ The reader opens a record with a document on it, with a [Full document | Summary
 |---|---|---|
 | `POST /api/v1/digests` | agent | upsert by `date` and `slot`; 201 created or 200 updated |
 | `GET /api/v1/digests` | owner, agent | list; `from`, `to` (at most 92 days) |
-| `GET /api/v1/digests/search` | owner, agent | item search |
+| `GET /api/v1/digests/search` | owner, agent | item search; `q` (1 to 100 characters, trimmed) matches like the record `q`, `limit` (1..50, default 30), `part` |
 | `GET /api/v1/digests/:id` | owner, agent | `{ digest, reactions }` |
 | `POST /api/v1/digests/:id/read` | owner | `{ read, part? }` |
 | `PUT /api/v1/digests/:id/reactions` | owner | `{ section, key, reaction }` -> `{ reactions }` |
