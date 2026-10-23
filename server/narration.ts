@@ -482,9 +482,11 @@ export function createNarration(options: NarrationOptions) {
       .run(...entries.map(([, value]) => value ?? null), id);
   }
   const removeFile = (name: string | null) => { if (name) rmSync(join(audioDir, name), { force: true }); };
+  /** Audio whose file left the audio folder (removed by hand, or a data folder copied without it) is no audio: not offered, made again. */
+  const audioOnDisk = (current: Row) => current.audio_file !== null && existsSync(join(audioDir, current.audio_file));
 
   function view(current: Row, record: DashboardRecord): Narration {
-    const audio = current.audio_file && current.audio_mime && current.audio_at ? {
+    const audio = current.audio_file && current.audio_mime && current.audio_at && audioOnDisk(current) ? {
       url: `${options.lookup?.(current.record_id)?.audioBase ?? `/api/v1/records/${current.record_id}`}/narration/audio?v=${current.audio_file.slice(37, 45)}`, mime: current.audio_mime,
       bytes: current.audio_bytes ?? 0, durationMs: current.audio_ms ?? 0, model: current.audio_model ?? "", voice: current.audio_voice ?? "",
       style: current.audio_style, createdAt: current.audio_at,
@@ -517,7 +519,7 @@ export function createNarration(options: NarrationOptions) {
     // A digest has no summary of its own to choose: it is always read whole.
     const scope = options.lookup?.(record.id) ? "full" : settings.scope;
     if (current && ACTIVE.has(current.status)) return { state: await state(record), started: false };
-    if (current && current.audio_hash === hash && current.audio_style === style && current.audio_scope === scope && !force) {
+    if (current && current.audio_hash === hash && current.audio_style === style && current.audio_scope === scope && !force && audioOnDisk(current)) {
       if (current.style !== style) set(record.id, { style });
       return { state: await state(record), started: false };
     }
@@ -653,11 +655,11 @@ export function createNarration(options: NarrationOptions) {
     catch (error) {
       if (!(error instanceof ApiError) || error.status !== 404) throw error;
       const source = options.lookup?.(id);
-      if (!source) { set(id, { status: "failed", error: "record_missing" }); return; }
+      if (!source) { set(id, { status: "failed", error: "record_missing", progress_done: null, progress_total: null }); return; }
       record = source.record;
       label = source.label;
     }
-    if (!provider || !await available()) { if (!cancel.aborted) set(id, { status: "failed", error: "no_key" }); return; }
+    if (!provider || !await available()) { if (!cancel.aborted) set(id, { status: "failed", error: "no_key", progress_done: null, progress_total: null }); return; }
     if (cancel.aborted) return;
     const hash = sourceHash(record);
     const style = job.style;
@@ -816,11 +818,11 @@ export function createNarration(options: NarrationOptions) {
     autoRuns.add(work);
     void work.finally(() => autoRuns.delete(work));
   }
-  /** Jobs cut off by a restart start again; they were already counted against the daily limit. */
+  /** Jobs cut off by a restart start again from the queue, without the cut-off run's progress; they were already counted against the daily limit. */
   function resume() {
     for (const value of store.db.query("SELECT record_id FROM narrations WHERE status IN ('queued','scripting','speaking') ORDER BY requested_at").all()) {
       const { record_id } = z.object({ record_id: z.string() }).parse(value);
-      set(record_id, { status: "queued" });
+      set(record_id, { status: "queued", progress_done: null, progress_total: null });
       enqueue(record_id);
     }
   }
@@ -863,7 +865,7 @@ export function createNarration(options: NarrationOptions) {
   }
   function audioFile(id: string) {
     const current = row(id);
-    if (!current?.audio_file || !current.audio_mime) throw new ApiError(404, "not_found", "No narration audio for this record");
+    if (!current?.audio_file || !current.audio_mime || !audioOnDisk(current)) throw new ApiError(404, "not_found", "No narration audio for this record");
     return { path: join(audioDir, current.audio_file), mime: current.audio_mime };
   }
   async function idle() {

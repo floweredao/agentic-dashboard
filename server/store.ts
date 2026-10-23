@@ -11,13 +11,16 @@ const stored = z.object({ data: z.string() });
 const querySchema = z.object({
   kind: RecordKindSchema.optional(), status: z.string().min(1).max(50).optional(),
   reviewState: ReviewStateSchema.optional(), archived: z.enum(["false", "true", "all"]).default("false"),
-  projectId: z.string().uuid().optional(), q: z.string().max(200).optional(),
+  projectId: z.string().uuid().optional(), q: z.string().trim().max(200).optional(),
   dueFrom: DateSchema.optional(), dueTo: DateSchema.optional(),
   limit: z.coerce.number().int().min(1).max(50).default(50), cursor: z.string().max(512).optional(),
 }).strict();
 const cursorSchema = z.object({ createdAt: z.iso.datetime(), id: z.string().uuid() }).strict();
 const trashRow = z.object({ data: z.string(), deleted_at: z.string() });
 const documentRow = z.object({ html: z.string(), bytes: z.number(), updated_by: z.string(), updated_at: z.string() });
+const searchText = z.object({ title: z.string(), body: z.string() });
+/** Search compares text in one Unicode form and case (SQLite's lower() folds ASCII only, and macOS may hand over decomposed Hangul). */
+export const searchable = (text: string) => text.normalize("NFC").toLowerCase();
 const RETENTION_MS = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const CONTINUABLE: ReadonlySet<RecordKind> = new Set(["research", "work-report", "note", "social"]);
 /** Kinds every agent may read whoever saved them, while unarchived. Tasks, projects and archived records stay with their creator and the owner. */
@@ -297,7 +300,6 @@ export class Store {
       conditions.push(`json_extract(data,'$.${key}')=?`); params.push(query[key]);
     }
     if (query.archived !== "all") conditions.push(`json_extract(data,'$.archivedAt') IS ${query.archived === "true" ? "NOT " : ""}NULL`);
-    if (query.q) { conditions.push("(instr(lower(json_extract(data,'$.title')),lower(?))>0 OR instr(lower(json_extract(data,'$.body')),lower(?))>0)"); params.push(query.q, query.q); }
     if (query.dueFrom) { conditions.push("json_extract(data,'$.dueDate')>=?"); params.push(query.dueFrom); }
     if (query.dueTo) { conditions.push("json_extract(data,'$.dueDate')<=?"); params.push(query.dueTo); }
     if (query.cursor) {
@@ -308,10 +310,22 @@ export class Store {
       conditions.push("(json_extract(data,'$.createdAt') < ? OR (json_extract(data,'$.createdAt')=? AND id<?))");
       params.push(cursor.createdAt, cursor.createdAt, cursor.id);
     }
-    params.push(query.limit + 1);
+    // `q` is matched here rather than in SQL, so the scan runs newest first until one record past the page has matched.
+    const needle = query.q ? searchable(query.q) : null;
+    if (!needle) params.push(query.limit + 1);
     const rows = this.db.query(`SELECT data FROM records ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-      ORDER BY json_extract(data,'$.createdAt') DESC,id DESC LIMIT ?`).all(...params);
-    const records = rows.map(row => DashboardRecordSchema.parse(JSON.parse(stored.parse(row).data))).map(record => reader ? agentView(reader, record) : record);
+      ORDER BY json_extract(data,'$.createdAt') DESC,id DESC${needle ? "" : " LIMIT ?"}`).iterate(...params);
+    const records: DashboardRecord[] = [];
+    for (const row of rows) {
+      const value: unknown = JSON.parse(stored.parse(row).data);
+      if (needle) {
+        const text = searchText.parse(value);
+        if (!searchable(text.title).includes(needle) && !searchable(text.body).includes(needle)) continue;
+      }
+      const record = DashboardRecordSchema.parse(value);
+      records.push(reader ? agentView(reader, record) : record);
+      if (records.length > query.limit) break;
+    }
     const items = records.slice(0, query.limit);
     const last = items.at(-1);
     return { items, nextCursor: records.length > query.limit && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt, id: last.id })).toString("base64url") : null };
