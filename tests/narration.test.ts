@@ -1388,3 +1388,23 @@ test("with records set to read only their summary, the script leaves the body ou
   // Then: a new script covers the body.
   expect(tts.calls.prompts[1]).toContain("A sentence only in the body");
 });
+
+test("a digest part whose sections have no items has nothing to narrate: 404 and no script call", async () => {
+  const { f, tts, idle } = setup();
+  const owner = await f.login();
+  // Given: articles, and a messages section that only says why it is empty.
+  const id = await digestId(await uploadDigest(f, [articles("Article"),
+    { key: "inbox", title: "Inbox", kind: "messages", items: [], shortfall: "The mailbox could not be read" }]));
+  const path = `/api/v1/digests/${digestPartId(id, "messages")}/narration`;
+  // When: the owner asks for the empty messages part.
+  const response = await f.call(path, "POST", {}, owner);
+  await idle();
+  // Then: there is no such part to narrate, and nothing was paid for or counted.
+  expect(response.status).toBe(404);
+  expect((await f.call(path, "GET", undefined, owner)).status).toBe(404);
+  expect(tts.calls.script).toBe(0);
+  // And: the articles part is narrated as before.
+  expect((await f.call(`/api/v1/digests/${id}/narration`, "POST", {}, owner)).status).toBe(202);
+  await idle();
+  expect(tts.calls.script).toBe(1);
+});
