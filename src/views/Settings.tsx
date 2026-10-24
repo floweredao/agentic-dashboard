@@ -12,6 +12,7 @@ import { useDashboard } from "../state";
 import { viewTitles } from "../router";
 import { AutoSettings } from "./AutoSettings";
 import { VoiceSettings } from "./VoiceSettings";
+import { useRateLimited } from "../rate-limit";
 
 type KindText = { readonly label: string; readonly note: string };
 const text = strings({
@@ -21,6 +22,7 @@ const text = strings({
     systemNote: (name: string) => `This device: ${name}`,
     languageNote: "Saved on this device only. The page reloads in the chosen language.",
     version: (version: string) => `Version ${version}`,
+    installed: "Installed app", internet: "Internet required, including in the installed app. Saved records are not available offline.",
     kinds: {
       digest: { label: "New digest", note: "When an agent posts a digest, with its headlines" },
       review: { label: "Needs review", note: "When an agent marks a task as needing review" },
@@ -57,6 +59,7 @@ const text = strings({
     systemNote: (name: string) => `지금 이 기기: ${name}`,
     languageNote: "이 기기에만 저장하고, 고른 언어로 페이지를 다시 불러와요.",
     version: (version: string) => `버전 ${version}`,
+    installed: "설치한 앱", internet: "설치한 앱에서도 인터넷 연결이 필요해요. 저장한 기록은 오프라인에서 읽을 수 없어요.",
     kinds: {
       digest: { label: "다이제스트 도착", note: "에이전트가 다이제스트를 올리면 헤드라인과 함께" },
       review: { label: "확인 필요", note: "에이전트가 할 일을 확인 필요로 바꾸면" },
@@ -147,7 +150,13 @@ export function SettingsPane() {
       <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{viewTitles.settings}</h1></div>
     </header>
     <LanguageChoice />
+    {config.features.narration && <VoiceSettings />}
+    {config.features.narration && <AutoSettings />}
     {config.features.push && <PushSettings />}
+    <section className="more-group" aria-labelledby="settings-installed">
+      <h2 id="settings-installed" className="more-heading">{text().installed}</h2>
+      <p className="setting-note">{text().internet}</p>
+    </section>
     {config.version && <p className="settings-version">{text().version(config.version)}</p>}
   </div>;
 }
@@ -155,6 +164,7 @@ export function SettingsPane() {
 function PushSettings() {
   const t = text();
   const d = useDashboard();
+  const limited = useRateLimited();
   const support = pushSupport();
   const [permission, setPermission] = useState(() => typeof Notification === "undefined" ? "default" : Notification.permission);
   const [device, setDevice] = useState<PushDevice | null | undefined>(undefined);
@@ -196,23 +206,21 @@ function PushSettings() {
   const kinds = (Object.keys(kindIcons) as (keyof PushKinds)[]).filter(key => key !== "digest" || config.features.digest);
 
   return <>
-    {config.features.narration && <VoiceSettings />}
-    {config.features.narration && <AutoSettings />}
     {support === "ios-browser" && <p className="settings-notice" role="note">{t.iosNotice}</p>}
     <section className="more-group" aria-labelledby="settings-device">
       <h2 id="settings-device" className="more-heading">{t.device}</h2>
       <ul className="more-list">
         <Row icon={<Bell size={18} aria-hidden="true" />} label={t.receive} note={status}
-          control={<Switch checked={on} label={t.receive} disabled={pending || support !== "supported" || device === undefined || (permission === "denied" && !on)} onChange={next => { void turn(next); }} />} />
+          control={<Switch checked={on} label={t.receive} disabled={limited || pending || support !== "supported" || device === undefined || (permission === "denied" && !on)} onChange={next => { void turn(next); }} />} />
         <Row icon={<BellRing size={18} aria-hidden="true" />} label={t.test} note={t.testNote}
-          control={<button type="button" className="btn btn-outline" onClick={() => { void test(); }} disabled={pending || !on}><Send size={15} aria-hidden="true" />{t.send}</button>} />
+          control={<button type="button" className="btn btn-outline" onClick={() => { void test(); }} disabled={limited || pending || !on}><Send size={15} aria-hidden="true" />{t.send}</button>} />
       </ul>
     </section>
     <section className="more-group" aria-labelledby="settings-kinds">
       <h2 id="settings-kinds" className="more-heading">{t.kindsHeading}</h2>
       <ul className="more-list">
         {kinds.map(key => <Row key={key} icon={kindIcons[key]} label={t.kinds[key].label} note={t.kinds[key].note}
-          control={<Switch checked={on && device.kinds[key]} label={t.kinds[key].label} disabled={pending || !on} onChange={next => { void choose(key, next); }} />} />)}
+          control={<Switch checked={on && device.kinds[key]} label={t.kinds[key].label} disabled={limited || pending || !on} onChange={next => { void choose(key, next); }} />} />)}
       </ul>
     </section>
     <section className="more-group" aria-labelledby="settings-ios">

@@ -37,7 +37,7 @@ The dashboard is built for one owner and a handful of agents on infrastructure t
 
 ## Shares
 
-A share link (`/s/<code>`) is readable by anyone who has the code and can reach the server. Revoke shares you no longer need from the reader.
+A share link (`/s/<code>`) is readable without sign-in by anyone who has the code and can reach the server, including on a public host. Sharing starts only when the owner chooses Share. It includes the record's title, source, dates, status, summary, conclusion, body, next steps, links, tags and previous-record reference, not personal notes or attached HTML/audio. Stop sharing in the reader revokes the link; it cannot remove copies a recipient already saved.
 
 ## Reporting a vulnerability
 
