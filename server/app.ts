@@ -10,8 +10,12 @@ import { migrate } from "./migrations";
 import { ControlDb } from "./control-db";
 import { createRuntime } from "./app-runtime";
 import { createRouter } from "./app-router";
+import { createOidc, type HostedAuth } from "./oidc";
 
 export interface AppOptions {
+  readonly hosted?: HostedAuth;
+  /** Shared protocol cache, initialized by createApp for all tenants. */
+  readonly oidc?: ReturnType<typeof createOidc>;
   readonly databasePath?: string;
   readonly databaseUrl?: string;
   readonly databaseAuthToken?: string;
@@ -73,13 +77,17 @@ export async function createApp(options: AppOptions = {}) {
   await migrate(sql);
   const now = options.now ?? Date.now;
   const localStore = new Store(new TenantDb(sql, "local"), now);
-  const localAuth = new Auth(localStore, options.demo === true);
-  await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
+  const localAuth = new Auth(localStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
+  if (!options.hosted) await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
+  if (options.hosted && !options.privateOrigin) throw new Error("Hosted mode requires privateOrigin");
+  const effective = options.hosted && options.privateOrigin ? { ...options, oidc: createOidc({
+    hosted: options.hosted, origin: options.privateOrigin, control: localAuth.control, now,
+  }) } : options;
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
   const tenant = (userId: string) => {
     let scope = scopes.get(userId);
     if (!scope) {
-      scope = createTenantApp(options, new Store(new TenantDb(sql, userId), now));
+      scope = createTenantApp(effective, new Store(new TenantDb(sql, userId), now));
       scopes.set(userId, scope);
     }
     return scope;

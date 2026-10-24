@@ -6,7 +6,7 @@ import type { Comment, DashboardRecord, PushPayload } from "../shared/contracts"
 import { createAiFill } from "./ai-fill";
 import { systemTimeZone } from "../shared/time";
 import { Agents } from "./agents";
-import { Auth, hash, SESSION_COOKIE } from "./auth";
+import { Auth, hash } from "./auth";
 import { Digests } from "./digests";
 import { Invites } from "./invites";
 import { createPush, replyPayload, reviewPayload } from "./push";
@@ -25,7 +25,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
   const demo = options.demo === true;
 
-  const auth = new Auth(store, demo);
+  const auth = new Auth(store, demo, options.hosted ? options.privateOrigin : undefined);
 
   const agents = new Agents(store);
 
@@ -92,7 +92,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
   const trustedOwner = (c: Context, strictHost = false) => {
     const trusted = options.trustedIdentity;
     const host = strictHost ? c.req.header("host") : c.req.header("host") ?? new URL(c.req.url).host;
-    return trusted !== undefined && trusted.login !== "" && !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
+    return !options.hosted && store.db.userId === "local" && trusted !== undefined && trusted.login !== "" && !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
       host === privateUrl.host && c.req.header(trusted.header) === trusted.login;
   };
 
@@ -152,22 +152,21 @@ export async function createRuntime(options: AppOptions, store: Store) {
   };
 
   // Loopback origins of the listener and of the Vite dev server (4311), plus the configured APP_ORIGIN.
-  const origins = new Set([
+  const origins = new Set(options.hosted ? [privateOrigin] : [
     `http://127.0.0.1:${port}`, `http://localhost:${port}`, "http://127.0.0.1:4311", "http://localhost:4311", privateOrigin,
   ]);
 
   const hosts = new Set([...origins].map(origin => new URL(origin).host));
 
-  hosts.add(`127.0.0.1:${options.agentPort ?? 4312}`);
+  if (!options.hosted) hosts.add(`127.0.0.1:${options.agentPort ?? 4312}`);
 
-  if (options.publicApiBaseUrl) hosts.add(new URL(options.publicApiBaseUrl).host);
+  if (!options.hosted && options.publicApiBaseUrl) hosts.add(new URL(options.publicApiBaseUrl).host);
 
   const rate = { buckets: new Map<string, number>(), window: Math.floor(now() / 60000) };
 
   const limit = options.rateLimit ?? 300;
 
-  const cookie = (value: string, expiresAt: string, secure: boolean) =>
-    `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Expires=${new Date(expiresAt).toUTCString()}${secure ? "; Secure" : ""}`;
+  const cookie = (value: string, expiresAt: string, secure: boolean) => auth.cookie(value, expiresAt, secure);
       const owner = async (request: Request, mutation: boolean) => {
         if ((await auth.authenticate(request, false)).source !== "manual") throw new ApiError(403, "forbidden", "Owner session required");
         if (mutation) (await auth.csrf(request, origins));
