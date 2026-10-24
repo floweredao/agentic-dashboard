@@ -36,9 +36,14 @@ export class ControlDb {
   async createUser(id: string, timestamp: string) {
     await this.sql.run("INSERT INTO users(id,created_at) VALUES(?,?)", [id, timestamp]);
   }
-  async startOAuth(hash: string, expires: number) {
-    await this.sql.run("DELETE FROM oauth_transactions WHERE expires_at<=?", [expires - 600000]);
-    await this.sql.run("INSERT INTO oauth_transactions(tx_hash,expires_at) VALUES(?,?)", [hash, expires]);
+  async startOAuth(hash: string, expires: number, client: string) {
+    await this.sql.tx(async sql => {
+      await sql.run("DELETE FROM oauth_transactions WHERE expires_at<=?", [expires - 600000]);
+      await sql.run(`DELETE FROM oauth_transactions WHERE tx_hash IN (
+        SELECT tx_hash FROM oauth_transactions WHERE tx_hash GLOB ?
+        ORDER BY expires_at DESC, tx_hash DESC LIMIT -1 OFFSET 19)`, [`${client}:*`]);
+      await sql.run("INSERT INTO oauth_transactions(tx_hash,expires_at) VALUES(?,?)", [`${client}:${hash}`, expires]);
+    });
   }
   async consumeOAuth(hash: string, now: number) {
     return Boolean(await this.sql.get("DELETE FROM oauth_transactions WHERE tx_hash=? AND expires_at>? RETURNING tx_hash", [hash, now]));
