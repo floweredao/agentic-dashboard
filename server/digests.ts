@@ -108,6 +108,10 @@ export class Digests {
         const section = { ...next, updatedAt: timestamp } as DigestSection;
         if (index >= 0) sections[index] = section; else sections.push(section);
       }
+      // Each upload is capped at 12 sections; new keys over several uploads must not grow the stored digest past that either.
+      if (sections.length > DIGEST_LIMITS.sections && sections.length > (existing?.sections.length ?? 0)) {
+        throw new ApiError(400, "invalid_input", `A digest has at most ${DIGEST_LIMITS.sections} sections; replace an existing section key instead of adding one`);
+      }
       if (existing && changed.length === 0 && existing.scheduledAt === scheduledAt) return { digest: existing, created: false, changed, added };
       const kindOf = (key: string) => sections.find(section => section.key === key)?.kind;
       const reads = Object.fromEntries(DIGEST_PARTS.map(part => {

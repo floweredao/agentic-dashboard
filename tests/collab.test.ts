@@ -165,3 +165,19 @@ test("an existing database gains the comments table without losing records", asy
   expect(recordResult.parse(await got.json()).record).toMatchObject({ id: task.id, title: "재시작 전", version: 1 });
   expect((await comment("owner", { recordId: task.id, body: "재시작 후" })).comment.recordId).toBe(task.id);
 });
+
+test("the owner's list of every timeline keeps the newest comments when there are more than it returns", async () => {
+  // Given: an item with 2001 timeline entries, more than the owner's list of every timeline returns.
+  const task = await ownerTask();
+  const omo = bearer("omo");
+  for (let index = 0; index < 2001; index++) {
+    const response = await f.call("/api/v1/comments", "POST", { requestId: `report-${index}`, recordId: task.id, body: `보고 ${index}` }, omo);
+    expect(response.status).toBe(201);
+  }
+  // When: the owner lists every timeline, as the app does.
+  const items = timeline.parse(await listed("owner")).items;
+  // Then: the oldest entry is the one left out, the newest is there, and the order stays oldest first.
+  expect(items).toHaveLength(2000);
+  expect(items[0]?.body).toBe("보고 1");
+  expect(items.at(-1)?.body).toBe("보고 2000");
+});

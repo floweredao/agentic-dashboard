@@ -204,6 +204,10 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate,
     if (url.pathname !== "/mcp") return reply({ error: { code: "not_found", message: "Route not found" } }, 404);
     if (request.method !== "POST") return reply({ error: { code: "method_not_allowed", message: "Use POST" } }, 405, { Allow: "POST" });
     if (request.headers.has("origin")) return reply({ error: { code: "origin", message: "Browser origins are not allowed" } }, 403);
+    // Removing the agent (bun run agents remove) stops its connector at once, as it stops its key.
+    if (!store.db.query("SELECT 1 FROM principals WHERE id=? AND source<>'manual' AND revoked_at IS NULL").get(agent.id)) {
+      return reply({ error: { code: "forbidden", message: "MCP_AGENT is not an active registered agent" } }, 403);
+    }
     const headerVersion = request.headers.get("mcp-protocol-version");
     if (headerVersion !== null && !SUPPORTED_VERSIONS.includes(headerVersion)) {
       return rpcFailure(null, -32600, "Unsupported MCP-Protocol-Version", 400);

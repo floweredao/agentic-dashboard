@@ -57,8 +57,9 @@ export class Comments {
       return { items: rows.map(toComment) };
     }
     if (principal.source === "manual") {
-      const rows = db.query(`SELECT ${COLUMNS} FROM comments c JOIN records r ON r.id=c.record_id WHERE 1=1${stateCondition(query.state ?? "all")}
-        ORDER BY c.created_at,c.rowid LIMIT 2000`).all();
+      // The newest 2000 entries, oldest first: past the cap the oldest ones drop out, never the latest.
+      const rows = db.query(`SELECT * FROM (SELECT ${COLUMNS},c.rowid AS position FROM comments c JOIN records r ON r.id=c.record_id
+        WHERE 1=1${stateCondition(query.state ?? "all")} ORDER BY c.created_at DESC,c.rowid DESC LIMIT 2000) ORDER BY created_at,position`).all();
       return { items: rows.map(toComment) };
     }
     const rows = db.query(`SELECT ${COLUMNS},json_extract(r.data,'$.title') AS title FROM comments c JOIN records r ON r.id=c.record_id
