@@ -11,7 +11,7 @@ export function wav(pcm: Uint8Array) {
 }
 
 /**
- * AAC in an M4A container through macOS afconvert when it exists, else ffmpeg from PATH (Linux and other installs), and the WAV is
+ * AAC in an M4A container through ffmpeg from PATH, else macOS afconvert when it exists, and the WAV is
  * kept when neither is there or the encode fails.
  */
 export function audioEncoder(tools: { readonly afconvert?: string; readonly ffmpeg?: string | null } = {}): Encoder {
@@ -19,8 +19,8 @@ export function audioEncoder(tools: { readonly afconvert?: string; readonly ffmp
   const ffmpegPath = tools.ffmpeg === undefined ? Bun.which("ffmpeg") : tools.ffmpeg;
   return async (wavPath, signal) => {
     const out = wavPath.replace(/\.wav$/, ".m4a");
-    const command = existsSync(afconvertPath) ? [afconvertPath, "-f", "m4af", "-d", "aac", "-b", "64000", wavPath, out]
-      : ffmpegPath ? [ffmpegPath, "-nostdin", "-loglevel", "error", "-y", "-i", wavPath, "-c:a", "aac", "-b:a", "64k", out] : null;
+    const command = ffmpegPath ? [ffmpegPath, "-nostdin", "-loglevel", "error", "-y", "-i", wavPath, "-c:a", "aac", "-b:a", "64k", out]
+      : existsSync(afconvertPath) ? [afconvertPath, "-f", "m4af", "-d", "aac", "-b", "64000", wavPath, out] : null;
     if (command) {
       try {
         const child = Bun.spawn(command, { stdin: "ignore", stdout: "ignore", stderr: "ignore", signal });

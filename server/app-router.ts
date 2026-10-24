@@ -10,6 +10,9 @@ import { registerDigests } from "./routes-digests";
 import { registerNarration } from "./routes-narration";
 import { registerSharing } from "./routes-sharing";
 import { registerRecords } from "./routes-records";
+import { registerOidc } from "./routes-oidc";
+import { registerAgents } from "./routes-agents";
+import { registerGemini } from "./routes-gemini";
 export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
   const { options, now, demo, auth, origins, hosts, limit, rate } = runtime;
 
@@ -20,7 +23,7 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
       c.header("X-Frame-Options", "DENY");
       c.header("Referrer-Policy", "no-referrer");
       // Digest thumbnails load from the publisher's https address (no referrer); the public surface serves no pictures.
-      c.header("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${publicOnly ? "" : " https:"}; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
+      c.header("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${publicOnly ? "" : " https:"}; media-src 'self' data: blob:${options.audioBucket ? " https://storage.googleapis.com" : ""}; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
       c.header("Cache-Control", "no-store");
       const url = new URL(c.req.url);
       if (!hosts.has(c.req.header("host") ?? url.host)) throw new ApiError(421, "invalid_host", "Host is not allowed");
@@ -29,7 +32,9 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
         throw new ApiError(404, "not_found", "Route not found");
       }
       const origin = c.req.header("origin");
-      if (origin !== undefined && !origins.has(origin)) throw new ApiError(403, "origin", "Origin is not allowed");
+      if (origin !== undefined && !origins.has(origin)) {
+        throw new ApiError(403, options.hosted && !["GET", "HEAD"].includes(c.req.method) ? "csrf" : "origin", "Origin is not allowed");
+      }
       const window = Math.floor(now() / 60000);
       if (window !== rate.window) { rate.buckets.clear(); rate.window = window; }
       // Unknown credentials share one bucket; clients cannot grow the map by rotating garbage tokens.
@@ -54,7 +59,11 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
       return c.json({ error: { code: "internal_error", message: "Internal server error" } }, 500);
     });
 
-    if (!publicOnly) { registerSession(app, runtime); registerDigests(app, runtime); registerNarration(app, runtime); registerSharing(app, runtime); }
+    if (!publicOnly) {
+      app.all("/mcp", c => runtime.mcpFetch(c.req.raw));
+      registerGemini(app, runtime); registerAgents(app, runtime); registerOidc(app, runtime); registerSession(app, runtime);
+      registerDigests(app, runtime); registerNarration(app, runtime); registerSharing(app, runtime);
+    }
     registerRecords(app, runtime, publicOnly);
     app.all("/api/*", c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
 

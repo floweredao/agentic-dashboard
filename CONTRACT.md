@@ -8,9 +8,11 @@ All data access uses the asynchronous `Sql` interface. A local path or `file:` U
 
 Every tenant table has a non-null `user_id`: principals, sessions, records, evidence, requests, trash, comments, documents, agent_invites, digests, digest_reactions, narrations, narration_runs, narration_auto, narration_settings, push_subscriptions and shares. Principal names, idempotency keys, digest slots, comments, documents and narration state are scoped to that account. Generated record columns index kind, creation time and archive state. `users` and `schema_migrations` are global control tables.
 
-Request credentials select a fixed tenant service graph. Background audio queues, settings, AI fills and push recipients use the same account. Missing content from another account returns 404, including delete attempts; relationship validation retains its existing 400 response. A share or invitation code is an explicit capability and resolves its issuing account. Subscribing an existing push endpoint moves that device to the account that subscribed last. Trusted proxy identity grants owner authority only in the implicit `local` account; capture with a non-local account's cookie is rejected even with that header. MCP uses a supplied agent bearer, or the configured local `MCP_AGENT` when no bearer is supplied. API JSON shapes are unchanged.
+Request credentials select a fixed tenant service graph. Background audio queues, settings, AI fills and push recipients use the same account. Missing content from another account returns 404, including delete attempts; relationship validation retains its existing 400 response. A share or invitation code is an explicit capability and resolves its issuing account. Subscribing an existing push endpoint moves that device to the account that subscribed last. Trusted proxy identity grants owner authority only in the implicit `local` account; capture with a non-local account's cookie is rejected even with that header. Hosted capture and every MCP request require an agent bearer; `MCP_AGENT` never authenticates a request.
 
 ## Principals
+
+In Google mode, unauthenticated requests use a non-persisted public service scope, not the `local` account. The local account is excluded from session, bearer, share, invitation and Google-subject capability resolution, and its service graph is not started. Existing local data and capabilities remain stored but are unavailable on the hosted origin; there is no automatic migration into a Google account. Local mode retains access to them. Hosted-account public shares continue to resolve through their explicit capability.
 
 | Principal | Source value | How it authenticates |
 |---|---|---|
@@ -19,9 +21,29 @@ Request credentials select a fixed tenant service graph. Background audio queues
 
 Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key.
 
+Browser sessions can also create an agent with `POST /api/v1/agents { name, capture? }`, rotate with `POST /api/v1/agents/:name/rotate`, or revoke with `DELETE /api/v1/agents/:name`. All require CSRF. New keys are `fd_` followed by 32 random bytes in base64url, returned once as `{ agent, key }` on create/rotate; list/get never expose keys or hashes. `capture` defaults false and is shown in agent metadata. Revocation and rotation invalidate the previous key immediately. Agent names are attribution within an account, not separate privacy boundaries.
+
+Rotation only updates an active principal. A revoked agent returns `409 agent_revoked` and cannot be reactivated or registered again under the same name; create a token under a new name. The update itself requires `revoked_at IS NULL`, so concurrent revocation cannot be undone by rotation. The UI disables rotation for revoked agents and translates the refusal.
+
+`POST /api/v1/agents/invites { name }` lets a CSRF-authenticated owner issue the existing 15-minute single-use installer invitation for a new name. The connection screen supplies the hosted URL and invitation to the connect-only installer, explains macOS/Linux prerequisites and untested Windows support, and offers a curl fallback. Its test-save action writes through the bearer and reads the returned id through the owner API before showing success.
+
 A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
 
 Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
+
+### Optional hosted Google authentication
+
+After a successful JWKS refresh, only keys in the returned set are accepted. A previously cached key may be reused only when the refresh fails.
+
+With Google authentication configured, local owner-key and trusted-header bootstrap are disabled. `GET /auth/google/start` uses PKCE S256, random state/nonce and a signed ten-minute `oidc_tx` cookie. A global `oauth_transactions` row is atomically consumed before code exchange; the same callback cannot create another session. ID tokens require RS256 using the configured provider JWKS, allowed issuer, audience/authorized party, transaction-bound nonce and issue time, expiry and a boolean verified email. Token-selected key URLs are rejected. Production endpoints are Google's; local mock endpoints are an application-construction test seam, not a public request option.
+
+Users are identified only by Google subject, never merged by email. A deleted identity receives a new tenant id. Signups are limited to `MAX_USERS` active hosted accounts (default 50; the local owner is excluded); existing users can still sign in. Capacity returns a 403 explanation with a self-hosting alternative.
+
+Hosted sessions last 30 days and rotate the browser's previous session and CSRF token at sign-in. Cookies are HttpOnly, SameSite=Lax, Path=/, with no Domain: `__Host-session` for configured HTTPS origins, `session` for local HTTP testing. Forwarded headers never decide Secure. The hosted origin is the only allowed browser origin/host. `POST /auth/logout` requires session and CSRF and removes that session. `/auth/*` is limited to 20 requests per IP per minute (last forwarded hop only on trusted hosted ingress; socket address otherwise). New users return to `/welcome`, existing onboarded users to `/`.
+
+`AUTH_TRUST_PROXY=on` enables last-hop forwarding trust only in Google mode. Cloud Run (`K_SERVICE` present) enables it by default; `AUTH_TRUST_PROXY=off` overrides that default. Local mode always uses the socket address. A full 10,000-key rate map evicts its oldest entry instead of denying every new client. Each client key can hold at most 20 live OAuth transactions across rate windows; insertion and eviction are atomic. Transaction keys use an HMAC client tag in the existing `tx_hash` field, not a stored IP address. The signed cookie retains that tag so a callback can survive a network change.
+
+The browser config adds `authMode: "local" | "google"`. Google mode displays Google-only access and limited signup capacity before authorization; local owner login and demo behavior remain available when Google is not configured.
 
 ## Records
 
@@ -209,10 +231,34 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 
 `POST /api/v1/capture` saves a link as a `social` record. It only works for the owner signed in through the trusted proxy, with the header `X-Capture: v1`.
 
+In Google mode capture instead requires an agent bearer with `capture` enabled and `X-Capture: shortcut-v1` (legacy `X-Floweredao-Capture: shortcut-v1` is accepted). The token selects the tenant and saved attribution. A session cookie or trusted header cannot substitute. Local trusted-owner capture continues to accept `X-Capture: v1`.
+
 ## Other listeners
 
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`, `127.0.0.1:AGENT_PORT`): only `POST /api/v1/records` and `GET /api/v1/records/:id` with an agent key.
-- **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`, all attributed to `MCP_AGENT`, which must be an active registered agent.
+- **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`. Every call, including discovery and notifications, now requires an agent bearer; there is no `MCP_AGENT` authority fallback. Calls use the token's account/principal and a per-token rate bucket. Browser Origins are rejected.
+
+Google mode exposes bearer MCP at `/mcp` on the main listener and never starts the separate agent/MCP listeners. `scripts/mcp-forward.ts --listen 127.0.0.1:4313 --to https://example.test/mcp --token-file <private-path>` supports a loopback tunnel. It adds its configured bearer, strips browser credentials, rejects browser Origins and foreign Hosts, and never logs tokens. This transport proof does not claim a hosted ChatGPT OAuth connector.
+
+## Personal Gemini credentials
+
+Model-list validation sends the credential in `x-goog-api-key`, never in the request URL.
+
+Google mode exposes owner-session `GET /api/v1/settings/gemini` returning `{ configured, last4 }`, CSRF-protected `PUT { key }`, and `DELETE` (204). PUT accepts a key only after Google's model-list endpoint returns 200; rejected keys produce `422 gemini_key_invalid` without replacing storage. Acceptance is not a speech-model or quota guarantee. The API never returns the full key.
+
+PUT also returns `modelAvailability.script` and `.speech`, each `{ name, listed }` for the configured models. The browser config exposes their names as `narrationModels`. This reports model-list visibility, not a paid generation test. On a later visit the UI explicitly marks visibility as not checked rather than persisting a stale access guarantee. Actual job failures distinguish rejected credentials, model permission, missing models, quota and operator-managed Vertex setup.
+
+Keys are stored only as AES-256-GCM envelopes `v<version>.<iv>.<ciphertext-with-tag>` in the existing `users.gemini_key_ct` and `gemini_key_kek` columns. A 12-byte random IV and `${userId}:gemini` additional authenticated data prevent moving ciphertext between accounts. `APP_SECRETS.kek` holds versioned 32-byte base64 encryption keys. `bun scripts/rotate-kek.ts` re-encrypts all stored keys transactionally using the highest configured version; keep old versions configured until rotation completes.
+
+Each tenant's narration and Gemini title-fill runner resolves its personal key at call time. A new narration without one returns `409 gemini_key_required`; existing reading and saving remain available. Hosted automatic audio defaults off. Title fill uses `AI_FILL_MODEL` (default `gemini-3.5-flash-lite`) and skips users without keys. Local installs retain `GEMINI_API_KEY` and optional `AI_FILL_COMMAND`.
+
+## Configuration
+
+`server/config.ts` parses environment variables once. `AUTH_MODE=local` is the default; `google` requires `APP_ORIGIN` and `APP_SECRETS` with `google.clientId/clientSecret`, `sessionSigningKey` and `kek`. Hosted push also requires `vapid.publicKey/privateKey` in that JSON and never writes a VAPID file. Local file-backed VAPID behavior is unchanged.
+
+`APP_SECRETS` also accepts optional `turso.authToken/platformToken/org` and `resend.apiKey`; `DATABASE_AUTH_TOKEN` overrides `turso.authToken`. Configuration accepts `OWNER_ALERT_EMAIL`, `CONTACT_EMAIL`, `MAX_USERS`, `AUDIO_BUCKET`, `TASKS_QUEUE` and `TASKS_SERVICE_ACCOUNT` for the hosted operations layer. Notification click paths and manifest start/scope remain same-origin relative paths. OAuth redirects, share links, VAPID subject and allowed browser origins derive from `APP_ORIGIN`; loopback development origins are local-mode only. An `AUDIO_BUCKET` enables `https://storage.googleapis.com` in media CSP.
+
+The container listens on `0.0.0.0:8080` and includes the digest-pinned static ffmpeg 7.1 image's encoder. Encoding chooses ffmpeg first, macOS afconvert second, and preserves WAV if neither encoder is available.
 
 ## Demo mode
 
@@ -237,6 +283,6 @@ Calendar days (Today, digests, the daily narration limit) use `TIME_ZONE`, which
 
 The server runs `NARRATION_CONCURRENCY` jobs concurrently (1–4, default 2); the library default remains 1. A record never has two running jobs. Progress, waits and cancellation belong to each job independently. Content edits through REST or MCP regenerate automatic audio in its last requested style; tags, stars, links and status alone do not. New records with configured AI title fill wait for it to settle before narration. Refused automatic record requests (daily limit, queue full or missing key) and failed jobs with attempts remaining are retried every 30 minutes, unless record automation is off. This deferred list is in memory and does not survive restart.
 
-Digest scripts finish each section in source order before starting the next, with no cross-section top-stories segment. Message action fields remain accepted and searchable but are neither displayed nor included in narration input. Record scripts omit closing link-label lists, work-log sections, lane tags and citation/grade markers. Listening prompts preserve facts, conditions, comparisons, uncertainty and source questions without adding advice. Script rules 7 affect new scripts, not the stale status of existing audio. Encoding uses macOS afconvert, otherwise ffmpeg from PATH; without a working encoder it keeps WAV.
+Digest scripts finish each section in source order before starting the next, with no cross-section top-stories segment. Message action fields remain accepted and searchable but are neither displayed nor included in narration input. Record scripts omit closing link-label lists, work-log sections, lane tags and citation/grade markers. Listening prompts preserve facts, conditions, comparisons, uncertainty and source questions without adding advice. Script rules 7 affect new scripts, not the stale status of existing audio. Encoding uses ffmpeg from PATH, otherwise macOS afconvert; without a working encoder it keeps WAV.
 
 The generated [storage schema](docs/schema/agentic-dashboard.schema.json) exports API and briefing-folder boundaries; [storage.md](docs/storage.md) describes the runtime files and tables.

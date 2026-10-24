@@ -39,3 +39,19 @@ test("audio remains WAV when no encoder is installed", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("ffmpeg takes precedence when the macOS encoder also exists", async () => {
+  // Given both tool paths exist, but only the ffmpeg fixture produces audio.
+  const dir = mkdtempSync(join(tmpdir(), "encoder-order-"));
+  try {
+    const ffmpeg = join(dir, "ffmpeg");
+    writeFileSync(ffmpeg, '#!/bin/sh\nfor a; do last=$a; done\nwhile [ "$1" != "-i" ]; do shift; done\ncp "$2" "$last"\n');
+    chmodSync(ffmpeg, 0o755);
+    const source = join(dir, "audio.wav");
+    writeFileSync(source, "RIFF-test");
+    // When both encoders are offered.
+    const result = await audioEncoder({ afconvert: "/usr/bin/false", ffmpeg })(source, AbortSignal.timeout(5000));
+    // Then ffmpeg's valid output wins over afconvert.
+    expect(result.mime).toBe("audio/mp4");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -69,7 +69,7 @@ export function registerSharing(app: Hono, runtime: TenantRuntime) {
         const found = (await shares.find(c.req.param("code")));
         const previousId = found?.record.fields.previousId;
         const previousTitle = found && typeof previousId === "string"
-          ? await new Shares(new Store(new TenantDb(store.db.sql, found.userId), now), privateOrigin).titleOf(previousId) : null;
+          ? await new Shares(new Store(new TenantDb(store.db.sql, found.userId), now, store.control), privateOrigin).titleOf(previousId) : null;
         c.header("Content-Type", "text/plain; charset=utf-8");
         c.header("X-Robots-Tag", "noindex");
         return found ? c.body(renderMarkdown(found.record, found.share, () => previousTitle, timeZone, options.locale ?? "en"), 200) : c.body("Share link not found.", 404);

@@ -44,6 +44,10 @@ export const MIGRATIONS: readonly Migration[] = [
     }
     for (const { table } of [...legacy].reverse()) await sql.run(`DROP TABLE legacy_${table}`);
   } },
+  { version: 3, async up(sql) {
+    await sql.run("CREATE TABLE oauth_transactions(tx_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)");
+    await sql.run("ALTER TABLE principals ADD COLUMN capture INTEGER NOT NULL DEFAULT 0");
+  } },
 ];
 
 /** Each version and its ledger entry commit together, including upgrades interrupted mid-copy. */

@@ -1,0 +1,20 @@
+.google-signin { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 44px; padding: 8px 16px; border: 1px solid #747775; border-radius: 8px; background: #fff; color: #1f1f1f; font: 500 0.875rem/1.5 system-ui, sans-serif; text-decoration: none; }
+.google-signin:hover { background: #f2f2f2; }
+.google-signin svg { flex: none; }
+.account-legal { display: flex; justify-content: center; flex-wrap: wrap; gap: 24px; }
+.account-legal a { color: var(--muted); text-underline-offset: 4px; padding-block: 8px; }
+.account-signin { max-width: 42rem; margin-inline: auto; }
+.account-section { display: grid; gap: 16px; min-width: 0; }
+.account-stack { display: grid; gap: 16px; min-width: 0; }
+.account-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.account-actions h2 { margin-right: auto; }
+.account-agent { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.account-agent h3 { font-size: 1rem; color: var(--ink); overflow-wrap: anywhere; }
+.account-check { display: flex; align-items: flex-start; gap: 8px; }
+.account-check input { flex: none; margin-top: 4px; }
+.account-code { padding: 12px; border-radius: 8px; background: var(--raised); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8125rem; }
+.account-recovery { display: inline-block; padding: 8px 0; color: var(--accent); }
+.account-models { display: grid; gap: 12px; margin: 0; font-size: 0.875rem; }
+.account-models dt { color: var(--muted); }
+.account-models dd { display: grid; gap: 4px; margin: 4px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 767px) { .account-agent { align-items: flex-start; flex-direction: column; } .account-actions .btn { min-height: 44px; } }

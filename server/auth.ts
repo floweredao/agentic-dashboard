@@ -27,8 +27,8 @@ export const readCredentials = (credentialsPath: string) => CredentialsSchema.pa
 export class Auth {
   readonly control: ControlDb;
   /** `demo`: every browser request reads as the owner without a key or session (the app blocks every change in demo mode). */
-  constructor(readonly store: Store, private readonly demo = false) {
-    this.control = new ControlDb(store.db.sql);
+  constructor(readonly store: Store, private readonly demo = false, readonly hostedOrigin?: string) {
+    this.control = new ControlDb(store.db.sql, hostedOrigin === undefined);
   }
   async initialize(credentialsPath: string) {
     ensureCredentials(credentialsPath);
@@ -46,18 +46,26 @@ export class Auth {
     return principal;
   }
   async findSession(request: Request) {
-    const prefix = `${SESSION_COOKIE}=`;
+    const prefix = `${this.cookieName}=`;
     const cookie = request.headers.get("cookie")?.split(";").map(part => part.trim()).find(part => part.startsWith(prefix))?.slice(prefix.length);
     if (!cookie) return null;
     return this.control.sessionByHash(hash(cookie), this.store.now());
   }
+  get cookieName() {
+    return this.hostedOrigin ? (this.hostedOrigin.startsWith("https:") ? "__Host-session" : "session") : SESSION_COOKIE;
+  }
+  cookie(value: string, expiresAt: string, secure: boolean) {
+    const https = this.hostedOrigin ? this.hostedOrigin.startsWith("https:") : secure;
+    return `${this.cookieName}=${value}; Path=/; HttpOnly; SameSite=${this.hostedOrigin ? "Lax" : "Strict"}; Expires=${new Date(expiresAt).toUTCString()}${https ? "; Secure" : ""}`;
+  }
   async resolveUser(request: Request) {
+    const anonymous = this.hostedOrigin ? null : "local";
     const authorization = request.headers.get("authorization");
     if (authorization !== null) {
-      if (!authorization.startsWith("Bearer ")) return "local";
-      return (await this.control.principalByToken(hash(authorization.slice(7))))?.user_id ?? "local";
+      if (!authorization.startsWith("Bearer ")) return anonymous;
+      return (await this.control.principalByToken(hash(authorization.slice(7))))?.user_id ?? anonymous;
     }
-    return (await this.findSession(request))?.user_id ?? "local";
+    return (await this.findSession(request))?.user_id ?? anonymous;
   }
   async session(request: Request) {
     if (this.demo) return { user_id: "local", hash: "", principal_id: "owner", csrf: "demo", expires_at: this.store.now() + 7 * 24 * 60 * 60 * 1000 };
@@ -79,6 +87,7 @@ export class Auth {
     return principalSchema.parse(await this.store.db.get("SELECT id,source FROM principals WHERE id=? AND user_id=?", [session.principal_id]));
   }
   async createSession(token: string) {
+    if (this.hostedOrigin) throw new ApiError(403, "google_signin_required", "Use Google sign-in.");
     const principal = await this.control.principalByToken(hash(token));
     if (!principal) throw new ApiError(401, "unauthenticated", "Invalid credentials");
     if (principal.source !== "manual") throw new ApiError(403, "forbidden", "Only owner credentials create sessions");
@@ -87,10 +96,17 @@ export class Auth {
   async createOwnerSession() {
     const value = secret();
     const csrfToken = secret();
-    const expires = this.store.now() + 7 * 24 * 60 * 60 * 1000;
+    const expires = this.store.now() + (this.hostedOrigin ? 30 : 7) * 24 * 60 * 60 * 1000;
     await this.store.db.run("DELETE FROM sessions WHERE expires_at<=? AND user_id=?", [this.store.now()]);
     await this.store.db.run("INSERT INTO sessions(hash,principal_id,csrf,expires_at,user_id) VALUES(?,?,?,?,?)", [hash(value), "owner", csrfToken, expires]);
     return { value, csrfToken, expiresAt: new Date(expires).toISOString() };
+  }
+  async signInUser(userId: string, request: Request) {
+    const previous = await this.findSession(request);
+    if (previous) {
+      await new TenantDb(this.store.db.sql, previous.user_id).run("DELETE FROM sessions WHERE hash=? AND user_id=?", [previous.hash]);
+    }
+    return new Auth(new Store(new TenantDb(this.store.db.sql, userId), this.store.now, this.control), false, this.hostedOrigin).createOwnerSession();
   }
   async csrf(request: Request, origins: ReadonlySet<string>) {
     const session = await this.session(request);
