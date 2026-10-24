@@ -90,21 +90,26 @@ export async function createApp(options: AppOptions = {}) {
   const trustedAuthProxy = options.hosted !== undefined && options.trustedAuthProxy === true;
   const sockets = new WeakMap<Request, string>();
   const clientKey = (request: Request) => authClientKey(request, sockets.get(request), trustedAuthProxy);
-  const localStore = new Store(new TenantDb(sql, "local"), now);
-  const localAuth = new Auth(localStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
-  if (!options.hosted) await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
+  const control = new ControlDb(sql, options.hosted === undefined);
+  // The hosted public service scope has no users row and can never own account data.
+  const initialScopeId = options.hosted ? "" : "local";
+  const initialStore = new Store(new TenantDb(sql, initialScopeId), now, control);
+  const initialAuth = new Auth(initialStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
+  if (!options.hosted) await initialAuth.initialize(options.credentialsPath ?? "data/credentials.json");
   if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
   const effective: AppOptions = { ...options,
     ...(options.geminiKeys ? { keyStore: createGeminiKeys(sql, options.geminiKeys) } : {}),
     ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
-    hosted: options.hosted, origin: options.privateOrigin, control: localAuth.control, now, clientKey,
+    hosted: options.hosted, origin: options.privateOrigin, control: initialAuth.control, now, clientKey,
   }) } : {}),
   };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
   const tenant = (userId: string) => {
+    if (options.hosted && userId === "local") return Promise.reject(
+      new ApiError(403, "local_account_unavailable", "The local account is unavailable in hosted mode."));
     let scope = scopes.get(userId);
     if (!scope) {
-      scope = createTenantApp(effective, new Store(new TenantDb(sql, userId), now)).catch((error: unknown) => {
+      scope = createTenantApp(effective, new Store(new TenantDb(sql, userId), now, control)).catch((error: unknown) => {
         scopes.delete(userId);
         throw error;
       });
@@ -112,15 +117,16 @@ export async function createApp(options: AppOptions = {}) {
     }
     return scope;
   };
-  const local = await tenant("local");
+  const initial = await tenant(initialScopeId);
   // Resume pending audio and AI fills for every existing account, including accounts without a current browser session.
-  for (const userId of await new ControlDb(sql).users()) await tenant(userId);
+  for (const userId of await control.users()) await tenant(userId);
   const dispatch = async (request: Request, surface: "fetch" | "publicFetch" | "mcpFetch") => {
-    const scope = await tenant(await localAuth.resolveUser(request));
+    const userId = await initialAuth.resolveUser(request);
+    const scope = userId === null ? initial : await tenant(userId);
     return scope[surface](request);
   };
   const limitAuth = authLimiter(now, trustedAuthProxy);
-  return { ...local, sql, tenant,
+  return { ...initial, sql, tenant,
     fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) => {
       const address = server?.requestIP(request)?.address;
       if (address !== undefined) sockets.set(request, address);

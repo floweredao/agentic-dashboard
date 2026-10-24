@@ -2,6 +2,8 @@
 
 `AUTH_MODE=local` keeps SQLite, owner-key login, optional trusted proxy login and environment-backed Gemini credentials. `AUTH_MODE=google` enables account sign-in, account-scoped agent tokens, bearer capture/MCP and encrypted personal Gemini keys. It uses only the main listener.
 
+Switching an existing database to Google mode does not publish its local account. Local records, share codes, invitations and credentials stay stored but cannot be used on the hosted origin. A Google subject bound to the local row is refused rather than silently linked. No new anonymous user row is created, and local-account background services are not resumed. Hosted users' explicit share links continue to work. Use local mode to access the old account; any data migration is a separate decision.
+
 This is an application foundation, not a public-service launch. Operator alert delivery, public legal policies, onboarding completion, account export/deletion, hosted storage and operational jobs belong to the remaining hosted-service plan. `OWNER_ALERT_EMAIL`, `CONTACT_EMAIL` and the task/bucket fields are parsed for that layer; capacity has an injectable `onCapacity` hook, not an email sender.
 
 ## Operator configuration

@@ -12,6 +12,8 @@ Request credentials select a fixed tenant service graph. Background audio queues
 
 ## Principals
 
+In Google mode, unauthenticated requests use a non-persisted public service scope, not the `local` account. The local account is excluded from session, bearer, share, invitation and Google-subject capability resolution, and its service graph is not started. Existing local data and capabilities remain stored but are unavailable on the hosted origin; there is no automatic migration into a Google account. Local mode retains access to them. Hosted-account public shares continue to resolve through their explicit capability.
+
 | Principal | Source value | How it authenticates |
 |---|---|---|
 | Owner | `manual` | Signs in with the owner key from `data/credentials.json` (session cookie plus CSRF token), or through a trusted proxy header |
