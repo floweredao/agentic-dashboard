@@ -39,12 +39,13 @@ export function TrashPane({ now = Date.now() }: { readonly now?: number }) {
   /** The position of the row a restore, permanent delete or empty is acting on. */
   const leaving = useRef<number | null>(null);
   // Once it is done the row has taken the focused button with it: focus goes to the row now in its place, or to main when none is left.
+  // WebKit does not focus a clicked button; the click lands focus on main instead, so focus on main counts as lost too.
   useLayoutEffect(() => {
     const index = leaving.current;
     if (index === null || busy) return;
     leaving.current = null;
     const active = document.activeElement;
-    if (active && active !== document.body && active.isConnected && !active.matches(":disabled")) return;
+    if (active && active !== document.body && active.id !== "main" && active.isConnected && !active.matches(":disabled")) return;
     (list.current?.children[Math.min(index, items.length - 1)]?.querySelector("button") ?? document.getElementById("main"))?.focus({ preventScroll: true });
   });
   const act = (index: number, run: () => Promise<void>) => { leaving.current = index; void run(); };
