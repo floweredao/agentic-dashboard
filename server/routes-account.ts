@@ -30,7 +30,7 @@ export function registerAccount(app: Hono, runtime: TenantRuntime) {
     if (!options.hosted) throw new ApiError(404, "account_deletion_unavailable", "Account deletion requires hosted mode");
     const input = z.object({ confirm: z.string().max(320) }).strict().parse(await json(c.req.raw));
     const session = await auth.session(c.req.raw);
-    await account.remove(input.confirm, session.created_at);
+    await account.remove(input.confirm, session.authenticated_at);
     c.header("Set-Cookie", auth.cookie("", new Date(0).toISOString(), privateUrl.protocol === "https:"));
     return c.body(null, 204);
   });

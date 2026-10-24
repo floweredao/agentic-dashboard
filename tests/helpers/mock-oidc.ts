@@ -5,6 +5,7 @@ const sha256 = (value: string) => new Bun.CryptoHasher("sha256").update(value).d
 const authorization = z.object({
   redirect_uri: z.url(), state: z.string(), nonce: z.string(), code_challenge: z.string(),
   code_challenge_method: z.literal("S256"), client_id: z.string(),
+  prompt: z.enum(["select_account", "login"]).optional(), max_age: z.string().optional(), claims: z.string().optional(),
 });
 
 /** A real HTTP issuer with generated RSA keys and single-use, PKCE-bound codes. No Google account is needed. */
@@ -49,7 +50,8 @@ export async function mockOidc(now: () => number = Date.now) {
         const seconds = Math.floor(now() / 1000);
         const body = `${encode({ alg: "RS256", kid, ...state.header })}.${encode({
           iss: url.origin, aud: input.client_id, sub: "mock-subject", email: "reader@example.test",
-          email_verified: true, name: "Example Reader", exp: seconds + 300, iat: seconds, nonce: input.nonce, ...state.claims,
+          email_verified: true, name: "Example Reader", exp: seconds + 300, iat: seconds, nonce: input.nonce,
+          ...(input.prompt === "login" && input.max_age === "0" ? { auth_time: seconds } : {}), ...state.claims,
         })}`;
         const signature = await crypto.subtle.sign(algorithm, pair.privateKey, new TextEncoder().encode(body));
         const bytes = new Uint8Array(signature);

@@ -180,7 +180,8 @@ on completion, cancellation or failure; a crashed instance's lease expires after
 15 minutes. The same deadline bounds an active export.
 
 `DELETE /api/v1/account` is hosted-only and requires CSRF, exact email confirmation
-`{ confirm }`, and a session created less than ten minutes ago. Wrong confirmation
+`{ confirm }`, and verified provider authentication less than ten minutes ago.
+A recently issued ordinary SSO cookie is not sufficient. Wrong confirmation
 returns 400; stale authentication returns 403 `reauth_required`. One transaction
 removes all tenant rows and leaves a scrubbed user tombstone with Google subject
 and deletion timestamp. Sessions and agent tokens are revoked. Audio-prefix

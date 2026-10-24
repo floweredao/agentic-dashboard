@@ -52,12 +52,12 @@ export function createAccount(store: Store, defaults: { readonly timeZone: strin
       return { ...account, onboardedAt };
     },
     export(signal?: AbortSignal) { return accountExport(store, defaults.audio, exportReadme, signal); },
-    async remove(confirm: string, createdAt: number) {
+    async remove(confirm: string, authenticatedAt: number) {
       await store.db.sql.tx(async sql => {
         const account = await profile();
         if (userId === "local" || !account.email) throw new ApiError(404, "account_deletion_unavailable", "Use the self-host administrator to remove local data");
         if (confirm !== account.email) throw new ApiError(400, "confirmation_mismatch", "Type your account email exactly");
-        if (createdAt <= store.now() - 600000 || createdAt > store.now()) throw new ApiError(403, "reauth_required", "Sign in again to confirm account deletion");
+        if (authenticatedAt <= store.now() - 600000 || authenticatedAt > store.now()) throw new ApiError(403, "reauth_required", "Sign in again to confirm account deletion");
         await eraseTenant(sql, userId);
         await sql.run(`UPDATE users SET email=NULL,name=NULL,locale=NULL,time_zone=NULL,features='{"digest":false,"push":false}',
           gemini_key_ct=NULL,gemini_key_kek=NULL,onboarded_at=NULL,agent_saved_at=NULL,agent_saved_record=NULL,last_seen_at=NULL,
