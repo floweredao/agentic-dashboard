@@ -224,7 +224,7 @@ With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](doc
 
 ## Limits and checks
 
-- 300 requests per minute per credential; unknown credentials share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
+- 300 requests per minute per credential (an agent key or an owner session); unknown credentials, a cookie that names no session among them, share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
 - Requests must carry an allowed `Host` (else `421 invalid_host`) and, when present, an allowed `Origin` (else `403 origin`).
 - JSON bodies only (`415 unsupported_media_type`), size-capped (`413 too_large`).
 - Every response sets a strict Content-Security-Policy (scripts from the app only; images and media also from `data:` and `blob:`), `X-Frame-Options: DENY` and `nosniff`. Existing content-hashed static files under `/assets/` use `Cache-Control: public, max-age=31536000, immutable`; HTML, API data, stable filenames and missing-file fallbacks stay `no-store`.
