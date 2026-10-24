@@ -14,7 +14,7 @@ export interface GeminiKeyOptions {
 async function accepted(key: string) {
   try {
     const response = await ky.get("https://generativelanguage.googleapis.com/v1beta/models",
-      { searchParams: { key, pageSize: "1000" }, timeout: 10000, retry: 0, throwHttpErrors: false });
+      { searchParams: { pageSize: "1000" }, headers: { "x-goog-api-key": key }, timeout: 10000, retry: 0, throwHttpErrors: false });
     if (response.status !== 200) return { accepted: false, models: [] };
     const data = z.object({ models: z.array(z.object({ name: z.string() })).default([]) }).parse(await response.json());
     return { accepted: true, models: data.models.map(model => model.name.replace(/^models\//, "")) };

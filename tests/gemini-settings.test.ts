@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { z } from "zod";
 import { createKeyCipher } from "../server/crypto";
 import { hostedFixture } from "./helpers/hosted";
@@ -7,6 +7,27 @@ import { createGeminiKeys } from "../server/gemini-settings";
 import { RecordInputSchema } from "../shared/contracts";
 
 const kek = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64");
+
+test("Gemini validation sends its credential only in the API-key header", async () => {
+  // Given a generated credential and a wire-level model-list response.
+  const f = await hostedFixture();
+  const key = secret();
+  const sent: Request[] = [];
+  const mockFetch = Object.assign(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    sent.push(new Request(input, init));
+    return Response.json({ models: [] });
+  }, { preconnect: globalThis.fetch.preconnect });
+  const transport = spyOn(globalThis, "fetch").mockImplementation(mockFetch);
+  try {
+    // When the production validator accepts and stores the key.
+    await createGeminiKeys(f.app.sql, { kek: { "1": kek() } }).save("a", key);
+    // Then logs of the request URL cannot contain the credential.
+    expect(sent).toHaveLength(1);
+    const request = z.instanceof(Request).parse(sent[0]);
+    expect(decodeURIComponent(request.url).includes(key)).toBe(false);
+    expect(request.headers.get("x-goog-api-key") === key).toBe(true);
+  } finally { transport.mockRestore(); await f.close(); }
+});
 
 test("AES-GCM binds ciphertext to its user and detects tampering and missing KEK versions", async () => {
   // Given generated keys and account-bound encryption.

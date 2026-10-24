@@ -236,6 +236,8 @@ Google mode exposes bearer MCP at `/mcp` on the main listener and never starts t
 
 ## Personal Gemini credentials
 
+Model-list validation sends the credential in `x-goog-api-key`, never in the request URL.
+
 Google mode exposes owner-session `GET /api/v1/settings/gemini` returning `{ configured, last4 }`, CSRF-protected `PUT { key }`, and `DELETE` (204). PUT accepts a key only after Google's model-list endpoint returns 200; rejected keys produce `422 gemini_key_invalid` without replacing storage. Acceptance is not a speech-model or quota guarantee. The API never returns the full key.
 
 PUT also returns `modelAvailability.script` and `.speech`, each `{ name, listed }` for the configured models. The browser config exposes their names as `narrationModels`. This reports model-list visibility, not a paid generation test. On a later visit the UI explicitly marks visibility as not checked rather than persisting a stale access guarantee. Actual job failures distinguish rejected credentials, model permission, missing models, quota and operator-managed Vertex setup.
