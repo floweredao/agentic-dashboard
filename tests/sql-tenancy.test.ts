@@ -6,7 +6,7 @@ import { hasFinalTenantBinding, sqlTokens } from "../server/tenant-db";
 
 const controlQueries = new Map([
   ["principalByToken", "SELECT user_id,id,source FROM principals WHERE token_hash=? AND revoked_at IS NULL"],
-  ["sessionByHash", "SELECT user_id,hash,principal_id,csrf,expires_at,created_at FROM sessions WHERE hash=? AND expires_at>?"],
+  ["sessionByHash", "SELECT user_id,hash,principal_id,csrf,expires_at,created_at,authenticated_at FROM sessions WHERE hash=? AND expires_at>?"],
   ["shareByCode", "SELECT user_id,code,record_id,created_at FROM shares WHERE code=?"],
   ["inviteByHash", "SELECT user_id,agent FROM agent_invites WHERE code_hash=? AND expires_at>?"],
   ["narrationCount", "SELECT count(*) AS count FROM narration_runs WHERE started_at>=?"],
