@@ -6,7 +6,8 @@ import { applyLocale, getLocale } from "./i18n";
 import { clearRateLimit, rateLimited } from "./rate-limit";
 
 test.each([
-  ["account_export_busy", 429], ["account_export_too_large", 413], ["account_export_unavailable", 503],
+  ["account_export_busy", 429], ["account_export_capacity", 503],
+  ["account_export_too_large", 413], ["account_export_unavailable", 503],
 ] as const)("%s has bilingual recovery without blocking unrelated actions", async (code, status) => {
   const previous = getLocale();
   const server = Bun.serve({ port: 0, fetch: () => Response.json({ error: { code, message: "Server detail" } },

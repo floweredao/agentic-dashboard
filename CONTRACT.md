@@ -172,12 +172,18 @@ There is no user-facing bulk import; this export is not the operator backup form
 Export generation and download are streamed through private temporary files. The
 uncompressed tar and compressed download each have a hard 64 MiB cap
 (`413 account_export_too_large`); failures answer `503 account_export_unavailable`.
-There is one export per account across instances and one export per instance
-because Cloud Run temporary storage also consumes memory. Busy requests answer
-`429 account_export_busy`, `Retry-After: 60` and `X-RateLimit-Scope: export` without
-blocking unrelated UI actions. Temporary files and the export lease are removed
-on completion, cancellation or failure; a crashed instance's lease expires after
-15 minutes. The same deadline bounds an active export.
+There is one export per account across instances and at most two exports per
+instance because Cloud Run temporary storage also consumes memory (up to 256 MiB
+of export scratch at full capacity). An account already exporting gets
+`429 account_export_busy`; a full instance answers `503 account_export_capacity`.
+Both include `Retry-After: 60` and `X-RateLimit-Scope: export` without blocking
+unrelated UI actions. Tenant rows are paged in ascending rowid order using a
+rowid cursor, not offsets; internal cursors are not included in the archive.
+Temporary files and the export lease are removed on completion, cancellation or
+failure. Exports time out after 60 seconds without byte progress during data/audio
+generation or download, not after a fixed total duration. Byte progress renews
+the per-account lease at most once per minute; a crashed instance's lease expires
+within 15 minutes of its last renewal.
 
 `DELETE /api/v1/account` is hosted-only and requires CSRF, exact email confirmation
 `{ confirm }`, and verified provider authentication less than ten minutes ago.
