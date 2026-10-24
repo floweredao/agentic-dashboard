@@ -1,6 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { existsSync, readdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { NARRATABLE_KINDS, NARRATION_LIMITS } from "../shared/contracts";
 import { startOfZonedDay } from "../shared/time";
@@ -13,20 +11,17 @@ import { sourceHash } from "./narration-text";
 import { createNarrationState } from "./narration-state";
 import { createNarrationSettings } from "./narration-settings";
 import { createNarrationWork } from "./narration-work";
+import { narrationFiles } from "./narration-files";
 
 
 const ACTIVE: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
-
-const FILE_NAME = /^[0-9a-f-]{36}-[0-9a-f]{8}\.(?:m4a|wav)$/;
-
-const PART_NAME = /^[0-9a-f-]{36}\.part\.(?:m4a|wav)$/;
 
 /** Automatic requests refused for a reason that passes (the day's limit, a full queue, no key), tried again by `retryDeferred`. */
 const RETRY_LATER = new Set(["narration_daily_limit", "narration_queue_full", "narration_unavailable"]);
 export type Narrator = ReturnType<typeof createNarration>;
 export function createNarration(options: NarrationOptions) {
 
-  const { store, audioDir } = options;
+  const { store } = options;
 
   const dailyLimit = options.dailyLimit ?? NARRATION_LIMITS.dailyRuns;
 
@@ -52,7 +47,7 @@ export function createNarration(options: NarrationOptions) {
   const { autoSettings } = settings;
   const work = createNarrationWork(options, { rows, settings, jobs: jobContext });
 
-  const removeFile = (name: string | null) => { if (name) rmSync(join(audioDir, name), { force: true }); };
+  const { removeFile, prune, audioFile } = narrationFiles(options, rows);
 
 
   /** `chosen` defaults to the style last chosen for this record, else read. */
@@ -213,26 +208,6 @@ export function createNarration(options: NarrationOptions) {
     }
   }
 
-  /** Drops narrations of records that are neither live nor in the trash, and audio files nothing refers to. */
-  async function prune() {
-    for (const value of (await store.db.all(`SELECT record_id, audio_file FROM narrations WHERE (record_id NOT IN (SELECT id FROM records WHERE records.user_id=narrations.user_id)
-      AND record_id NOT IN (SELECT id FROM trash WHERE trash.user_id=narrations.user_id) AND status NOT IN ('queued','scripting','speaking')) AND user_id=?`, []))) {
-      const orphan = z.object({ record_id: z.string(), audio_file: z.string().nullable() }).parse(value);
-      if ((await options.lookup?.(orphan.record_id))) continue;
-      removeFile(orphan.audio_file);
-      (await store.db.run("DELETE FROM narrations WHERE (record_id=?) AND user_id=?", [orphan.record_id]));
-    }
-    if (!existsSync(audioDir)) return;
-    const referenced = new Set((await store.db.all("SELECT audio_file FROM narrations WHERE (audio_file IS NOT NULL) AND user_id=?", []))
-      .map(value => z.object({ audio_file: z.string() }).parse(value).audio_file));
-    const working = new Set((await store.db.all("SELECT record_id FROM narrations WHERE (status IN ('queued','scripting','speaking')) AND user_id=?", []))
-      .map(value => z.object({ record_id: z.string() }).parse(value).record_id));
-    for (const name of readdirSync(audioDir)) {
-      if (FILE_NAME.test(name) && !referenced.has(name)) removeFile(name);
-      if (PART_NAME.test(name) && !working.has(name.slice(0, 36))) removeFile(name);
-    }
-  }
-
   /** Stops a queued or running job without counting an attempt: earlier audio stays ready, otherwise the job fails as `cancelled`; the script is kept. */
   async function cancel(record: DashboardRecord): Promise<NarrationState> {
     const current = (await row(record.id));
@@ -249,14 +224,8 @@ export function createNarration(options: NarrationOptions) {
     const current = (await row(id));
     if (!current) return;
     if (ACTIVE.has(current.status)) throw new ApiError(409, "narration_busy", "A narration is being made for this record; delete it after it finishes");
-    removeFile(current.audio_file);
+    await removeFile(current.audio_file);
     (await store.db.run("DELETE FROM narrations WHERE (record_id=?) AND user_id=?", [id]));
-  }
-
-  async function audioFile(id: string) {
-    const current = (await row(id));
-    if (!current?.audio_file || !current.audio_mime) throw new ApiError(404, "not_found", "No narration audio for this record");
-    return { path: join(audioDir, current.audio_file), mime: current.audio_mime };
   }
 
   async function idle() {

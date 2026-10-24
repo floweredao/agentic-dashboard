@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { NARRATION_LIMITS } from "../shared/contracts";
 import type { DashboardRecord } from "../shared/contracts";
 import { ApiError } from "./errors";
@@ -12,6 +13,7 @@ import { wav, afconvert } from "./narration-audio";
 import type { createNarrationState } from "./narration-state";
 import type { createNarrationSettings } from "./narration-settings";
 import { createNarrationCalls } from "./narration-calls";
+import { narrationFiles } from "./narration-files";
 const BYTES_PER_MS = 48;
 export function createNarrationWork(options: NarrationOptions, runtime: {
   readonly rows: ReturnType<typeof createNarrationState>;
@@ -24,7 +26,7 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
   const { pause, retrying, writeScript, stepStarted } = createNarrationCalls(options, runtime.jobs);
   const encode = options.encode ?? afconvert;
   const timeoutMs = options.timeoutMs ?? 180_000;
-  const removeFile = (name: string | null) => { if (name) rmSync(join(audioDir, name), { force: true }); };
+  const { storage, userId, removeFile } = narrationFiles(options, runtime.rows);
 
   /** Stores the script characters received, at most once per 2% of the expected length so a fast stream costs few writes. */
   function scriptProgress(id: string, expected: number, cancel: AbortSignal) {
@@ -60,7 +62,8 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
     const podcast = style === "podcast";
     const voices = (await voiceSettings());
     const hosts = [voices.hostA, voices.hostB] as const;
-    const part = join(audioDir, `${id}.part.wav`);
+    const workingDir = storage.remote ? tmpdir() : audioDir;
+    const part = join(workingDir, `${id}.${storage.remote ? `${crypto.randomUUID()}.` : ""}part.wav`);
     try {
       const digest = label !== undefined;
       const summaryOnly = !digest && job.scope === "summary";
@@ -136,19 +139,22 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
         stepStarted();
       }
       const body = Buffer.concat(pcm);
-      mkdirSync(audioDir, { recursive: true, mode: 0o700 });
+      mkdirSync(workingDir, { recursive: true, mode: 0o700 });
       writeFileSync(part, wav(body), { mode: 0o600 });
       const encoded = await encode(part, AbortSignal.any([AbortSignal.timeout(timeoutMs), cancel]));
       check();
       const name = `${id}-${crypto.randomUUID().slice(0, 8)}.${encoded.mime === "audio/wav" ? "wav" : "m4a"}`;
-      renameSync(encoded.path, join(audioDir, name));
-      chmodSync(join(audioDir, name), 0o600);
+      const file = Bun.file(encoded.path);
+      const bytes = file.size;
+      await storage.put(userId, name, file);
+      rmSync(encoded.path, { force: true });
+      rmSync(part, { force: true });
       const previous = (await row(id))?.audio_file ?? null;
-      if (!(await row(id))) { removeFile(name); return; }
+      if (!(await row(id))) { await removeFile(name); return; }
       (await set(id, { status: "ready", attempts: 0, error: null, progress_done: null, progress_total: null, audio_file: name, audio_hash: hash,
-        audio_mime: encoded.mime, audio_bytes: Bun.file(join(audioDir, name)).size, audio_ms: Math.round(body.byteLength / BYTES_PER_MS),
+        audio_mime: encoded.mime, audio_bytes: bytes, audio_ms: Math.round(body.byteLength / BYTES_PER_MS),
         audio_model: provider.ttsModel, audio_voice: podcast ? hosts.join(", ") : voices.readVoice, audio_style: style, audio_scope: job.scope, audio_at: now() }));
-      if (previous !== name) removeFile(previous);
+      if (previous !== name) await removeFile(previous);
     } catch (error) {
       rmSync(part, { force: true });
       rmSync(part.replace(/\.wav$/, ".m4a"), { force: true });
