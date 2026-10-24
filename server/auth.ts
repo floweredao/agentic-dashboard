@@ -33,6 +33,9 @@ export class Auth {
   async initialize(credentialsPath: string) {
     ensureCredentials(credentialsPath);
     const credentials = readCredentials(credentialsPath);
+    // A new owner key (credentials.json replaced) ends every session the old key opened.
+    await this.store.db.run(`DELETE FROM sessions WHERE principal_id='owner' AND EXISTS (SELECT 1 FROM principals
+      WHERE principals.user_id=sessions.user_id AND principals.id='owner' AND principals.token_hash<>?) AND user_id=?`, [hash(credentials.owner)]);
     await this.store.db.run(`INSERT INTO principals(id,source,token_hash,created_at,user_id) VALUES('owner','manual',?,?,?)
       ON CONFLICT(user_id,id) DO UPDATE SET token_hash=excluded.token_hash`, [hash(credentials.owner), new Date(this.store.now()).toISOString()]);
   }
