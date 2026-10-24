@@ -189,7 +189,7 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 | Route | Who | Result |
 |---|---|---|
 | `GET /api/v1/push` | owner | `{ publicKey, device, devices }` |
-| `PUT /api/v1/push/subscription` | owner | `{ subscription, kinds? }`; kinds are `digest`, `review`, `reply`; `subscription.locale` (`en` or `ko`) sets this device's notification language, `LOCALE` otherwise |
+| `PUT /api/v1/push/subscription` | owner | `{ subscription, kinds? }`; kinds are `digest`, `review` (an agent's task saved in review or moved there, through the record routes, a timeline entry or MCP), `reply`; `subscription.locale` (`en` or `ko`) sets this device's notification language, `LOCALE` otherwise |
 | `DELETE /api/v1/push/subscription` | owner | `{ endpoint }` |
 | `POST /api/v1/push/test` | owner | send a test notification |
 

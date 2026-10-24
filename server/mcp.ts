@@ -128,9 +128,10 @@ export interface McpOptions {
   readonly rateLimit: number;
   readonly now: () => number;
   readonly onCreate?: (id: string) => void;
+  readonly onUpdate?: (before: DashboardRecord, after: DashboardRecord) => void;
 }
 
-export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate }: McpOptions) {
+export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate, onUpdate }: McpOptions) {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   let bucketWindow = Math.floor(now() / 60000);
   let count = 0;
@@ -145,7 +146,9 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate 
     }
     if (name === "update_record") {
       const { id, ...patch } = updateArgs.parse(args);
+      const before = store.get(id);
       const record = store.agentPatch(agent, id, patch);
+      onUpdate?.(before, record);
       return { id: record.id, kind: record.kind, title: record.title, source: record.source,
         reviewState: record.reviewState, version: record.version, updatedAt: record.updatedAt };
     }
