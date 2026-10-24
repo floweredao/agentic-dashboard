@@ -23,7 +23,7 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
       c.header("X-Frame-Options", "DENY");
       c.header("Referrer-Policy", "no-referrer");
       // Digest thumbnails load from the publisher's https address (no referrer); the public surface serves no pictures.
-      c.header("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${publicOnly ? "" : " https:"}; media-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
+      c.header("Content-Security-Policy", `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:${publicOnly ? "" : " https:"}; media-src 'self' data: blob:${options.audioBucket ? " https://storage.googleapis.com" : ""}; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
       c.header("Cache-Control", "no-store");
       const url = new URL(c.req.url);
       if (!hosts.has(c.req.header("host") ?? url.host)) throw new ApiError(421, "invalid_host", "Host is not allowed");
