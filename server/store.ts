@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { z } from "zod";
 import { AGENT_RECORD_RULES, agentRecordIssues, DashboardRecordSchema, DateSchema, RecordInputSchema, RecordKindSchema, ReviewStateSchema, TITLE_MAX_WIDTH, titleWidth, TRASH_RETENTION_DAYS } from "../shared/contracts";
 import type { DashboardRecord, RecordDocument, RecordInput, RecordKind, RecordPatch, Source, TrashItem } from "../shared/contracts";
-import { ApiError } from "./errors";
+import { ApiError, RecordFormatError } from "./errors";
 
 export interface Principal { readonly id: string; readonly source: Source }
 const stored = z.object({ data: z.string() });
@@ -132,7 +132,7 @@ export class Store {
       if (principal.source !== "manual") {
         checkTitle(input.title);
         const issues = agentRecordIssues(input);
-        if (issues.length) throw new ApiError(400, "record_incomplete", `Record does not follow the agent record format; fix every item and save again with a new request ID: ${issues.join("; ")}`);
+        if (issues.length) throw new RecordFormatError(issues, "Record does not follow the agent record format; fix every item and save again with a new request ID");
       }
       const timestamp = new Date(this.now()).toISOString();
       const record: DashboardRecord = { ...input, id: crypto.randomUUID(), source: principal.source, createdBy: principal.id,
@@ -177,7 +177,7 @@ export class Store {
       const input = RecordInputSchema.parse({ ...oldInput, ...changes, fields: { ...agentFields, ...preserved } });
       checkTitle(input.title);
       const issues = agentRecordIssues({ ...input, fields: agentFields });
-      if (issues.length) throw new ApiError(400, "record_incomplete", `Edit does not follow the agent record format; fix every item and send it again: ${issues.join("; ")}`);
+      if (issues.length) throw new RecordFormatError(issues, "Edit does not follow the agent record format; fix every item and send it again");
       this.relationships(input, id);
       const record: DashboardRecord = { ...current, ...input, reviewState: "pending", updatedAt: new Date(this.now()).toISOString(), version: current.version + 1 };
       this.save(record);
