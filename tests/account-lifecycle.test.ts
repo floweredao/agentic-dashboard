@@ -4,6 +4,7 @@ import { hostedFixture } from "./helpers/hosted";
 import { tenantData } from "../server/tenant-data";
 import { fake, deferred } from "./narration-helper";
 import { isolationFixture, clock } from "./isolation-fixture";
+import type { Sql, SqlValue } from "../server/db";
 
 const note = { kind: "note", title: "Own agent save", body: "Saved from the connected computer.", tags: ["test"] };
 const saved = z.object({ record: z.object({ id: z.string() }) });
@@ -109,6 +110,34 @@ test("deletion refuses incorrect confirmation and requires a session under ten m
     expect(await response.json()).toMatchObject({ error: { code: "reauth_required" } });
     expect(await f.app.sql.get("SELECT id FROM users WHERE id='a' AND deleted_at IS NULL")).not.toBeNull();
   } finally { await f.close(); }
+});
+
+test("deletion reads the confirmation profile through its transaction handle", async () => {
+  const f = await identified();
+  const sql = f.app.sql;
+  const transaction: Sql = {
+    get: sql.get.bind(sql), all: sql.all.bind(sql), run: sql.run.bind(sql),
+    batch: sql.batch.bind(sql), tx: sql.tx.bind(sql), close: sql.close.bind(sql),
+  };
+  let inside = false;
+  sql.get = async <T = unknown>(query: string, args?: readonly SqlValue[]) => {
+    if (inside) throw new Error("The root connection cannot read inside this transaction");
+    return transaction.get<T>(query, args);
+  };
+  sql.tx = callback => transaction.tx(async () => {
+    inside = true;
+    try { return await callback(transaction); }
+    finally { inside = false; }
+  });
+  try {
+    const response = await f.call("/api/v1/account", { method: "DELETE", body: { confirm: "a@example.test" } });
+    expect(response.status).toBe(204);
+    expect(await sql.get("SELECT id FROM users WHERE id='a' AND deleted_at IS NULL")).toBeNull();
+  } finally {
+    sql.get = transaction.get;
+    sql.tx = transaction.tx;
+    await f.close();
+  }
 });
 
 test("in-flight narration cannot make its next provider call after deletion", async () => {
