@@ -24,10 +24,14 @@ import { json } from "./json-body";
 import { createAlerts } from "./alerts";
 import { createMaintenance, type OperationsOptions } from "./maintenance";
 import { Hono } from "hono";
+import { publicRequestLimiter } from "./public-rate";
 
 export interface AppOptions {
   readonly hosted?: HostedAuth;
   readonly trustedAuthProxy?: boolean;
+  readonly trustedProxyHops?: number;
+  readonly pendingSignInLimit?: number;
+  readonly authStartLimit?: number;
   readonly geminiKeys?: GeminiKeyOptions;
   readonly keyStore?: GeminiKeys;
   readonly personalProvider?: (key: KeySource) => NarrationProvider;
@@ -102,10 +106,10 @@ export async function createApp(options: AppOptions = {}) {
   const now = options.now ?? Date.now;
   const alerts = options.operations?.alerts ? createAlerts(sql, { ...options.operations.alerts, now }) : undefined;
   const cloud = cloudClient();
-  const trustedAuthProxy = options.hosted !== undefined && options.trustedAuthProxy === true;
+  const trustedAuthProxy = options.hosted !== undefined && options.trustedAuthProxy === true ? options.trustedProxyHops ?? 1 : 0;
   const sockets = new WeakMap<Request, string>();
   const clientKey = (request: Request) => authClientKey(request, sockets.get(request), trustedAuthProxy);
-  const control = new ControlDb(sql, options.hosted === undefined);
+  const control = new ControlDb(sql, options.hosted === undefined, options.pendingSignInLimit);
   // The hosted public service scope has no users row and can never own account data.
   const initialScopeId = options.hosted ? "" : "local";
   const initialStore = new Store(new TenantDb(sql, initialScopeId), now, control);
@@ -123,7 +127,7 @@ export async function createApp(options: AppOptions = {}) {
     ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
     hosted: { ...options.hosted, onSignup: async () => { await alerts?.send("signup"); },
       onCapacity: async () => { await options.hosted?.onCapacity?.(); await alerts?.send("capacity"); } },
-    origin: options.privateOrigin, control: initialAuth.control, now, clientKey,
+    origin: options.privateOrigin, control, now, clientKey,
   }) } : {}),
   };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
@@ -148,7 +152,8 @@ export async function createApp(options: AppOptions = {}) {
     const scope = userId === null ? initial : await tenant(userId);
     return scope[surface](request);
   };
-  const limitAuth = authLimiter(now, trustedAuthProxy);
+  const limitAuth = authLimiter(now, trustedAuthProxy, options.authStartLimit);
+  const limitPublic = publicRequestLimiter(now, trustedAuthProxy);
   const maintenance = createMaintenance({ sql, tenant, audio: effective.audioStore, cloud, now,
     includeLocal: options.hosted === undefined,
     directory: join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "backups"),
@@ -183,7 +188,7 @@ export async function createApp(options: AppOptions = {}) {
       const address = server?.requestIP(request)?.address;
       if (address !== undefined) sockets.set(request, address);
       return new URL(request.url).pathname.startsWith("/internal/tasks/") ? internalApp.fetch(request)
-        : limitAuth(request, address) ?? dispatch(request, "fetch");
+        : limitAuth(request, address) ?? limitPublic(request, address) ?? dispatch(request, "fetch");
     },
     publicFetch: (request: Request) => dispatch(request, "publicFetch"),
     mcpFetch: (request: Request) => dispatch(request, "mcpFetch"),

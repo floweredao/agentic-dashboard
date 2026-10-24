@@ -29,6 +29,9 @@ const envSchema = z.object({
   HOST: text.default("127.0.0.1"), PORT: z.coerce.number().int().min(0).max(65535).default(4310),
   AUTH_MODE: z.enum(["local", "google"]).default("local"), APP_SECRETS: secretJson.prefault("{}"),
   AUTH_TRUST_PROXY: onOff.optional(), K_SERVICE: text.optional(),
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
+  PENDING_SIGN_IN_LIMIT: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(10000),
+  AUTH_START_LIMIT: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(900),
   APP_ORIGIN: z.url().refine(value => {
     const url = new URL(value);
     return ["http:", "https:"].includes(url.protocol) && url.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
@@ -65,6 +68,9 @@ export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
   if (!parsed.success) throw new ApiError(500, "configuration", `Invalid configuration fields: ${parsed.error.issues.map(issue => issue.path.join(".")).join(", ")}`);
   const config = parsed.data;
   const fail = (message: string): never => { throw new ApiError(500, "configuration", message); };
+  if (config.AUTH_START_LIMIT * 10 >= config.PENDING_SIGN_IN_LIMIT) {
+    fail("PENDING_SIGN_IN_LIMIT must exceed AUTH_START_LIMIT times the ten-minute sign-in lifetime.");
+  }
   if ((config.TRUSTED_USER_HEADER === undefined) !== (config.OWNER_LOGIN === undefined)) fail("Set TRUSTED_USER_HEADER and OWNER_LOGIN together.");
   if (config.DEMO && (config.AUTH_MODE !== "local" || config.TRUSTED_USER_HEADER || config.ENABLE_MCP || config.ENABLE_AGENT_INGRESS || config.AI_FILL_COMMAND)) {
     fail("Demo must use local read-only mode without trusted login, integrations or AI fill.");

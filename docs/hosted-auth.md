@@ -20,6 +20,26 @@ Provide `APP_SECRETS` as private JSON, with:
 
 Keep the JSON out of source, logs, screenshots and shell history. `DATABASE_AUTH_TOKEN` takes precedence over the Turso token in that JSON. `MAX_USERS` defaults to 50 active hosted accounts; existing accounts can still sign in at capacity.
 
+### Sign-in limits and proxy topology
+
+`/auth/*` permits 20 requests per client network per minute. IPv4 stays per address; IPv6 uses the expanded, lowercase /64 prefix. IPv4-mapped IPv6 uses the corresponding IPv4 address. The same network key binds the pending-sign-in budget across rate windows, without storing the IP itself.
+
+`/auth/google/start` also permits at most 100 accepted starts per IPv6 /48 per minute, alongside the /64 budget. IPv4 and IPv4-mapped addresses retain their per-address budget. `AUTH_START_LIMIT` is the positive-integer ceiling on accepted starts across all clients (default 900/minute). Rejected requests do not spend the aggregate allowances. These additional budgets apply only to starts, not callbacks or logout, so a flood cannot use them to block an already pending callback. The limiter returns 429 with Retry-After: 60.
+
+Pending OAuth transactions expire after ten minutes and are capped at 20 per client network. `PENDING_SIGN_IN_LIMIT` sets the positive-integer global row cap (default 10000). Each insertion removes expired rows, evicts the oldest pending starts as needed, and admits the new start atomically. An evicted browser must start sign-in again.
+
+The higher pending default permits five times the previous maximum storage in exchange for more time to finish sign-in. At 900 starts/minute, ten minutes admits 9000 starts, below the 10000-row cap. Even eleven overlapping fixed-minute windows admit at most 9900, so the defaults prevent a capacity flush within one pending lifetime on one continuously running instance. Startup refuses settings where `AUTH_START_LIMIT * 10 >= PENDING_SIGN_IN_LIMIT`; custom settings also need headroom for minute-boundary bursts.
+
+A saturated global start budget still rejects new starts until the next minute. Saturating the default requires about 45 IPv4 addresses at 20 starts/minute each, or 9 IPv6 /48s at 100 each, rather than the previous 15 IPv4 addresses. This is a trade-off, not full denial-of-service protection. For stronger protection, use Cloud Armor or equivalent edge rate limiting in addition to the application budgets.
+
+Rate budgets are in-memory, per application instance, and reset on minute boundaries or process restart; the pending row cap is shared by the database. Multiple instances multiply the admitted start rate, so size the pending cap and per-instance ceiling together. The /48 counter map records only admitted starts and is bounded by the configured global start allowance each minute; rotating enough /64 keys to evict entries from the separate 10000-key client map cannot reset the aggregate or global counters.
+
+Forwarded addresses are trusted only in Google mode with `AUTH_TRUST_PROXY=on`, or by default when Cloud Run supplies `K_SERVICE`. `AUTH_TRUST_PROXY=off` overrides that default. Local mode always uses the socket address.
+
+`TRUSTED_PROXY_HOPS` is a positive integer counting from the right of `X-Forwarded-For`. It defaults to `1`, selecting the last entry for direct Cloud Run ingress. With an external HTTPS load balancer appending `<client>, <load-balancer-ip>`, set `TRUSTED_PROXY_HOPS=2` to select the client rather than sharing the load balancer's budget. Client-supplied entries to the left of that position are ignored. Missing or invalid entries at the configured position fall back to the socket, not another forwarded entry.
+
+Configure the hop count to match the actual ingress chain, and restrict listener access to that trusted ingress. Do not enable forwarding trust on a directly reachable listener or mix proxy paths with different trusted chain lengths.
+
 To rotate encryption keys, add a higher-numbered KEK while keeping the old versions, then run `bun scripts/rotate-kek.ts` with the same database configuration. It re-encrypts all key rows in one transaction. Remove old versions only after success and according to your backup-restoration policy.
 
 Personal keys are managed in Settings. Model-list validation says **Key accepted**, not **Audio ready**. Reading and saving need no provider key. Hosted automatic audio starts off; title enrichment uses the account's key and `AI_FILL_MODEL` (default `gemini-3.5-flash-lite`).
