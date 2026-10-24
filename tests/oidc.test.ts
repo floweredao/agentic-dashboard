@@ -212,13 +212,14 @@ for (const header of [{ alg: "none" }, { jku: "https://evil.example/jwks" }, { x
   });
 }
 
-test("unknown signing keys cannot force JWKS fetches more often than once per thirty seconds", async () => {
+test("unknown signing keys cannot force repeated refreshes during an expired-cache outage", async () => {
   const f = await fixture();
   try {
     await f.finish(await f.start());
-    f.advance(30001);
+    f.advance(300001);
+    f.issuer.state.jwksStatus = 503;
     f.issuer.state.header = { kid: "unknown" };
-    expect((await f.finish(await f.start())).status).toBe(400);
+    expect((await f.finish(await f.start())).status).toBe(503);
     const fetched = f.issuer.state.jwksCalls;
     expect((await f.finish(await f.start())).status).toBe(400);
     expect(f.issuer.state.jwksCalls).toBe(fetched);
