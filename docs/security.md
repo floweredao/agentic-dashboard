@@ -1,6 +1,6 @@
 # Security
 
-The dashboard is built for one owner and a handful of agents on infrastructure the owner controls. This page explains what protects it and what you still have to do.
+The dashboard supports local owner-key installations and optional Google-authenticated accounts. This page explains what protects each mode and what the operator still has to do.
 
 ## What you must do
 
@@ -19,7 +19,7 @@ The dashboard is built for one owner and a handful of agents on infrastructure t
 ## Built-in protections
 
 - **Scoped agents.** An agent sees only its own records, shared material and the owner's open tasks and projects. It can change only what it wrote and can't delete anything. See [CONTRACT.md](../CONTRACT.md).
-- **Sessions.** Owner sessions use an `HttpOnly`, `SameSite=Strict` cookie (`Secure` over HTTPS) that lasts 7 days, plus a CSRF token on every change.
+- **Sessions.** Local owner sessions use an `HttpOnly`, `SameSite=Strict` cookie that lasts 7 days. Hosted sessions use 30-day `SameSite=Lax` cookies, with `__Host-session` and Secure selected only from the configured HTTPS origin. Both require a CSRF token on every owner mutation. Hosted sign-in rotates the previous browser session.
 - **Origin and Host checks.** Requests must use an allowed `Host` and, when a browser sends one, an allowed `Origin`: the loopback addresses and `APP_ORIGIN`.
 - **Rate limits.** 300 requests per minute per credential. Unknown credentials share one bucket, so guessing keys doesn't buy extra attempts.
 - **Headers.** A strict Content-Security-Policy, `X-Frame-Options: DENY`, `nosniff`, `no-referrer` and `no-store` on every response.
@@ -29,11 +29,14 @@ The dashboard is built for one owner and a handful of agents on infrastructure t
 ## Optional listeners
 
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`): a separate loopback listener on `AGENT_PORT` that accepts only record saves and reads with an agent key. Expose this one instead of the main listener when agents live outside your network and you don't want the owner UI reachable there.
-- **MCP** (`ENABLE_MCP`): listens on `127.0.0.1` only. Every call is attributed to `MCP_AGENT`, and there's no per-request key, so anything that can reach the port can save as that agent. Don't expose it without your own authenticated tunnel.
+- **MCP** (`ENABLE_MCP` in local mode): the optional loopback listener requires an agent bearer on every request. Google mode serves the same bearer protocol on the main `/mcp` endpoint instead. A configured `MCP_AGENT` never substitutes for request credentials.
 
 ## Trusted proxy sign-in
 
 `TRUSTED_USER_HEADER` with `OWNER_LOGIN` lets an identity-aware proxy sign the owner in. Use it only when the proxy removes that header from incoming client requests and is the only path to the listener. Otherwise a client can forge the header and become the owner.
+
+Trusted-header bootstrap and owner-key login are local-only. Google mode verifies PKCE, signed state, nonce and RS256 ID-token claims and consumes a database transaction exactly once before issuing a session. Accounts are keyed by subject, never email. Keep `APP_SECRETS.sessionSigningKey` independent from the encryption key.
+
 
 ## Shares
 

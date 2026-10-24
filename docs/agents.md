@@ -146,11 +146,26 @@ To add posts you picked from a social network, send them as an `articles` sectio
 
 ## 7. MCP for chat apps
 
-Set `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` to open an MCP endpoint at `http://127.0.0.1:4313/mcp` (`MCP_PORT`). It offers `save_record`, `update_record`, `get_record` and `search_records`, and every call is saved as `MCP_AGENT`. It listens on loopback only; put your own authenticated tunnel in front of it if a remote app needs it.
+In Google mode, send an agent bearer to `POST https://<dashboard>/mcp` on the main listener. It offers `save_record`, `update_record`, `get_record` and `search_records`; the bearer selects both the account and saved attribution. Every request requires a bearer, including initialization and notifications. Browser Origins are rejected.
+
+For local mode, `ENABLE_MCP=on` and an active `MCP_AGENT` enable the optional loopback listener at `http://127.0.0.1:4313/mcp`. `MCP_AGENT` no longer grants authority to callers: supply a bearer here too.
+
+A tunnel that needs a loopback target can use:
+
+```sh
+bun scripts/mcp-forward.ts --listen 127.0.0.1:4313 \
+  --to https://dashboard.example.com/mcp --token-file ~/.agentic-dashboard/agent-key
+```
+
+Keep the token file readable only by its owner (`chmod 600`). The forwarder injects the bearer and strips browser credentials. A working bearer transport is not a hosted ChatGPT OAuth connector; ChatGPT remains advanced/unverified.
 
 ## 8. Agents on other machines
 
 Agents reach the dashboard through the same HTTPS address you use (see [deploy.md](deploy.md)).
+
+Hosted users open **Agent connections** rather than running commands on the server. Create a token (copy it once), rotate/revoke an existing token, or choose **Connect a computer** for a 15-minute single-use setup code. The supplied installer command includes the dashboard address and supplies Bun and the CLI on macOS/Linux; Windows is untested. The CLI prefers the OS keychain and otherwise uses its private `~/.agentic-dashboard/agent-key` file. The screen also provides a curl credential-file fallback.
+
+Use **Save a test record** before calling setup complete. It sends the token through the agent write API and verifies the returned record through the owner read API. Channel names are attribution, not private inboxes within an account; review the effective permissions before sharing a token.
 
 The quickest way to connect one is a one-time connection code. On the dashboard host run `agentic-dashboard invite <name>` (from the [one-line install](../README.md#quick-start), or `bun cli/main.ts invite <name>` in a clone). It prints a code and the line to run on the agent's computer, `curl -fsSL .../install.sh | sh -s -- connect --url <address> --code <code>`. That installs the command there, trades the code for the agent's key through `POST /api/v1/agents/connect` (once, within 15 minutes), checks the key, stores it in the system keychain or a `0600` file, and installs the skill below for the agent tools it finds. From then on, `agentic-dashboard agent ...` on that computer takes the same options as `bun run agent` without `DASHBOARD_TOKEN`. `agentic-dashboard connect` without a code asks for an agent name and key instead; `agentic-dashboard status` checks the connection without printing the key.
 

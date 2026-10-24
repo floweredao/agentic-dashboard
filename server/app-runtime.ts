@@ -19,6 +19,7 @@ import { createNarration, narrationSourceChanged } from "./narration";
 import { Shares } from "./share";
 import { agentCanRead, Store } from "./store";
 import type { AppOptions } from "./app";
+import { originSettings } from "./origin";
 export async function createRuntime(options: AppOptions, store: Store) {
 
   const now = store.now;
@@ -153,11 +154,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
   };
 
   // Loopback origins of the listener and of the Vite dev server (4311), plus the configured APP_ORIGIN.
-  const origins = new Set(options.hosted ? [privateOrigin] : [
-    `http://127.0.0.1:${port}`, `http://localhost:${port}`, "http://127.0.0.1:4311", "http://localhost:4311", privateOrigin,
-  ]);
-
-  const hosts = new Set([...origins].map(origin => new URL(origin).host));
+  const { origins, hosts } = originSettings(privateOrigin, !options.hosted, port);
 
   if (!options.hosted) hosts.add(`127.0.0.1:${options.agentPort ?? 4312}`);
 
@@ -187,10 +184,11 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
   const mcpDisabled = async () => Response.json({ error: { code: "feature_disabled", message: "MCP needs MCP_AGENT" } }, { status: 503 });
 
-  const mcpFetch = mcpAgent === undefined ? mcpDisabled : createMcpHandler({ store, agent: { id: mcpAgent, source: mcpAgent },
+  const mcpFetch = mcpAgent === undefined && !options.hosted ? mcpDisabled : createMcpHandler({ store,
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
-    resolveAgent: request => request.headers.has("authorization") ? auth.authenticate(request, true) : Promise.resolve({ id: mcpAgent, source: mcpAgent }),
-    onCreate: async id => (await newRecord((await store.get(id)), aiFillSources.has(mcpAgent))), onUpdate: editedRecord });
+    allowedHosts: options.hosted ? hosts : new Set([...hosts, `127.0.0.1:${options.mcpPort ?? 4313}`, `localhost:${options.mcpPort ?? 4313}`]),
+    resolveAgent: request => auth.authenticate(request, true),
+    onCreate: async id => { const record = await store.get(id); await newRecord(record, aiFillSources.has(record.source)); }, onUpdate: editedRecord });
 
   await store.purgeTrash();
 

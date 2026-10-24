@@ -163,7 +163,7 @@ test("fills a ChatGPT MCP save in the background after the save returns", async 
   try {
     // When: save_record returns before the model answers.
     const response = await app.mcpFetch(new Request("http://127.0.0.1:4313/mcp", { method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: `Bearer ${tokens.chatgpt}` },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "save_record",
         arguments: { requestId: "ai-fill-1", record: { kind: "note", title: "ChatGPT", body: "Bun 테스트 러너의 스냅샷 갱신 방법.", tags: ["Bun"] } } } }) }));
     const saved = await response.json() as { result: { structuredContent: { id: string; title: string } } };
@@ -172,7 +172,7 @@ test("fills a ChatGPT MCP save in the background after the save returns", async 
     await app.aiFill?.idle();
     // Then: the stored record carries the filled values.
     const response2 = await app.mcpFetch(new Request("http://127.0.0.1:4313/mcp", { method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", Authorization: `Bearer ${tokens.chatgpt}` },
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "get_record", arguments: { id: saved.result.structuredContent.id } } }) }));
     expect(JSON.stringify(await response2.json())).toContain("Bun 스냅샷 갱신 방법");
   } finally { (await app.close()); }

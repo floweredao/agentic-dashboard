@@ -52,6 +52,7 @@ export async function isolationFixture() {
     await scope.agents.add("writer", agentKey);
   }
   await a.auth.createOwnerSession();
+  await a.agents.add("only-a");
   await a.invites.create("pending-agent");
   const session = await b.auth.createOwnerSession();
   const ownerB = { Cookie: `${SESSION_COOKIE}=${session.value}`, Origin: origin, "X-CSRF-Token": session.csrfToken };

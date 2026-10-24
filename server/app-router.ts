@@ -11,6 +11,7 @@ import { registerNarration } from "./routes-narration";
 import { registerSharing } from "./routes-sharing";
 import { registerRecords } from "./routes-records";
 import { registerOidc } from "./routes-oidc";
+import { registerAgents } from "./routes-agents";
 export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
   const { options, now, demo, auth, origins, hosts, limit, rate } = runtime;
 
@@ -57,7 +58,11 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
       return c.json({ error: { code: "internal_error", message: "Internal server error" } }, 500);
     });
 
-    if (!publicOnly) { registerOidc(app, runtime); registerSession(app, runtime); registerDigests(app, runtime); registerNarration(app, runtime); registerSharing(app, runtime); }
+    if (!publicOnly) {
+      app.all("/mcp", c => runtime.mcpFetch(c.req.raw));
+      registerAgents(app, runtime); registerOidc(app, runtime); registerSession(app, runtime);
+      registerDigests(app, runtime); registerNarration(app, runtime); registerSharing(app, runtime);
+    }
     registerRecords(app, runtime, publicOnly);
     app.all("/api/*", c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
 
