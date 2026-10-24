@@ -209,7 +209,8 @@ export function createApp(options: AppOptions = {}) {
       await next();
     });
     app.onError((error, c) => {
-      if (error instanceof ApiError) return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      if (error instanceof ApiError) return c.json({ error: { code: error.code, message: error.message,
+        ...(error.details ? { details: error.details } : {}) } }, error.status);
       if (error instanceof z.ZodError) return c.json({ error: { code: "invalid_input", message: "Input validation failed", details: error.issues } }, 400);
       // Never log request bodies, cookies or credentials at this boundary.
       return c.json({ error: { code: "internal_error", message: "Internal server error" } }, 500);
@@ -489,7 +490,7 @@ export function createApp(options: AppOptions = {}) {
         shares.revoke(store.get(c.req.param("id")).id);
         return c.body(null, 204);
       });
-      // Possession of the code inside the tailnet is the capability; the private listener is never public.
+      // Possession of the code grants read access to anyone who can reach this listener.
       app.get("/api/v1/shared/:code", c => {
         const found = shares.find(c.req.param("code"));
         if (!found) throw new ApiError(404, "not_found", "Share not found");
@@ -499,7 +500,7 @@ export function createApp(options: AppOptions = {}) {
         const found = shares.find(c.req.param("code"));
         c.header("Content-Type", "text/plain; charset=utf-8");
         c.header("X-Robots-Tag", "noindex");
-        return found ? c.body(renderMarkdown(found.record, found.share, shares.titleOf, timeZone), 200) : c.body("Share link not found.", 404);
+        return found ? c.body(renderMarkdown(found.record, found.share, shares.titleOf, timeZone, options.locale ?? "en"), 200) : c.body("Share link not found.", 404);
       });
     }
     app.post("/api/v1/records", async c => {
@@ -523,7 +524,10 @@ export function createApp(options: AppOptions = {}) {
     });
     app.all("/api/*", c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
     if (!publicOnly) {
-      app.use("*", serveStatic({ root: options.staticRoot ?? "./dist" }));
+      app.use("*", serveStatic({ root: options.staticRoot ?? "./dist", onFound: (_path, c) => {
+        if (/^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|jpe?g|svg|webp|avif)$/.test(new URL(c.req.url).pathname))
+          c.header("Cache-Control", "public, max-age=31536000, immutable");
+      } }));
       app.get("*", serveStatic({ root: options.staticRoot ?? "./dist", path: "index.html" }));
     }
     app.notFound(c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
