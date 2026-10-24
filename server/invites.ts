@@ -25,7 +25,7 @@ export class Invites {
   async create(name: string): Promise<Invite> {
     const agent = AgentNameSchema.parse(name);
     if ((await this.store.db.get("SELECT id FROM principals WHERE (id=?) AND user_id=?", [agent]))) {
-      throw new ApiError(409, "agent_exists", `Agent ${agent} already exists; pick another name or rotate its key`);
+      throw new ApiError(409, "agent_exists", `Agent ${agent} already exists; pick another name`);
     }
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     const raw = Array.from(bytes, byte => ALPHABET[byte % 32]).join("");
