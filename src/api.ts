@@ -1,5 +1,7 @@
 import ky from "ky";
 import { z } from "zod";
+import { RecordSyncSchema } from "../shared/record-sync";
+import { createRecordFeed } from "./record-feed";
 import {
   DigestHitSchema,
   DigestReactionsSchema,
@@ -38,7 +40,6 @@ import {
 export { retryAfterMs } from "./rate-limit";
 
 const http = ky.create({ prefixUrl: "/api/v1", credentials: "same-origin", retry: 0 });
-const sessionSchema = z.object({ csrfToken: z.string(), expiresAt: z.string() });
 const pageSchema = z.object({
   items: z.array(dashboardRecordSchema),
   nextCursor: z.string().nullable(),
@@ -49,12 +50,7 @@ const shareSchema = z.object({ code: z.string(), url: z.string(), createdAt: z.s
 const shareCreatedSchema = z.object({ share: shareSchema });
 /** A record's one active share: `url` is `${origin}/s/${code}`. */
 export type Share = z.infer<typeof shareSchema>;
-export async function session(token?: string) {
-  const response = token === undefined
-    ? http.get("auth/session")
-    : http.post("auth/session", { json: { token } });
-  return sessionSchema.parse(await response.json());
-}
+export { session } from "./session-data";
 
 export { logout } from "./account-session";
 
@@ -70,7 +66,7 @@ export async function loadAgents(): Promise<string[]> {
   return (await listAgents()).map(agent => agent.name);
 }
 
-export async function loadRecords(): Promise<DashboardRecord[]> {
+async function fullRecords(): Promise<DashboardRecord[]> {
   const records: DashboardRecord[] = [];
   let cursor: string | null = null;
   do {
@@ -81,6 +77,18 @@ export async function loadRecords(): Promise<DashboardRecord[]> {
     cursor = page.nextCursor;
   } while (cursor !== null);
   return records;
+}
+const recordFeed = createRecordFeed({ all: fullRecords, changes: async after =>
+  RecordSyncSchema.parse(await http.get("records/changes", { searchParams: after === undefined ? {} : { after } }).json()) });
+export async function loadRecords() {
+  try {
+    const records = await recordFeed.load();
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("agentic:sync-ready"));
+    return records;
+  } catch (error) {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("agentic:sync-failed"));
+    throw error;
+  }
 }
 
 export async function createRecord(input: RecordInput, csrfToken: string, requestId: string) {
@@ -253,7 +261,7 @@ export async function loadPush(endpoint?: string) {
   return pushStateSchema.parse(await http.get("push", { searchParams: endpoint ? { endpoint } : {} }).json());
 }
 /** Without `kinds` an existing device keeps its choice and a new one gets every kind. */
-export async function savePushSubscription(subscription: PushSubscriptionJSON & { readonly locale?: PushLocale }, kinds: PushKinds | undefined, csrfToken: string): Promise<PushDevice> {
+export async function savePushSubscription(subscription: PushSubscriptionJSON & { readonly locale?: PushLocale; readonly hideContent?: boolean }, kinds: PushKinds | undefined, csrfToken: string): Promise<PushDevice> {
   return z.object({ device: PushDeviceSchema }).parse(await http.put("push/subscription", {
     json: { subscription, ...(kinds ? { kinds } : {}) }, headers: { "X-CSRF-Token": csrfToken },
   }).json()).device;
