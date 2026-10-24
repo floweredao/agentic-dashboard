@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
+import { compress } from "hono/compress";
 import { z } from "zod";
 import { hash } from "./auth";
 import { ApiError, RetryError } from "./errors";
@@ -57,6 +58,7 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
 
     app.onError((error, c) => {
       if (error instanceof RetryError) {
+        c.header("X-RateLimit-Scope", "narration");
         c.header("Retry-After", String(Math.max(1, Math.ceil((Date.parse(error.retryAt) - now()) / 1000))));
         return c.json({ error: { code: error.code, message: error.message, retryAt: error.retryAt } }, 429);
       }
@@ -77,6 +79,7 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
     app.all("/api/*", c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
 
     if (!publicOnly) {
+      app.use("/assets/*", compress());
       app.use("*", serveStatic({ root: options.staticRoot ?? "./dist", onFound: (_path, c) => {
         if (/^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|jpe?g|svg|webp|avif)$/.test(new URL(c.req.url).pathname))
           c.header("Cache-Control", "public, max-age=31536000, immutable");

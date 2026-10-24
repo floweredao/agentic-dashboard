@@ -18,7 +18,7 @@ test("changing APP_ORIGIN changes every origin-bound value together", () => {
   for (const origin of ["https://first.example.test", "https://second.example.test"]) {
     // Given one explicit hosted origin and generated secrets.
     const parsed = parseConfig({ AUTH_MODE: "google", APP_ORIGIN: origin, APP_SECRETS: secrets(), PUSH: "off",
-      ENABLE_MCP: "on", ENABLE_AGENT_INGRESS: "on" });
+      ENABLE_MCP: "on", ENABLE_AGENT_INGRESS: "on", CONTACT_EMAIL: "operator@example.test" });
     // When the same production configuration builder wires the app.
     const options = appOptions(parsed);
     // Then no loopback or old origin remains in any origin-bound value.
@@ -42,7 +42,8 @@ test("local configuration preserves optional owner login and environment-key nar
 });
 
 test("forwarded auth addresses are trusted only for hosted proxy ingress", () => {
-  const hosted = { AUTH_MODE: "google", APP_ORIGIN: "https://example.test", APP_SECRETS: secrets(), PUSH: "off" };
+  const hosted = { AUTH_MODE: "google", APP_ORIGIN: "https://example.test", APP_SECRETS: secrets(), PUSH: "off",
+    CONTACT_EMAIL: "operator@example.test" };
   expect(appOptions(parseConfig({ ...hosted, K_SERVICE: "fixture-service" })).trustedAuthProxy).toBe(true);
   expect(appOptions(parseConfig({ ...hosted, AUTH_TRUST_PROXY: "on" })).trustedAuthProxy).toBe(true);
   expect(appOptions(parseConfig(hosted)).trustedAuthProxy).toBe(false);
@@ -99,6 +100,7 @@ test.each(["0", "-1", "1.5", "invalid", ""])("auth settings reject invalid posit
 
 const configuredAuthApp = (overrides: Readonly<Record<string, string>>) => createApp({ ...appOptions(parseConfig({
   AUTH_MODE: "google", APP_ORIGIN: "https://example.test", APP_SECRETS: secrets(),
+  CONTACT_EMAIL: "operator@example.test",
   PUSH: "off", DIGEST: "off", NARRATION: "off", DATABASE_PATH: ":memory:", AUTH_TRUST_PROXY: "on",
   ...overrides,
 })), now: () => Date.parse("2026-10-24T12:00:00Z") });

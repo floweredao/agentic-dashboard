@@ -26,6 +26,9 @@ export function appOptions(config: Configuration): AppOptions {
       selectedModels: { script: config.NARRATION_KEY_SCRIPT_MODEL, speech: config.NARRATION_TTS_MODEL } }, personalProvider: provider } : {}),
     ...(config.AUDIO_BUCKET ? { audioBucket: config.AUDIO_BUCKET } : {}),
     ownerUserLimits: config.OWNER_USER_LIMITS,
+    ...(config.CONTACT_EMAIL ? { contactEmail: config.CONTACT_EMAIL } : {}),
+    ...(config.DATABASE_REGION ? { databaseRegion: config.DATABASE_REGION } : {}),
+    ...(config.DEMO_HOSTED_URL ? { demoHostedUrl: config.DEMO_HOSTED_URL } : {}),
     operations: {
       ...(config.OWNER_ALERT_EMAIL && config.APP_SECRETS.resend ? { alerts: { owner: config.OWNER_ALERT_EMAIL, apiKey: config.APP_SECRETS.resend.apiKey } } : {}),
       ...(config.APP_SECRETS.turso?.org && config.APP_SECRETS.turso.platformToken ? {

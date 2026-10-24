@@ -23,6 +23,8 @@ const freshRecord = (value: unknown, f: IsolationFixture) => {
 
 /** Every concrete route must have a scenario, or a narrowly justified public response. */
 export const CASES: Readonly<Record<string, IsolationCase>> = {
+  "GET /api/v1/records/changes": empty,
+  "ALL /assets/*": { kind: "public", reason: "Compression of public build assets, not tenant data" },
   "ALL /*": { kind: "public", reason: "Security/static middleware, not a data endpoint" },
   "ALL /api/*": { kind: "public", reason: "Unknown API routes return only 404" },
   "GET /*": { kind: "public", reason: "Static application shell" },
