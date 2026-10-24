@@ -1,13 +1,15 @@
 # Deploying
 
-Two ways are supported. Both were verified on a real machine, and neither needs anything besides Bun (or nothing at all, for the binary).
+Local self-hosting supports two runtime options, both verified on a real machine:
 
 1. **`bun start` on your own machine or a VM**, behind an HTTPS reverse proxy.
 2. **A single binary** built with `bun run build:binary`, which needs no runtime on the target.
 
 A `Dockerfile` is included too. It serves on port 8080 with `HOST=0.0.0.0` and keeps data in `/app/data`, so mount a volume there and set `APP_ORIGIN`. A prebuilt image for linux/amd64 and linux/arm64 is `ghcr.io/floweredao/agentic-dashboard:0.4.0` (also `:latest`); or build one with `docker build -t agentic-dashboard .`. The public demo is that image on Cloud Run in read-only demo mode; see [demo.md](demo.md).
 
-Whichever you pick, read [security.md](security.md) first. The dashboard listens on `127.0.0.1` by default, and you should keep it that way and put HTTPS in front.
+For Google-authenticated accounts, use the separate [hosted deployment tooling](#hosted-google-sign-in-deployment-tooling) below. There is no public multi-user instance yet. Local tooling tests and dry runs do not prove a production cloud deployment.
+
+Whichever you pick, read [security.md](security.md) first. Local installs listen on `127.0.0.1` by default; keep that binding behind HTTPS. The hosted container instead accepts Cloud Run ingress on its configured main port.
 
 ## Option 1: Bun behind a reverse proxy
 
@@ -88,10 +90,9 @@ Stop the server, pull or copy the new version, run `bun install` and `bun run bu
 
 This workflow targets a **previously created, billing-enabled Google Cloud project**
 and an existing Turso account/group. It does not create accounts or configure
-Google OAuth consent. The operations endpoints, Cloud Storage audio, backup and
-alert handlers must be present in the application revision before using this
-workflow in production (the parallel onboarding/operations work supplies them).
-The tooling itself has been checked with local command-builder tests and dry runs,
+Google OAuth consent. The application includes operations endpoints, Cloud Storage
+audio, backup/alert handlers, onboarding, account export/deletion and public
+privacy/terms pages. The tooling itself has been checked with local command-builder tests and dry runs,
 not a live cloud deployment.
 
 Install Bun, the Google Cloud CLI and the Turso CLI, authenticate each CLI yourself,
@@ -227,6 +228,41 @@ budget notifications. Review the saved dry-run transcript before every live run;
 live provisioning, OAuth verification, backup delivery and alert receipt remain
 operator acceptance steps, not claims made by a local dry run.
 
+### Before accepting hosted users
+
+Use [hosted-auth.md](hosted-auth.md) for Google client/secrets configuration and
+the isolated mock OIDC harness. Production sign-in must use the real provider,
+the final HTTPS callback and the exact proxy hop count. Verify deletion
+reauthentication with that actual client: the mock issuer is not proof that
+Google returns the required recent `auth_time` claim.
+
+Confirm that `CONTACT_EMAIL` is a reachable public contact, `DATABASE_REGION`
+matches the actual Turso location, and `/privacy` and `/terms` describe your
+deployment. Review `MAX_USERS`, account/service narration limits and GCP budgets
+before inviting users. Existing users retain sign-in access at capacity.
+
+Exercise a synthetic account end to end: finish onboarding with an external
+agent save, rotate/revoke a token, export, and delete after reauthentication.
+Account exports are capped at 64 MiB each for tar and gzip, one per account and
+two per instance. Cloud Run scratch files consume memory; exports must leave
+capacity for normal requests and abort after 60 seconds without byte progress.
+
+Verify a task's authenticated delivery, private signed audio, the daily backup,
+an offline restore into an empty database, deleted-account tombstone handling,
+and receipt of operator alerts. Never test restoration over the live database.
+Public Cloud Run ingress does not replace internal task OIDC verification.
+Keep this production acceptance evidence separate from local test/dry-run output.
+
 ## Backups
 
-Everything lives in `DATA_DIR` (default `data/`): `dashboard.sqlite`, `credentials.json`, `vapid.json` and `audio/`. Back up the whole folder while the server is stopped, or use `sqlite3 data/dashboard.sqlite ".backup backup.sqlite"` while it runs.
+**Local mode:** everything lives in `DATA_DIR` (default `data/`): `dashboard.sqlite`, `credentials.json`, `vapid.json` and `audio/`. Back up the whole folder while the server is stopped, or use `sqlite3 data/dashboard.sqlite ".backup backup.sqlite"` while it runs.
+
+**Hosted tooling:** daily maintenance writes the private database backup to GCS;
+the bucket lifecycle expires `backups/` objects after 14 days. Database backups
+contain secrets and are not the credential-free user export. Audio objects are
+stored separately under account prefixes, so database backup alone is not an
+audio backup. Keep the encryption-key versions required to read retained backups.
+The offline `bun scripts/restore.ts --from backup.ndjson.gz --database-url <empty database>`
+refuses populated targets and honors target deletion tombstones. See
+[CONTRACT.md](../CONTRACT.md#background-operations) for the
+operational contract.
