@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { z } from "zod";
 import { createBackup } from "../server/backup";
 import { restoreBackup } from "../scripts/restore-data";
 import { createAlerts } from "../server/alerts";
@@ -57,6 +58,27 @@ test("operator alerts deduplicate per day and never accept a caller-supplied rec
     expect(received).toHaveLength(2);
     for (const value of received) expect(value).toMatchObject({ from: "onboarding@resend.dev", to: ["operator@example.test"] });
   } finally { server.stop(true); await sql.close(); }
+});
+
+test("restoring a returning Google account preserves the older target tombstone", async () => {
+  const source = await openSql(":memory:");
+  const target = await openSql(":memory:");
+  try {
+    await migrate(source);
+    await migrate(target);
+    await source.run("INSERT INTO users(id,google_sub,email,created_at) VALUES('returning','same-subject','reader@example.test','2026-01-03')");
+    await target.run("INSERT INTO users(id,google_sub,created_at,deleted_at) VALUES('deleted','same-subject','2026-01-01','2026-01-02')");
+    await restoreBackup(target, await createBackup(source));
+    expect(z.object({ id: z.string(), deleted_at: z.string() }).nullable()
+      .parse(await target.get("SELECT id,deleted_at FROM users WHERE id='deleted'")))
+      .toEqual({ id: "deleted", deleted_at: "2026-01-02" });
+    expect(z.object({ id: z.string() }).nullable()
+      .parse(await target.get("SELECT id FROM users WHERE google_sub='same-subject' AND deleted_at IS NULL")))
+      .toEqual({ id: "returning" });
+  } finally {
+    await source.close();
+    await target.close();
+  }
 });
 
 test("maintenance uploads a restorable backup, expires old objects and alerts on current-plan usage", async () => {

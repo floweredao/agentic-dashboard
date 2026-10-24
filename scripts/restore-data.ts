@@ -31,6 +31,10 @@ export async function restoreBackup(sql: Sql, bytes: Uint8Array) {
     for (const { table, row } of rows) {
       const userId = table === "users" ? row["id"] : row["user_id"];
       if (typeof userId === "string" && deleted.has(userId)) continue;
+      if (table === "users" && typeof row["google_sub"] === "string") {
+        // A returning account may reuse the subject, but must not replace the old deletion ledger.
+        await tx.run("UPDATE users SET google_sub=NULL WHERE deleted_at IS NOT NULL AND google_sub=?", [row["google_sub"]]);
+      }
       const entries = Object.entries(row).filter(([key]) => columns.get(table)?.has(key));
       if (!entries.length) throw new ApiError(400, "backup_invalid", "Backup has no recognized columns");
       await tx.run(`INSERT OR REPLACE INTO ${identifier(table)}(${entries.map(([key]) => identifier(key)).join(",")})

@@ -178,6 +178,8 @@ and deletion timestamp. Sessions and agent tokens are revoked. Audio-prefix
 deletion follows; failed object removal is retried by daily maintenance. Backups
 expire after 14 days and offline restores honor target tombstones. A later Google
 sign-in creates a new empty account instead of restoring deleted data.
+Restoring a later account with the same Google subject releases the old subject
+association without deleting the older account's tombstone.
 
 ### Records
 
