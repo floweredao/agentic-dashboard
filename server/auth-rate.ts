@@ -1,8 +1,7 @@
 import { isIP } from "node:net";
 
 /** Trusted ingress selects a hop from the right; direct listeners ignore XFF entirely. */
-export function authClientKey(request: Request, socketAddress: string | undefined, trustedProxy: boolean | number) {
-  const hops = typeof trustedProxy === "boolean" ? Number(trustedProxy) : trustedProxy;
+export function authClientKey(request: Request, socketAddress: string | undefined, hops: number) {
   const appended = hops > 0 ? request.headers.get("x-forwarded-for")?.split(",").at(-hops)?.trim() : undefined;
   const address = appended && isIP(appended) ? appended : socketAddress ?? "unknown";
   if (isIP(address) !== 6) return address;
@@ -21,7 +20,7 @@ export function authClientKey(request: Request, socketAddress: string | undefine
   return [...words.slice(0, 4).map(word => word.padStart(4, "0")), "0000", "0000", "0000", "0000"].join(":") + "/64";
 }
 
-export function authLimiter(now: () => number, trustedProxy: boolean | number = false, startLimit = 300) {
+export function authLimiter(now: () => number, hops = 0, startLimit = 300) {
   const buckets = new Map<string, number>();
   const startNetworks = new Map<string, number>();
   let starts = 0;
@@ -31,7 +30,7 @@ export function authLimiter(now: () => number, trustedProxy: boolean | number = 
     if (!path.startsWith("/auth/")) return null;
     const current = Math.floor(now() / 60000);
     if (current !== minute) { buckets.clear(); startNetworks.clear(); starts = 0; minute = current; }
-    const ip = authClientKey(request, socketAddress, trustedProxy);
+    const ip = authClientKey(request, socketAddress, hops);
     const starting = path === "/auth/google/start";
     const network = starting && ip.endsWith("/64") ? ip.split(":").slice(0, 3).join(":") : undefined;
     const networkCount = network === undefined ? 0 : startNetworks.get(network) ?? 0;
