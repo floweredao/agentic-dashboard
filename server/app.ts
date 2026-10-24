@@ -535,7 +535,8 @@ export function createApp(options: AppOptions = {}) {
   const mcpDisabled = async () => Response.json({ error: { code: "feature_disabled", message: "MCP needs MCP_AGENT" } }, { status: 503 });
   const mcpFetch = mcpAgent === undefined ? mcpDisabled : createMcpHandler({ store, agent: { id: mcpAgent, source: mcpAgent },
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
-    onCreate: id => { if (aiFillSources.has(mcpAgent)) aiFill?.enqueue(id); autoNarrate(store.get(id)); } });
+    onCreate: id => { if (aiFillSources.has(mcpAgent)) aiFill?.enqueue(id); const record = store.get(id); notifyReview(null, record); autoNarrate(record); },
+    onUpdate: notifyReview });
   return { fetch: (request: Request) => privateApp.fetch(request), publicFetch: (request: Request) => publicApp.fetch(request),
     mcpFetch, aiFill, narration, push, agents, invites, timeZone, purgeTrash: () => { const purged = store.purgeTrash(); narration.prune(); return purged; },
     close: () => store.close() };

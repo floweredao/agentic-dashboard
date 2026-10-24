@@ -25,7 +25,7 @@ Three logical collections share one table: projects (`project`), tasks (`task`) 
 {
   kind: "project" | "task" | "research" | "work-report" | "note" | "social";
   title: string;                 // trimmed, 1..200
-  body: string;                  // default "", at most 120000; record POST and PATCH bodies up to 512 KiB
+  body: string;                  // default "", at most 120000; record POST and PATCH bodies, and MCP requests, up to 512 KiB
   status: string;                // default "new"
   projectId: string | null;      // UUID of a project
   taskId: string | null;         // UUID of a task
@@ -191,7 +191,7 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 | Route | Who | Result |
 |---|---|---|
 | `GET /api/v1/push` | owner | `{ publicKey, device, devices }` |
-| `PUT /api/v1/push/subscription` | owner | `{ subscription, kinds? }`; kinds are `digest`, `review`, `reply`; `subscription.locale` (`en` or `ko`) sets this device's notification language, `LOCALE` otherwise |
+| `PUT /api/v1/push/subscription` | owner | `{ subscription, kinds? }`; kinds are `digest`, `review` (an agent's task saved in review or moved there, through the record routes, a timeline entry or MCP), `reply`; `subscription.locale` (`en` or `ko`) sets this device's notification language, `LOCALE` otherwise |
 | `DELETE /api/v1/push/subscription` | owner | `{ endpoint }` |
 | `POST /api/v1/push/test` | owner | send a test notification |
 

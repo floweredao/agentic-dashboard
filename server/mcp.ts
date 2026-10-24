@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AGENT_RECORD_GUIDE, RecordInputSchema, RecordPatchSchema, type DashboardRecord } from "../shared/contracts";
+import { AGENT_RECORD_GUIDE, RECORD_LIMITS, RecordInputSchema, RecordPatchSchema, type DashboardRecord } from "../shared/contracts";
 import { ApiError } from "./errors";
 import { json } from "./json-body";
 import { AGENT_READABLE_KINDS, agentCanRead, type Principal, type Store } from "./store";
@@ -128,9 +128,10 @@ export interface McpOptions {
   readonly rateLimit: number;
   readonly now: () => number;
   readonly onCreate?: (id: string) => void;
+  readonly onUpdate?: (before: DashboardRecord, after: DashboardRecord) => void;
 }
 
-export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate }: McpOptions) {
+export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate, onUpdate }: McpOptions) {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   let bucketWindow = Math.floor(now() / 60000);
   let count = 0;
@@ -145,7 +146,9 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate 
     }
     if (name === "update_record") {
       const { id, ...patch } = updateArgs.parse(args);
+      const before = store.get(id);
       const record = store.agentPatch(agent, id, patch);
+      onUpdate?.(before, record);
       return { id: record.id, kind: record.kind, title: record.title, source: record.source,
         reviewState: record.reviewState, version: record.version, updatedAt: record.updatedAt };
     }
@@ -210,7 +213,7 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate 
     if (++count > rateLimit) return reply({ error: { code: "rate_limited", message: "Request limit exceeded" } }, 429, { "Retry-After": "60" });
 
     let body: unknown;
-    try { body = await json(request); }
+    try { body = await json(request, RECORD_LIMITS.requestBytes); }
     catch (error) {
       if (!(error instanceof ApiError)) throw error;
       return rpcFailure(null, error.status === 400 ? -32700 : -32600, error.message, error.status);
