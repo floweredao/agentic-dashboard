@@ -5,12 +5,18 @@ import { ApiError } from "./errors";
 import { json } from "./json-body";
 import { agentCanRead, agentView } from "./store";
 import type { TenantRuntime } from "./app-runtime";
+import { recordChanges } from "./record-sync";
 
 
 const createSchema = z.object({ requestId: z.string().trim().min(1).max(128), record: z.unknown() }).strict();
 export function registerRecords(app: Hono, runtime: TenantRuntime, publicOnly: boolean) {
   const { store, auth, aiFillSources, comments, narration, newRecord, editedRecord, notifyEntry, notifyReview, origins, owner, narratable } = runtime;
   if (!publicOnly) {
+      app.get("/api/v1/records/changes", async c => {
+        await owner(c.req.raw, false);
+        const after = c.req.query("after");
+        return c.json(await recordChanges(store.db, after === undefined ? undefined : z.coerce.number().int().nonnegative().parse(after)));
+      });
 
       app.get("/api/v1/records", async c => {
         const principal = (await auth.authenticate(c.req.raw, false));

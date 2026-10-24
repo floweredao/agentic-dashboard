@@ -37,7 +37,7 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
       const next = Math.floor(Math.min(chars, expected) * 50 / expected);
       if (next === mark || cancel.aborted) return;
       mark = next;
-      writes = writes.then(() => set(id, { progress_done: chars }));
+      writes = writes.then(async () => { await set(id, { progress_done: chars }); });
       void writes.catch(() => undefined); // flush delivers failures to the job.
     };
     return { receive, flush: () => writes };
@@ -65,6 +65,7 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
     const hosts = [voices.hostA, voices.hostB] as const;
     const workingDir = storage.remote ? tmpdir() : audioDir;
     const part = join(workingDir, `${id}.${storage.remote ? `${crypto.randomUUID()}.` : ""}part.wav`);
+    let uploaded: string | null = null;
     try {
       const digest = label !== undefined;
       const summaryOnly = !digest && job.scope === "summary";
@@ -149,23 +150,28 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
       const bytes = file.size;
       await assertWorkActive(store, runtime.jobs.getStore());
       await storage.put(userId, name, file);
+      uploaded = name;
       rmSync(encoded.path, { force: true });
       rmSync(part, { force: true });
       const current = await row(id);
       if (!current || cancel.aborted) { await removeFile(name); return; }
       const previous = current.audio_file;
       await assertWorkActive(store, runtime.jobs.getStore());
-      (await set(id, { status: "ready", attempts: 0, error: null, progress_done: null, progress_total: null, audio_file: name, audio_hash: hash,
+      const committed = await set(id, { status: "ready", attempts: 0, error: null, retry_at: null, progress_done: null, progress_total: null, audio_file: name, audio_hash: hash,
         audio_mime: encoded.mime, audio_bytes: bytes, audio_ms: Math.round(body.byteLength / BYTES_PER_MS),
-        audio_model: provider.ttsModel, audio_voice: podcast ? hosts.join(", ") : voices.readVoice, audio_style: style, audio_scope: job.scope, audio_at: now() }));
+        audio_model: provider.ttsModel, audio_voice: podcast ? hosts.join(", ") : voices.readVoice, audio_style: style, audio_scope: job.scope, audio_at: now() });
+      if (!committed) { await removeFile(name); return; }
+      uploaded = null;
       if (previous !== name) await removeFile(previous);
     } catch (error) {
       rmSync(part, { force: true });
       rmSync(part.replace(/\.wav$/, ".m4a"), { force: true });
-      if (cancel.aborted) return;
+      if (uploaded) await removeFile(uploaded);
+      if (cancel.aborted || error instanceof Cancelled) return;
       const code = error instanceof ProviderError ? error.code : "internal";
       const latest = (await row(id));
-      if (latest) (await set(id, { status: "failed", error: code, attempts: latest.attempts + 1, progress_done: null, progress_total: null }));
+      if (latest) (await set(id, { status: "failed", error: code, attempts: latest.attempts + 1, progress_done: null, progress_total: null,
+        retry_at: error instanceof ProviderError && error.retryAfterMs !== undefined ? new Date(store.now() + error.retryAfterMs).toISOString() : null }));
       if (!(error instanceof ProviderError)) throw error;
     }
   }

@@ -63,6 +63,15 @@ export const MIGRATIONS: readonly Migration[] = [
     await sql.run(`ALTER TABLE users ADD COLUMN features TEXT NOT NULL DEFAULT '{"digest":true,"push":true}'`);
     await sql.run("ALTER TABLE sessions ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
   } },
+  { version: 6, async up(sql) {
+    await sql.run("ALTER TABLE push_subscriptions ADD COLUMN hide_content INTEGER NOT NULL DEFAULT 0");
+  } },
+  { version: 7, async up(sql) {
+    await sql.run("ALTER TABLE narrations ADD COLUMN retry_at TEXT");
+  } },
+  { version: 8, async up(sql) {
+    await createSchema(sql);
+  } },
 ];
 
 /** Each version and its ledger entry commit together, including upgrades interrupted mid-copy. */

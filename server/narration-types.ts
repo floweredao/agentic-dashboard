@@ -80,6 +80,7 @@ export class Cancelled extends Error {
 }
 
 export const rowSchema = z.object({
+  retry_at: z.string().nullable(),
   record_id: z.string(), status: NarrationStatusSchema, job_hash: z.string(), requested_by: z.string(),
   requested_at: z.string(), updated_at: z.string(), attempts: z.number().int(), error: z.string().nullable(),
   progress_done: z.number().int().nullable(), progress_total: z.number().int().nullable(),

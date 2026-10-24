@@ -1,5 +1,7 @@
 /** Every tenant table lives here; migrations and isolation checks share this inventory. */
 export const TABLES = {
+  record_sync: "version INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(user_id)",
+  record_changes: "version INTEGER NOT NULL, record_id TEXT NOT NULL, PRIMARY KEY(user_id,version)",
   background_jobs: `kind TEXT NOT NULL, id TEXT NOT NULL, revision TEXT NOT NULL, leased_until INTEGER,
     leased_by TEXT, completed_at TEXT, PRIMARY KEY(user_id,kind,id,revision)`,
   principals: `id TEXT NOT NULL, source TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,

@@ -4,6 +4,8 @@ import { TABLES } from "./schema";
 
 /** Explicit inventory keeps backup/export coverage exhaustive without computed tenant SQL. */
 const queries = {
+  record_sync: "SELECT * FROM record_sync WHERE user_id=?",
+  record_changes: "SELECT * FROM record_changes WHERE user_id=?",
   principals: "SELECT * FROM principals WHERE user_id=?",
   sessions: "SELECT * FROM sessions WHERE user_id=?",
   records: "SELECT * FROM records WHERE user_id=?",
@@ -44,6 +46,7 @@ export async function eraseTenant(sql: Sql, userId: string) {
     "DELETE FROM narration_runs WHERE user_id=?", "DELETE FROM narration_auto WHERE user_id=?",
     "DELETE FROM narration_settings WHERE user_id=?", "DELETE FROM push_subscriptions WHERE user_id=?",
     "DELETE FROM background_jobs WHERE user_id=?", "DELETE FROM principals WHERE user_id=?",
+    "DELETE FROM record_changes WHERE user_id=?", "DELETE FROM record_sync WHERE user_id=?",
   ];
   for (const statement of statements) await sql.run(statement, [userId]);
 }
