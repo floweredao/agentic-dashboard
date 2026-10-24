@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { RecordInputSchema, schemaInfo } from "../shared/contracts";
+import { RecordInputSchema, schemaInfo, titleWidth, TITLE_MAX_WIDTH } from "../shared/contracts";
 
 import { enrichCapture } from "./capture-enrichment";
 import { ApiError } from "./errors";
@@ -17,16 +17,19 @@ export function registerSession(app: Hono, runtime: TenantRuntime) {
   const { options, store, demo, auth, agents, invites, timeZone, pushOn, digestOn, narration, privateOrigin, trustedOwner, newRecord, origins, cookie, capturing } = runtime;
 
       app.post("/api/v1/capture", async c => {
-        // Only the trusted proxy identity grants capture; cookies and other forwarded headers are not authority.
-        if (!trustedOwner(c, true)) throw new ApiError(401, "unauthenticated", "Trusted owner identity required");
-        if (c.req.header("X-Capture") !== "v1") throw new ApiError(403, "forbidden", "Capture marker required");
+        const principal = options.hosted ? await auth.authenticate(c.req.raw, true) : { id: "owner", source: "manual" };
+        if (options.hosted) {
+          if (!(await agents.get(principal.id))?.capture) throw new ApiError(403, "capture_forbidden", "This agent cannot capture links");
+        } else if (!trustedOwner(c, true)) throw new ApiError(401, "unauthenticated", "Trusted owner identity required");
+        const marker = c.req.header("X-Capture") ?? c.req.header("X-Floweredao-Capture");
+        if (marker !== "shortcut-v1" && !(marker === "v1" && !options.hosted)) throw new ApiError(403, "forbidden", "Capture marker required");
         const origin = c.req.header("origin");
         if (origin !== undefined && origin !== privateOrigin) throw new ApiError(403, "origin", "Private Origin required");
         const input = captureSchema.parse(await json(c.req.raw));
         const url = new URL(input.url);
         if (url.username || url.password || url.href.length > 2048) throw new ApiError(400, "invalid_input", "Invalid capture URL");
         const requestId = `capture:v1:${new Bun.CryptoHasher("sha512").update(url.href).digest("hex")}`;
-        const previous = (await store.replay({ id: "owner", source: "manual" }, requestId, { url: url.href }));
+        const previous = (await store.replay(principal, requestId, { url: url.href }));
         if (previous) return c.json(previous, 200);
         let pending = capturing.get(requestId);
         if (!pending) {
@@ -34,13 +37,21 @@ export function registerSession(app: Hono, runtime: TenantRuntime) {
           capturing.set(requestId, pending);
         }
         const enrichment = await pending;
+        let title = enrichment.title;
+        if (options.hosted) {
+          const characters = [...title];
+          while (titleWidth(characters.join("")) > TITLE_MAX_WIDTH) characters.pop();
+          title = characters.join("");
+        }
         const matches = (domain: string) => url.hostname === domain || url.hostname.endsWith(`.${domain}`);
         const record = RecordInputSchema.parse({
-          kind: "social", title: enrichment.title,
-          fields: { ...enrichment.fields, origin: ["x.com", "twitter.com"].some(matches) ? "x" : ["threads.net", "threads.com"].some(matches) ? "threads" : "other" },
+          kind: "social", title,
+          ...(options.hosted ? { tags: ["capture"] } : {}),
+          fields: options.hosted ? { summary: enrichment.fields.summary || url.href.slice(0, 500) }
+            : { ...enrichment.fields, origin: ["x.com", "twitter.com"].some(matches) ? "x" : ["threads.net", "threads.com"].some(matches) ? "threads" : "other" },
           links: [{ label: "Source", url: url.href }],
         });
-        const result = (await store.create({ id: "owner", source: "manual" }, requestId, record, { url: url.href }, "pending"));
+        const result = (await store.create(principal, requestId, record, { url: url.href }, "pending"));
         if (!result.replayed) (await newRecord(result.record, true));
         return c.json(result, result.replayed ? 200 : 201);
       });

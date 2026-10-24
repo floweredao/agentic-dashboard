@@ -5,9 +5,9 @@ import { CASES } from "./isolation-cases";
 import { isolationFixture, noteInput, subscription, type IsolationFixture } from "./isolation-fixture";
 
 const PUBLIC_ROUTES = new Set([
-  "GET /auth/google/start", "GET /auth/google/callback", "GET /auth/capacity",
   "ALL /*", "ALL /api/*", "GET /*", "GET /api/health", "GET /api/v1/health", "GET /api/v1/schema",
   "GET /api/v1/config", "GET /api/v1/shared/:code", "GET /s/:code", "POST /api/v1/agents/connect",
+  "GET /auth/google/start", "GET /auth/google/callback", "GET /auth/capacity",
 ]);
 const MCP_CASES: Readonly<Record<string, (f: IsolationFixture) => Promise<void>>> = {
   async get_record(f) {
@@ -55,7 +55,7 @@ for (const [route, scenario] of Object.entries(CASES)) {
           const [method = "", template = ""] = route.split(" ");
           const id = template.includes("/comments/") ? f.comment.id : template.includes("/trash/") ? f.trashed.id
             : template.includes("/digests/") ? f.digest.id : f.record.id;
-          const path = template.replace(":id", id).replace(":voice", "test-read") + (scenario.query ?? "");
+          const path = template.replace(":id", id).replace(":voice", "test-read").replace(":name", "only-a") + (scenario.query ?? "");
           // When: the real router processes B's request against A's identifiers or collection.
           const response = await f.call(path, { method, ...(scenario.body ? { body: scenario.body(f) } : {}),
             ...(scenario.agent ? { agent: true } : {}) });

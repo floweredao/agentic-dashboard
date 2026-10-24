@@ -13,6 +13,7 @@ import { formatRoute, viewTitles } from "../router";
 import { useDashboard } from "../state";
 import { useRateLimited } from "../rate-limit";
 import { SignIn } from "./SignIn";
+import { AgentConnections } from "./AgentConnections";
 
 const text = strings({
   en: {
@@ -100,6 +101,7 @@ export function ChannelsView() {
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen /><h1>{viewTitles.channels}</h1></div>
     </header>
+    {config.authMode === "google" && <AgentConnections />}
     {config.authMode === "local" && agents.length === 0 && <p className="channel-note">{t.noAgents} <code>bun run agents add &lt;name&gt;</code> {t.noAgentsAfter}</p>}
     <div className="channel-grid">
       {channelKeys.map(channel => {

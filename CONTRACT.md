@@ -8,7 +8,7 @@ All data access uses the asynchronous `Sql` interface. A local path or `file:` U
 
 Every tenant table has a non-null `user_id`: principals, sessions, records, evidence, requests, trash, comments, documents, agent_invites, digests, digest_reactions, narrations, narration_runs, narration_auto, narration_settings, push_subscriptions and shares. Principal names, idempotency keys, digest slots, comments, documents and narration state are scoped to that account. Generated record columns index kind, creation time and archive state. `users` and `schema_migrations` are global control tables.
 
-Request credentials select a fixed tenant service graph. Background audio queues, settings, AI fills and push recipients use the same account. Missing content from another account returns 404, including delete attempts; relationship validation retains its existing 400 response. A share or invitation code is an explicit capability and resolves its issuing account. Subscribing an existing push endpoint moves that device to the account that subscribed last. Trusted proxy identity grants owner authority only in the implicit `local` account; capture with a non-local account's cookie is rejected even with that header. MCP uses a supplied agent bearer, or the configured local `MCP_AGENT` when no bearer is supplied. API JSON shapes are unchanged.
+Request credentials select a fixed tenant service graph. Background audio queues, settings, AI fills and push recipients use the same account. Missing content from another account returns 404, including delete attempts; relationship validation retains its existing 400 response. A share or invitation code is an explicit capability and resolves its issuing account. Subscribing an existing push endpoint moves that device to the account that subscribed last. Trusted proxy identity grants owner authority only in the implicit `local` account; capture with a non-local account's cookie is rejected even with that header. Hosted capture and every MCP request require an agent bearer; `MCP_AGENT` never authenticates a request.
 
 ## Principals
 
@@ -18,6 +18,10 @@ Request credentials select a fixed tenant service graph. Background audio queues
 | Agent | its registered name, for example `codex` | `Authorization: Bearer <agent key>` |
 
 Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key.
+
+Browser sessions can also create an agent with `POST /api/v1/agents { name, capture? }`, rotate with `POST /api/v1/agents/:name/rotate`, or revoke with `DELETE /api/v1/agents/:name`. All require CSRF. New keys are `fd_` followed by 32 random bytes in base64url, returned once as `{ agent, key }` on create/rotate; list/get never expose keys or hashes. `capture` defaults false and is shown in agent metadata. Revocation and rotation invalidate the previous key immediately. Agent names are attribution within an account, not separate privacy boundaries.
+
+`POST /api/v1/agents/invites { name }` lets a CSRF-authenticated owner issue the existing 15-minute single-use installer invitation for a new name. The connection screen supplies the hosted URL and invitation to the connect-only installer, explains macOS/Linux prerequisites and untested Windows support, and offers a curl fallback. Its test-save action writes through the bearer and reads the returned id through the owner API before showing success.
 
 A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
 
@@ -219,10 +223,14 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 
 `POST /api/v1/capture` saves a link as a `social` record. It only works for the owner signed in through the trusted proxy, with the header `X-Capture: v1`.
 
+In Google mode capture instead requires an agent bearer with `capture` enabled and `X-Capture: shortcut-v1` (legacy `X-Floweredao-Capture: shortcut-v1` is accepted). The token selects the tenant and saved attribution. A session cookie or trusted header cannot substitute. Local trusted-owner capture continues to accept `X-Capture: v1`.
+
 ## Other listeners
 
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`, `127.0.0.1:AGENT_PORT`): only `POST /api/v1/records` and `GET /api/v1/records/:id` with an agent key.
-- **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`, all attributed to `MCP_AGENT`, which must be an active registered agent.
+- **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`. Every call, including discovery and notifications, now requires an agent bearer; there is no `MCP_AGENT` authority fallback. Calls use the token's account/principal and a per-token rate bucket. Browser Origins are rejected.
+
+Google mode exposes bearer MCP at `/mcp` on the main listener and never starts the separate agent/MCP listeners. `scripts/mcp-forward.ts --listen 127.0.0.1:4313 --to https://example.test/mcp --token-file <private-path>` supports a loopback tunnel. It adds its configured bearer, strips browser credentials, rejects browser Origins and foreign Hosts, and never logs tokens. This transport proof does not claim a hosted ChatGPT OAuth connector.
 
 ## Demo mode
 
