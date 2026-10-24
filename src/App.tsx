@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, House, Library, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
 import type { Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
 import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadAgents, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
@@ -6,7 +6,7 @@ import type { DigestPage } from "./api";
 import { syncPush } from "./push";
 import { Empty, DialogToast } from "./components/primitives";
 import { ShareDialog } from "./components/ShareDialog";
-import { MiniPlayer, useMiniPlayerShown } from "./components/playback";
+import { MiniPlayer, PlaybackContext, useMiniPlayerShown } from "./components/playback";
 import { DOCK_MIN, SPLIT_MIN, SidebarContext, WIDE_MIN, layoutOf, readDocked, useSidebarDrag, writeDocked } from "./components/sidebar";
 import { config } from "./config";
 import { isTypingTarget } from "./hooks";
@@ -137,6 +137,8 @@ export function App() {
   const latest = useRef({ route, records, csrf });
   latest.current = { route, records, csrf };
   const connected = csrf !== "";
+  /** The app's one audio playback; signing out stops it so no private record keeps playing or stays on the lock screen. */
+  const playback = useContext(PlaybackContext);
 
   const notify = useCallback((message: string, tone: "info" | "error" = "info") => setToast({ message, tone, key: Date.now() }), []);
   const replace = useCallback((record: DashboardRecord) => setRecords(items =>
@@ -490,10 +492,10 @@ export function App() {
         const auth = await session(token);
         setCsrf(auth.csrfToken); store(await loadAll(report)); setModal(null);
       },
-      logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "home" }); notify(text().loggedOut); },
+      logout: async () => { await endSession(latest.current.csrf); playback.close(); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "home" }); notify(text().loggedOut); },
       importJson: async text => create(recordInputSchema.parse(JSON.parse(text)), crypto.randomUUID()),
     };
-  }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store]);
+  }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store, playback]);
 
   // A tapped notification in an open window: go to the screen it names, as a new history entry.
   useEffect(() => {
