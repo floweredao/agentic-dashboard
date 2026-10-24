@@ -38,7 +38,11 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
       if (authorization?.startsWith("Bearer ")) {
         const credentialHash = hash(authorization.slice(7));
         if (await auth.control.principalByToken(credentialHash)) rateKey = credentialHash;
-      } else if (c.req.header("cookie")) rateKey = "browser";
+      } else {
+        // An owner session counts on its own; a cookie that names no session is an unknown credential like any other.
+        const session = await auth.findSession(c.req.raw);
+        if (session) rateKey = `session:${session.hash}`;
+      }
       const count = (rate.buckets.get(rateKey) ?? 0) + 1;
       rate.buckets.set(rateKey, count);
       if (count > limit) { c.header("Retry-After", "60"); throw new ApiError(429, "rate_limited", "Request limit exceeded"); }
