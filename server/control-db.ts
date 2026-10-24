@@ -4,7 +4,8 @@ import type { Sql } from "./db";
 import { ApiError } from "./errors";
 
 const principal = z.object({ user_id: z.string(), id: z.string(), source: SourceSchema });
-const session = z.object({ user_id: z.string(), hash: z.string(), principal_id: z.string(), csrf: z.string(), expires_at: z.number(), created_at: z.number() });
+const session = z.object({ user_id: z.string(), hash: z.string(), principal_id: z.string(), csrf: z.string(),
+  expires_at: z.number(), created_at: z.number(), authenticated_at: z.number() });
 const share = z.object({ user_id: z.string(), code: z.string(), record_id: z.string(), created_at: z.string() });
 const invite = z.object({ user_id: z.string(), agent: z.string() });
 
@@ -19,7 +20,7 @@ export class ControlDb {
     return row ? this.permitted(principal.parse(row)) : null;
   }
   async sessionByHash(hash: string, now: number) {
-    const row = await this.sql.get("SELECT user_id,hash,principal_id,csrf,expires_at,created_at FROM sessions WHERE hash=? AND expires_at>?", [hash, now]);
+    const row = await this.sql.get("SELECT user_id,hash,principal_id,csrf,expires_at,created_at,authenticated_at FROM sessions WHERE hash=? AND expires_at>?", [hash, now]);
     return row ? this.permitted(session.parse(row)) : null;
   }
   async shareByCode(code: string) {
