@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CommentSchema, CommentStateSchema, WORK_STATUSES } from "../shared/contracts";
+import { COMMENT_TIMELINE_LIMIT, CommentSchema, CommentStateSchema, WORK_STATUSES } from "../shared/contracts";
 import type { Comment, CommentInput, DashboardRecord, QueuedComment } from "../shared/contracts";
 import { ApiError } from "./errors";
 import { agentCanRead, canonical, SHARED_WORK_KINDS, type Principal, type Store } from "./store";
@@ -53,7 +53,9 @@ export class Comments {
     const db = this.store.db;
     if (query.recordId !== undefined) {
       this.item(principal, query.recordId);
-      const rows = db.query(`SELECT ${COLUMNS} FROM comments c WHERE c.record_id=?${stateCondition(query.state ?? "all")} ORDER BY c.created_at,c.rowid`).all(query.recordId);
+      // The newest entries, oldest first: an agent can post without end, so past the cap the oldest ones drop out.
+      const rows = db.query(`SELECT * FROM (SELECT ${COLUMNS},c.rowid AS position FROM comments c WHERE c.record_id=?${stateCondition(query.state ?? "all")}
+        ORDER BY c.created_at DESC,c.rowid DESC LIMIT ?) ORDER BY created_at,position`).all(query.recordId, COMMENT_TIMELINE_LIMIT);
       return { items: rows.map(toComment) };
     }
     if (principal.source === "manual") {

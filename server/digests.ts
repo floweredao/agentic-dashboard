@@ -210,7 +210,7 @@ export class Digests {
     const query = searchSchema.parse(raw);
     const needle = query.q.toLowerCase();
     const hits: DigestHit[] = [];
-    for (const row of this.store.db.query("SELECT * FROM digests ORDER BY scheduled_at DESC, id DESC").iterate()) {
+    for (const row of this.store.db.query("SELECT * FROM digests ORDER BY scheduled_at DESC, id DESC LIMIT ?").iterate(DIGEST_LIMITS.searchDigests)) {
       const digest = toDigest(row);
       const base = { digestId: digest.id, date: digest.date, slot: digest.slot, scheduledAt: digest.scheduledAt };
       for (const section of digest.sections) {

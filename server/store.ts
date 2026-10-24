@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
-import { AGENT_RECORD_RULES, agentRecordIssues, DashboardRecordSchema, DateSchema, RecordInputSchema, RecordKindSchema, ReviewStateSchema, TITLE_MAX_WIDTH, titleWidth, TRASH_RETENTION_DAYS } from "../shared/contracts";
+import { AGENT_RECORD_RULES, agentRecordIssues, DashboardRecordSchema, DateSchema, RecordInputSchema, RecordKindSchema, ReviewStateSchema, TITLE_MAX_WIDTH, titleWidth, TRASH_LIST_LIMIT, TRASH_RETENTION_DAYS } from "../shared/contracts";
 import type { DashboardRecord, RecordDocument, RecordInput, RecordKind, RecordPatch, Source, TrashItem } from "../shared/contracts";
 import { ApiError } from "./errors";
 
@@ -248,7 +248,7 @@ export class Store {
   }
   trashList(): TrashItem[] {
     this.purgeTrash();
-    return this.db.query("SELECT data,deleted_at FROM trash ORDER BY deleted_at DESC,id DESC").all().map(value => {
+    return this.db.query("SELECT data,deleted_at FROM trash ORDER BY deleted_at DESC,id DESC LIMIT ?").all(TRASH_LIST_LIMIT).map(value => {
       const row = trashRow.parse(value);
       return { record: DashboardRecordSchema.parse(JSON.parse(row.data)), deletedAt: row.deleted_at,
         purgeAt: new Date(Date.parse(row.deleted_at) + RETENTION_MS).toISOString() };
