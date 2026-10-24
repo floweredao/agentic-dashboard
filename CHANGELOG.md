@@ -42,6 +42,16 @@ A Home tab and one Library, reactions and pictures on digest articles, audio mad
 
 - Each sentence line of a record or digest is its own paragraph, and paragraphs and lists on the reading screens have more room between them.
 
+### Fixed
+
+- The `systemd --user` service that `agentic-dashboard setup` installs on Linux loads again: its working folder was written in quotes, which systemd reads as a relative path and refuses the whole unit, and its log path now also keeps a `%` in the home folder.
+- `server.env` reads a line copied from `.env.example` the way `.env` does: a ` # comment` after a value and 'single quotes' around it are no longer part of the value, so `PUSH=on   # web push` no longer stops the dashboard from starting and `GEMINI_API_KEY=   # turns on "Listen"` no longer sets the comment as the key.
+- `agentic-dashboard connect --skills` with an unknown target fails before it contacts the dashboard. It used to spend the one-time code and save the connection, then exit with an error, so running it again with the target fixed answered that the code was already used.
+- `agentic-dashboard service`, `setup --service` and `status` report a `launchctl` or `systemctl` that fails or is missing (a container, WSL without systemd) in one line instead of crashing with a stack trace; `status` then shows the service as installed, not running.
+- `install.sh` makes a relative `AGENTIC_DASHBOARD_HOME` or `AGENTIC_DASHBOARD_BIN_DIR` absolute. The `agentic-dashboard` command it wrote pointed at the app by the relative path and failed when run from any other folder, and setup saved the relative home for the service and the agent skills.
+- `bun run agent` (and `agentic-dashboard agent`) reports a missing option value or an unknown option as such with a pointer to `--help`, instead of "Save failed: …" whatever the command was, and invalid input to `--trash`, `--digest-reactions`, `--seen`/`--done` and `--timeline` names that command's options instead of `--file and --request-id`.
+- `agentic-dashboard agents` (installed command and single binary) names its own commands in its help and hints, such as `agentic-dashboard agents rotate <name>`, instead of `bun run agents`, which works only inside the repository.
+
 ## [0.3.0] - 2026-10-07
 
 One-line install with first-run setup, one-time codes that connect another computer's agents, audio that keeps playing across screens, and narration voices in Settings. On first start the server adds the `agent_invites` and `narration_settings` tables to the database; back up the data folder before you upgrade.
