@@ -31,7 +31,7 @@ const TIMEOUT_MS = 10_000;
 const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(?:^|\.)push\.apple\.com$/, /^updates\.push\.services\.mozilla\.com$/, /(?:^|\.)notify\.windows\.com$/];
 /** Only the browsers' own push services: the server never posts to an address a client made up. */
 export const pushEndpointAllowed = (url: URL) => url.protocol === "https:" && !url.port && PUSH_HOSTS.some(host => host.test(url.hostname));
-const rowSchema = z.object({ endpoint: z.string(), p256dh: z.string(), auth: z.string(), kinds: z.string(), locale: z.string().nullable(), created_at: z.string(), updated_at: z.string() });
+const rowSchema = z.object({ endpoint: z.string(), p256dh: z.string(), auth: z.string(), kinds: z.string(), locale: z.string().nullable(), hide_content: z.number(), created_at: z.string(), updated_at: z.string() });
 const vapidSchema = z.object({ publicKey: z.string().min(1), privateKey: z.string().min(1) }).strict();
 const agentLabel = (source: Source, locale: Locale) => source === "manual" ? messages(locale).owner : source;
 const decoded = (value: string) => /^[A-Za-z0-9_-]+=*$/.test(value) ? Buffer.from(value, "base64url").length : -1;
@@ -167,7 +167,7 @@ export function createPush(store: Store, options: PushOptions) {
     const value = (await store.db.get("SELECT * FROM push_subscriptions WHERE (endpoint=?) AND user_id=?", [endpoint]));
     return value ? rowSchema.parse(value) : null;
   };
-  const view = (value: z.infer<typeof rowSchema>): PushDevice => ({ kinds: PushKindsSchema.parse(JSON.parse(value.kinds)), locale: localeOf(value.locale), createdAt: value.created_at, updatedAt: value.updated_at });
+  const view = (value: z.infer<typeof rowSchema>): PushDevice => ({ kinds: PushKindsSchema.parse(JSON.parse(value.kinds)), locale: localeOf(value.locale), hideContent: value.hide_content === 1, createdAt: value.created_at, updatedAt: value.updated_at });
 
   const send: Deliver = async (target, payload) => {
     const { publicKey, privateKey } = keys();
@@ -212,9 +212,10 @@ export function createPush(store: Store, options: PushOptions) {
       const existing = (await row(endpoint));
       const chosen = kinds ?? (existing ? PushKindsSchema.parse(JSON.parse(existing.kinds)) : DEFAULT_PUSH_KINDS);
       const timestamp = now();
-      (await store.db.run(`INSERT INTO push_subscriptions(endpoint,p256dh,auth,kinds,locale,created_at,updated_at,user_id) VALUES(?,?,?,?,?,?,?,?)
-        ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth,kinds=excluded.kinds,locale=excluded.locale,updated_at=excluded.updated_at`, [endpoint, p256dh, auth, JSON.stringify(chosen), locale ?? existing?.locale ?? null, existing?.created_at ?? timestamp, timestamp]));
-      return view({ endpoint, p256dh, auth, kinds: JSON.stringify(chosen), locale: locale ?? existing?.locale ?? null, created_at: existing?.created_at ?? timestamp, updated_at: timestamp });
+      const hideContent = parsed.data.hideContent === undefined ? existing?.hide_content ?? 0 : Number(parsed.data.hideContent);
+      (await store.db.run(`INSERT INTO push_subscriptions(endpoint,p256dh,auth,kinds,locale,created_at,updated_at,hide_content,user_id) VALUES(?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth,kinds=excluded.kinds,locale=excluded.locale,updated_at=excluded.updated_at,hide_content=excluded.hide_content`, [endpoint, p256dh, auth, JSON.stringify(chosen), locale ?? existing?.locale ?? null, existing?.created_at ?? timestamp, timestamp, hideContent]));
+      return view({ endpoint, p256dh, auth, kinds: JSON.stringify(chosen), locale: locale ?? existing?.locale ?? null, hide_content: hideContent, created_at: existing?.created_at ?? timestamp, updated_at: timestamp });
     },
     async unsubscribe(endpoint: string) { (await store.db.run("DELETE FROM push_subscriptions WHERE (endpoint=?) AND user_id=?", [endpoint])); },
     async test(endpoint: string) {
@@ -225,20 +226,24 @@ export function createPush(store: Store, options: PushOptions) {
     },
     /**
      * Sends each device the first of `choices` whose kind it wants (a reply that also asks for review reaches a device once).
-     * Fire and forget: returns how many devices were chosen; `idle()` waits for the sends.
+     * Await delivery before the HTTP response; scale-to-zero runtimes need work inside request lifetime.
      */
     async notify(choices: readonly { readonly kind: keyof PushKinds; readonly payload: PushPayload }[]): Promise<number> {
       let chosen = 0;
+      const deliveries: Promise<unknown>[] = [];
       for (const value of (await rows())) {
         const kinds = PushKindsSchema.parse(JSON.parse(value.kinds));
         const choice = choices.find(item => kinds[item.kind]);
         if (!choice) continue;
         chosen += 1;
-        const payload = localizers.get(choice.payload)?.(localeOf(value.locale)) ?? choice.payload;
-        void track(deliver(value, payload).catch((error: unknown) => {
+        const original = localizers.get(choice.payload)?.(localeOf(value.locale)) ?? choice.payload;
+        const text = messages(localeOf(value.locale));
+        const payload = value.hide_content ? { ...original, title: text.privateTitle, body: text.privateBody } : original;
+        deliveries.push(track(deliver(value, payload).catch((error: unknown) => {
           console.error(`push delivery failed: ${error instanceof Error ? error.name : "unknown"}`);
-        }));
+        })));
       }
+      await Promise.all(deliveries);
       return chosen;
     },
     async idle() { while (pending.size) await Promise.allSettled([...pending]); },

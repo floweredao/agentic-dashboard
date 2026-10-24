@@ -25,6 +25,19 @@ export function appOptions(config: Configuration): AppOptions {
     ...(config.hosted ? { hosted: config.hosted, geminiKeys: { kek: config.APP_SECRETS.kek, model: config.AI_FILL_MODEL,
       selectedModels: { script: config.NARRATION_KEY_SCRIPT_MODEL, speech: config.NARRATION_TTS_MODEL } }, personalProvider: provider } : {}),
     ...(config.AUDIO_BUCKET ? { audioBucket: config.AUDIO_BUCKET } : {}),
+    ownerUserLimits: config.OWNER_USER_LIMITS,
+    ...(config.CONTACT_EMAIL ? { contactEmail: config.CONTACT_EMAIL } : {}),
+    ...(config.DATABASE_REGION ? { databaseRegion: config.DATABASE_REGION } : {}),
+    ...(config.DEMO_HOSTED_URL ? { demoHostedUrl: config.DEMO_HOSTED_URL } : {}),
+    operations: {
+      ...(config.OWNER_ALERT_EMAIL && config.APP_SECRETS.resend ? { alerts: { owner: config.OWNER_ALERT_EMAIL, apiKey: config.APP_SECRETS.resend.apiKey } } : {}),
+      ...(config.APP_SECRETS.turso?.org && config.APP_SECRETS.turso.platformToken ? {
+        turso: { org: config.APP_SECRETS.turso.org, token: config.APP_SECRETS.turso.platformToken },
+      } : {}),
+    },
+    ...(config.TASKS_QUEUE && config.TASKS_SERVICE_ACCOUNT ? {
+      tasks: { queue: config.TASKS_QUEUE, serviceAccount: config.TASKS_SERVICE_ACCOUNT },
+    } : {}),
     ...(config.TRUSTED_USER_HEADER && config.OWNER_LOGIN ? { trustedIdentity: { header: config.TRUSTED_USER_HEADER, login: config.OWNER_LOGIN } } : {}),
     ...(config.PUBLIC_API_BASE_URL ? { publicApiBaseUrl: config.PUBLIC_API_BASE_URL } : {}),
     mcpPort: config.MCP_PORT,

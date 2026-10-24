@@ -4,6 +4,7 @@ import type { DashboardRecord, RecordInput, RecordPatch } from "../shared/contra
 import { ApiError, RecordFormatError } from "./errors";
 import { agentCanRead, canonical, checkTitle, CONTINUABLE, type Principal } from "./record-policy";
 import type { TenantDb } from "./tenant-db";
+import { recordChanged } from "./record-sync";
 const stored = z.object({ data: z.string() });
 export class RecordStore {
   constructor(readonly db: TenantDb, readonly now: () => number) {}
@@ -37,12 +38,15 @@ export class RecordStore {
     }
   }
   protected async save(record: DashboardRecord) {
+    await this.db.tx(async () => {
     (await this.db.run(`INSERT INTO records(id,data,created_by,project_id,task_id,user_id) VALUES(?,?,?,?,?,?)
       ON CONFLICT(user_id,id) DO UPDATE SET data=excluded.data,project_id=excluded.project_id,task_id=excluded.task_id`, [record.id, JSON.stringify(record), record.createdBy, record.projectId, record.taskId]));
     (await this.db.run("DELETE FROM evidence WHERE (task_id=?) AND user_id=?", [record.id]));
     if (record.kind === "task") for (const target of z.array(z.string()).parse(record.fields.evidenceIds ?? [])) {
       (await this.db.run("INSERT OR IGNORE INTO evidence(task_id,record_id,user_id) VALUES(?,?,?)", [record.id, target]));
     }
+    await recordChanged(this.db, record.id);
+    });
   }
   async replay(principal: Principal, requestId: string, requestPayload: unknown) {
     const previous = (await this.db.get("SELECT payload,response FROM requests WHERE (principal_id=? AND request_id=?) AND user_id=?", [principal.id, requestId]));

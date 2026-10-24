@@ -110,7 +110,7 @@ export async function errorMessage(error: unknown): Promise<string> {
     const status = error.response.status;
     if (status === 401) return config.authMode === "google" ? accountErrorText().reauth_required : text.signIn;
     const retry = retryAfterMs(error.response.headers.get("Retry-After"));
-    if (status === 429 && retry > 0) return text.retry(Math.ceil(retry / 1000));
+    if (status === 429 && retry > 0 && error.response.headers.get("X-RateLimit-Scope") !== "export") return text.retry(Math.ceil(retry / 1000));
     const parsed = errorSchema.safeParse(await error.response.clone().json().catch(() => null));
     if (parsed.success) {
       const mapped = accountErrorMessage(parsed.data.error.code) ?? text.codes[parsed.data.error.code];

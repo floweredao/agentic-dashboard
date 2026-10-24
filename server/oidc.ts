@@ -19,6 +19,7 @@ export interface HostedAuth {
   readonly endpoints?: GoogleEndpoints;
   /** Delivery is wired by the hosted operations layer; receives no identity or credentials. */
   readonly onCapacity?: () => void | Promise<void>;
+  readonly onSignup?: () => void | Promise<void>;
 }
 const endpoints: GoogleEndpoints = {
   authorization: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -26,10 +27,11 @@ const endpoints: GoogleEndpoints = {
   issuers: ["https://accounts.google.com", "accounts.google.com"],
 };
 const transaction = z.object({ state: z.string(), nonce: z.string(), verifier: z.string(), started: z.number(),
-  client: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
+  client: z.string().regex(/^[A-Za-z0-9_-]{43}$/), destination: z.enum(["dashboard", "delete"]).default("dashboard") }).strict();
 const claims = z.object({
   iss: z.string(), aud: z.union([z.string(), z.array(z.string()).min(1)]), azp: z.string().optional(),
   sub: z.string().min(1).max(255), exp: z.number(), iat: z.number(), nonce: z.string(),
+  auth_time: z.number().int().nonnegative().optional(),
   email_verified: z.boolean(), email: z.email(), name: z.string().max(500).optional(),
 });
 const same = (a: string, b: string) => {
@@ -49,7 +51,8 @@ export function createOidc(options: { readonly hosted: HostedAuth; readonly orig
   return {
     async start(request: Request) {
       const tx = { state: secret(), nonce: secret(), verifier: Buffer.from(crypto.getRandomValues(new Uint8Array(64))).toString("base64url"),
-        started: now(), client: sign(`oauth-client:${options.clientKey(request)}`) };
+        started: now(), client: sign(`oauth-client:${options.clientKey(request)}`),
+        destination: new URL(request.url).searchParams.get("intent") === "delete" ? "delete" : "dashboard" };
       const body = Buffer.from(JSON.stringify(tx)).toString("base64url");
       const cookie = `${body}.${sign(body)}`;
       await control.startOAuth(hash(cookie), now() + 600000, tx.client);
@@ -58,7 +61,8 @@ export function createOidc(options: { readonly hosted: HostedAuth; readonly orig
         response_type: "code", client_id: hosted.google.clientId, redirect_uri: `${origin}/auth/google/callback`,
         scope: "openid email profile", state: tx.state, nonce: tx.nonce,
         code_challenge: new Bun.CryptoHasher("sha256").update(tx.verifier).digest("base64url"),
-        code_challenge_method: "S256", prompt: "select_account",
+        code_challenge_method: "S256", prompt: tx.destination === "delete" ? "login" : "select_account",
+        ...(tx.destination === "delete" ? { max_age: "0", claims: JSON.stringify({ id_token: { auth_time: { essential: true } } }) } : {}),
       }).toString();
       return { location: url.href, cookie };
     },
@@ -94,9 +98,15 @@ export function createOidc(options: { readonly hosted: HostedAuth; readonly orig
         (user.azp !== undefined && user.azp !== hosted.google.clientId) || (aud.length > 1 && user.azp !== hosted.google.clientId) ||
         user.exp <= now() / 1000 - 60 || user.iat > now() / 1000 + 60 || user.iat < tx.started / 1000 - 60 ||
         !same(user.nonce, tx.nonce)) throw invalidOidc();
+      if (user.auth_time !== undefined && user.auth_time > now() / 1000 + 60) throw invalidOidc();
+      if (tx.destination === "delete" && (user.auth_time === undefined ||
+        user.auth_time < tx.started / 1000 - 60 || user.auth_time <= now() / 1000 - 600)) throw invalidOidc();
       if (!user.email_verified) throw new ApiError(403, "email_unverified", "A verified Google email is required.");
       try {
-        return await control.googleUser({ sub: user.sub, email: user.email, name: user.name ?? "", now: now(), maxUsers: hosted.maxUsers });
+        const account = await control.googleUser({ sub: user.sub, email: user.email, name: user.name ?? "", now: now(), maxUsers: hosted.maxUsers });
+        if (account.created) await hosted.onSignup?.();
+        return { ...account, deletionIntent: tx.destination === "delete",
+          authenticatedAt: user.auth_time === undefined ? 0 : Math.min(user.auth_time * 1000, now()) };
       } catch (error) {
         if (error instanceof ApiError && error.code === "signup_capacity") await hosted.onCapacity?.();
         throw error;

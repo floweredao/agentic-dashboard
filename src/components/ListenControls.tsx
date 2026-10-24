@@ -41,7 +41,8 @@ function NarrationProgress({ narration, part, lead }: { readonly narration: Narr
  * The narration commands for a reader's More menu; `label` (e.g. Articles, Messages) names the part in each when one screen holds several.
  * Make audio, Make again and Make new go through `onMake` (where a record's style is chosen); Try again repeats the failed job with `onRequest`.
  */
-export function narrationItems(state: NarrationState | null, { pending, cancelling, label, onRequest, onMake, onCancel, onListen, onScript, onRemove }: {
+export function narrationItems(state: NarrationState | null, { pending, retryBlocked = false, cancelling, label, onRequest, onMake, onCancel, onListen, onScript, onRemove }: {
+  readonly retryBlocked?: boolean;
   readonly pending: boolean; readonly cancelling: boolean; readonly label?: string | undefined;
   readonly onRequest: (force: boolean) => void; readonly onMake: (force: boolean) => void; readonly onCancel: () => void; readonly onListen: () => void;
   readonly onScript: () => void; readonly onRemove: () => void;
@@ -54,7 +55,7 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
   } : null;
   const part = label ?? "";
   const narration = state.narration;
-  const blocked = pending || !state.available;
+  const blocked = pending || retryBlocked || !state.available;
   const icon = (Icon: typeof Play) => <Icon size={16} aria-hidden="true" />;
   if (working(state)) return [{ label: text().cancelMake(part), icon: icon(X), disabled: cancelling, onSelect: onCancel }];
   if (keyAction && !narration?.audio) return [keyAction];
@@ -82,7 +83,8 @@ export function narrationItems(state: NarrationState | null, { pending, cancelli
  * The narration line under a reader's action bar: a running job with its stage and a cancel x, a failure with a retry button,
  * or the (folded) player. Nothing when there is no audio and nothing running.
  */
-export function NarrationBar({ record, state, label, pending, cancelling, dismissed, open, finishing, playNonce, onCancel, onRetry, onDismiss, onOpen, onFold, onRemove }: {
+export function NarrationBar({ record, state, label, pending, retryBlocked = false, cancelling, dismissed, open, finishing, playNonce, onCancel, onRetry, onDismiss, onOpen, onFold, onRemove }: {
+  readonly retryBlocked?: boolean;
   readonly record: Pick<DashboardRecord, "id" | "title">; readonly state: NarrationState; readonly label?: string | undefined;
   readonly pending: boolean; readonly cancelling: boolean; readonly dismissed: boolean; readonly open: boolean;
   /** The job has just become ready: the bar finishes at 100% before the player takes its place. */
@@ -111,7 +113,7 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
     return <div className="listen-bar listen-error" role="alert">
       <span className="listen-stage">{lead}{narrationFailure(narration.error)}</span>
       {config.authMode === "google" && <RecoveryLink code={narration.error} />}
-      <button type="button" className="btn btn-ghost" disabled={pending || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
+      <button type="button" className="btn btn-ghost" disabled={pending || retryBlocked || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
       <button type="button" className="icon-btn listen-icon" aria-label={text().dismiss} onClick={onDismiss}><X size={16} aria-hidden="true" /></button>
     </div>;
   }
@@ -119,7 +121,7 @@ export function NarrationBar({ record, state, label, pending, cancelling, dismis
   const note = narration && failedFor(state) && !dismissed ? <div className="listen-note" role="status">
     <span className="listen-stage">{lead}{text().remakeFailed} · {narrationFailure(narration.error)}</span>
     {config.authMode === "google" && <RecoveryLink code={narration.error} />}
-    <button type="button" className="btn btn-ghost" disabled={pending || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
+    <button type="button" className="btn btn-ghost" disabled={pending || retryBlocked || !state.available} onClick={() => onRetry(exhausted)}>{text().retry}</button>
     <button type="button" className="icon-btn listen-icon" aria-label={text().dismiss} onClick={onDismiss}><X size={16} aria-hidden="true" /></button>
   </div> : null;
   // The player keeps its place in the tree, so closing the note does not restart what is playing.

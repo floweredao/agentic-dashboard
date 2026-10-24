@@ -23,6 +23,8 @@ const freshRecord = (value: unknown, f: IsolationFixture) => {
 
 /** Every concrete route must have a scenario, or a narrowly justified public response. */
 export const CASES: Readonly<Record<string, IsolationCase>> = {
+  "GET /api/v1/records/changes": empty,
+  "ALL /assets/*": { kind: "public", reason: "Compression of public build assets, not tenant data" },
   "ALL /*": { kind: "public", reason: "Security/static middleware, not a data endpoint" },
   "ALL /api/*": { kind: "public", reason: "Unknown API routes return only 404" },
   "GET /*": { kind: "public", reason: "Static application shell" },
@@ -35,6 +37,14 @@ export const CASES: Readonly<Record<string, IsolationCase>> = {
   "GET /auth/capacity": { kind: "public", reason: "Public capacity explanation only" },
   "POST /auth/logout": { kind: "private", status: 204 },
   "ALL /mcp": { kind: "private", status: 405, agent: true },
+  "POST /internal/tasks/:kind": { kind: "private", status: 401, body: () => ({}) },
+  "GET /api/v1/account": { kind: "private", status: 200, check: value => {
+    expect(z.object({ account: z.object({ id: z.string() }) }).parse(value).account.id).toBe("b");
+  } },
+  "PATCH /api/v1/account/preferences": { kind: "private", status: 200, body: () => ({ locale: "ko", timeZone: "Asia/Seoul" }) },
+  "POST /api/v1/onboarding/done": { kind: "private", status: 409, body: () => ({}) },
+  "GET /api/v1/account/export": { kind: "private", status: 200 },
+  "DELETE /api/v1/account": { kind: "private", status: 404, body: () => ({ confirm: "b@example.test" }) },
   "POST /api/v1/agents": { kind: "private", status: 201, body: () => ({ name: "new-agent" }) },
   "POST /api/v1/agents/invites": { kind: "private", status: 201, body: () => ({ name: "new-computer" }) },
   "POST /api/v1/agents/:name/rotate": { kind: "private", status: 404 },
@@ -70,6 +80,9 @@ export const CASES: Readonly<Record<string, IsolationCase>> = {
   "DELETE /api/v1/trash": { kind: "private", status: 204 },
   "GET /api/v1/narration/auto": { kind: "private", status: 200, check: value => {
     expect(value).toEqual({ digests: "off", records: "off", scope: "summary" });
+  } },
+  "GET /api/v1/narration/allowance": { kind: "private", status: 200, check: value => {
+    expect(z.object({ used: z.number() }).parse(value).used).toBe(0);
   } },
   "PUT /api/v1/narration/auto": { kind: "private", status: 200, body: () => ({ digests: "parts", records: "read", scope: "summary" }) },
   "GET /api/v1/narration/voices": { kind: "private", status: 200, check: value => {

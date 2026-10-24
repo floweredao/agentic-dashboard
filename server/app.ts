@@ -16,6 +16,15 @@ import { ApiError } from "./errors";
 import { createGeminiKeys, type GeminiKeys, type GeminiKeyOptions } from "./gemini-settings";
 import type { KeySource } from "./gemini";
 import type { NarrationProvider } from "./narration";
+import { cloudClient } from "./cloud-client";
+import { gcsAudioStore, localAudioStore, type AudioStore } from "./audio-store";
+import { dirname, join } from "node:path";
+import { cloudJobs, taskVerifier, JobKindSchema, JobPayloadSchema, type Jobs, type TasksOptions } from "./jobs";
+import { json } from "./json-body";
+import { createAlerts } from "./alerts";
+import { createMaintenance, type OperationsOptions } from "./maintenance";
+import { Hono } from "hono";
+import { publicRequestLimiter } from "./public-rate";
 
 export interface AppOptions {
   readonly hosted?: HostedAuth;
@@ -28,6 +37,14 @@ export interface AppOptions {
   readonly personalProvider?: (key: KeySource) => NarrationProvider;
   readonly narrationEnabled?: boolean;
   readonly audioBucket?: string;
+  readonly audioStore?: AudioStore;
+  readonly tasks?: TasksOptions;
+  readonly jobs?: Jobs;
+  readonly operations?: OperationsOptions;
+  readonly ownerUserLimits?: Readonly<Record<string, number>>;
+  readonly contactEmail?: string;
+  readonly databaseRegion?: string;
+  readonly demoHostedUrl?: string;
   /** Shared protocol cache, initialized by createApp for all tenants. */
   readonly oidc?: ReturnType<typeof createOidc>;
   readonly databasePath?: string;
@@ -77,7 +94,7 @@ export interface AppOptions {
   /** Test seams for Web Push; `subject` defaults to the private origin when it is HTTPS. */
   readonly push?: Partial<Omit<PushOptions, "vapidPath">>;
 }
-async function createTenantApp(options: AppOptions, store: Store) {
+async function createTenantApp(options: AppOptions & { readonly audioStore: AudioStore }, store: Store) {
   const runtime = await createRuntime(options, store);
   const privateApp = createRouter(runtime, false);
   const publicApp = createRouter(runtime, true);
@@ -90,6 +107,8 @@ export async function createApp(options: AppOptions = {}) {
   const sql = options.sql ?? await openSql(options.databaseUrl ?? options.databasePath ?? "data/dashboard.sqlite", options.databaseAuthToken);
   await migrate(sql);
   const now = options.now ?? Date.now;
+  const alerts = options.operations?.alerts ? createAlerts(sql, { ...options.operations.alerts, now }) : undefined;
+  const cloud = cloudClient();
   const trustedAuthProxy = options.hosted !== undefined && options.trustedAuthProxy === true ? options.trustedProxyHops ?? 1 : 0;
   const sockets = new WeakMap<Request, string>();
   const clientKey = (request: Request) => authClientKey(request, sockets.get(request), trustedAuthProxy);
@@ -100,10 +119,18 @@ export async function createApp(options: AppOptions = {}) {
   const initialAuth = new Auth(initialStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
   if (!options.hosted) await initialAuth.initialize(options.credentialsPath ?? "data/credentials.json");
   if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
-  const effective: AppOptions = { ...options,
+  const effective: AppOptions & { readonly audioStore: AudioStore } = { ...options,
+    ...(options.tasks && options.privateOrigin ? { jobs: options.jobs ?? cloudJobs({
+      ...options.tasks, origin: options.privateOrigin, client: cloud,
+    }) } : {}),
+    audioStore: options.audioStore ?? (options.audioBucket
+      ? gcsAudioStore({ bucket: options.audioBucket, client: cloud, now })
+      : localAudioStore(options.narration?.audioDir ?? join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "audio"))),
     ...(options.geminiKeys ? { keyStore: createGeminiKeys(sql, options.geminiKeys) } : {}),
     ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
-    hosted: options.hosted, origin: options.privateOrigin, control, now, clientKey,
+    hosted: { ...options.hosted, onSignup: async () => { await alerts?.send("signup"); },
+      onCapacity: async () => { await options.hosted?.onCapacity?.(); await alerts?.send("capacity"); } },
+    origin: options.privateOrigin, control, now, clientKey,
   }) } : {}),
   };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
@@ -129,11 +156,42 @@ export async function createApp(options: AppOptions = {}) {
     return scope[surface](request);
   };
   const limitAuth = authLimiter(now, trustedAuthProxy, options.authStartLimit);
-  return { ...initial, sql, tenant,
+  const limitPublic = publicRequestLimiter(now, trustedAuthProxy);
+  const maintenance = createMaintenance({ sql, tenant, audio: effective.audioStore, cloud, now,
+    includeLocal: options.hosted === undefined,
+    directory: join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "backups"),
+    ...(options.audioBucket ? { bucket: options.audioBucket } : {}), ...(alerts ? { alerts } : {}),
+    ...(options.operations?.turso ? { turso: options.operations.turso } : {}) });
+  const verifyTask = options.tasks && options.privateOrigin ? taskVerifier({ ...options.tasks, origin: options.privateOrigin, now }) : null;
+  const internal = async (request: Request) => {
+    try {
+      if (!verifyTask || request.method !== "POST") throw new ApiError(401, "task_unauthenticated", "Service account authentication required");
+      await verifyTask(request);
+      const name = new URL(request.url).pathname.slice("/internal/tasks/".length);
+      if (name === "maintenance") { await maintenance(); return new Response(null, { status: 204 }); }
+      const kind = JobKindSchema.parse(name);
+      const payload = JobPayloadSchema.parse(await json(request));
+      const scope = await tenant(payload.userId);
+      switch (kind) {
+        case "narration": await scope.narration.deliver(payload); break;
+        case "ai-fill": await scope.aiFill?.deliver(payload); break;
+        default: { const unreachable: never = kind; throw unreachable; }
+      }
+      await scope.push.idle();
+      return new Response(null, { status: 204 });
+    } catch (error) {
+      if (error instanceof ApiError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
+      return Response.json({ error: { code: "task_failed", message: "Background work failed" } }, { status: 500 });
+    }
+  };
+  const internalApp = new Hono();
+  internalApp.post("/internal/tasks/:kind", c => internal(c.req.raw));
+  return { ...initial, sql, tenant, maintenance, routes: [...initial.routes, ...internalApp.routes],
     fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) => {
       const address = server?.requestIP(request)?.address;
       if (address !== undefined) sockets.set(request, address);
-      return limitAuth(request, address) ?? dispatch(request, "fetch");
+      return new URL(request.url).pathname.startsWith("/internal/tasks/") ? internalApp.fetch(request)
+        : limitAuth(request, address) ?? limitPublic(request, address) ?? dispatch(request, "fetch");
     },
     publicFetch: (request: Request) => dispatch(request, "publicFetch"),
     mcpFetch: (request: Request) => dispatch(request, "mcpFetch"),

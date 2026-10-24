@@ -214,6 +214,7 @@ export const NarrationAudioSchema = z.object({
  * state keeps the shape that clients built before it (strict schemas) can read.
  */
 export const NarrationSchema = z.object({
+  retryAt: z.iso.datetime().nullable().optional(),
   recordId: z.string().uuid(), status: NarrationStatusSchema, style: NarrationStyleSchema, stale: z.boolean(),
   progress: z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict().nullable(),
   waitUntil: z.iso.datetime().nullable(),
@@ -402,10 +403,10 @@ export const PUSH_LOCALES = ["en", "ko"] as const;
 export const PushLocaleSchema = z.enum(PUSH_LOCALES);
 export type PushLocale = z.infer<typeof PushLocaleSchema>;
 export const PushSubscriptionSchema = z.object({
-  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(), locale: PushLocaleSchema.optional(),
+  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(), locale: PushLocaleSchema.optional(), hideContent: z.boolean().optional(),
   keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }).strict(),
 }).strict();
-export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, locale: PushLocaleSchema, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
+export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, locale: PushLocaleSchema, hideContent: z.boolean().optional(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
 export type PushDevice = z.infer<typeof PushDeviceSchema>;
 /** The JSON a notification carries; `url` is the in-app address the tap opens. */
 export const PushPayloadSchema = z.object({

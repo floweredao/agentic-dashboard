@@ -7,6 +7,9 @@ export const accountErrorText = strings({
     reauth_required: "Sign in with Google again to continue this action.",
     signup_capacity: "Sign-ups are full. Existing accounts can still sign in.",
     agent_revoked: "This agent was revoked. Create a token under a new agent name.",
+    account_export_busy: "An export is already in progress. Wait for it to finish, then try again.",
+    account_export_too_large: "This export exceeds the 64 MiB limit. Contact the operator for help transferring larger data.",
+    account_export_unavailable: "The export could not finish. Try again, or contact the operator if it keeps failing.",
     operator: "The service's audio provider needs attention from the operator. You do not need to change server credentials.",
     permission: "This project does not have permission to use the selected model. Check its Google model access and billing.",
     model: "The selected model was not found by the provider. Ask the operator to check the configured model name and availability.",
@@ -18,6 +21,9 @@ export const accountErrorText = strings({
     reauth_required: "이 작업을 계속하려면 Google 계정으로 다시 로그인해 주세요.",
     signup_capacity: "지금은 가입 정원이 찼어요. 기존 계정은 계속 로그인할 수 있어요.",
     agent_revoked: "해제된 에이전트예요. 다른 에이전트 이름으로 새 토큰을 만들어 주세요.",
+    account_export_busy: "내보내기가 진행 중이에요. 완료된 뒤 다시 시도해 주세요.",
+    account_export_too_large: "내보내기 크기가 64 MiB 한도를 넘었어요. 더 큰 자료를 옮기려면 운영자에게 문의해 주세요.",
+    account_export_unavailable: "내보내기를 완료하지 못했어요. 다시 시도하고, 계속 실패하면 운영자에게 문의해 주세요.",
     operator: "서비스의 음성 제공자 설정을 운영자가 확인해야 해요. 서버 인증 정보를 직접 바꿀 필요는 없어요.",
     permission: "이 프로젝트에서 선택한 모델을 사용할 권한이 없어요. Google 모델 권한과 결제 설정을 확인해 주세요.",
     model: "제공자에서 선택한 모델을 찾지 못했어요. 운영자에게 모델 이름과 이용 가능 여부를 확인해 달라고 알려 주세요.",
@@ -33,6 +39,9 @@ export function accountErrorMessage(code: string) {
     case "reauth_required": return t.reauth_required;
     case "signup_capacity": return t.signup_capacity;
     case "agent_revoked": return t.agent_revoked;
+    case "account_export_busy": return t.account_export_busy;
+    case "account_export_too_large": return t.account_export_too_large;
+    case "account_export_unavailable": return t.account_export_unavailable;
     default: return undefined;
   }
 }

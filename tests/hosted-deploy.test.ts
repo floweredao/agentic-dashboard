@@ -10,6 +10,26 @@ const fixture = {
   CONTACT_EMAIL: "contact@example.com", DATABASE_URL: "libsql://database.example.com",
 };
 
+test("deployment forwards privacy metadata and canonical authentication budgets", () => {
+  const config = parseDeployment({
+    ...fixture, DATABASE_REGION: "eu-west", DEMO_HOSTED_URL: "https://hosted.example.com/auth/google/start",
+    AUTH_TRUST_PROXY: "on", TRUSTED_PROXY_HOPS: 2, AUTH_START_LIMIT: 500, PENDING_SIGN_IN_LIMIT: 6000,
+  });
+  const commands = deploymentPlan(config).flatMap(step => step.kind === "command" ? [step.command] : []);
+  const variables = commands.flatMap(command => command.args).find(arg => arg.startsWith("--set-env-vars="));
+  expect(variables).toContain("DATABASE_REGION=eu-west");
+  expect(variables).toContain("DEMO_HOSTED_URL=https://hosted.example.com/auth/google/start");
+  expect(variables).toContain("AUTH_TRUST_PROXY=on");
+  expect(variables).toContain("TRUSTED_PROXY_HOPS=2");
+  expect(variables).toContain("AUTH_START_LIMIT=500");
+  expect(variables).toContain("PENDING_SIGN_IN_LIMIT=6000");
+});
+
+test("deployment rejects a pending capacity that cannot retain the complete sign-in lifetime", () => {
+  expect(() => parseDeployment({ ...fixture, AUTH_START_LIMIT: 900, PENDING_SIGN_IN_LIMIT: 9000 }))
+    .toThrow("PENDING_SIGN_IN_LIMIT");
+});
+
 test("deployment limits CPU and instances when building hosted commands", () => {
   // Given a validated hosted configuration.
   const config = parseDeployment(fixture);

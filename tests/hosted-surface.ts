@@ -16,6 +16,7 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: request => app
 const origin = `http://127.0.0.1:${server.port}`;
 const config = parseConfig({
   AUTH_MODE: "google", APP_ORIGIN: origin, PORT: String(server.port), DATA_DIR: directory, PUSH: "off", NARRATION: "off",
+  CONTACT_EMAIL: "operator@example.test",
   APP_SECRETS: JSON.stringify({ google: { clientId: "surface-client", clientSecret: secret() }, sessionSigningKey: secret(),
     kek: { "1": Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64") } }),
 });

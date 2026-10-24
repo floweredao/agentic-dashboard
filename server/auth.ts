@@ -68,7 +68,8 @@ export class Auth {
     return (await this.findSession(request))?.user_id ?? anonymous;
   }
   async session(request: Request) {
-    if (this.demo) return { user_id: "local", hash: "", principal_id: "owner", csrf: "demo", expires_at: this.store.now() + 7 * 24 * 60 * 60 * 1000 };
+    if (this.demo) return { user_id: "local", hash: "", principal_id: "owner", csrf: "demo", created_at: this.store.now(),
+      authenticated_at: this.store.now(), expires_at: this.store.now() + 7 * 24 * 60 * 60 * 1000 };
     const session = await this.findSession(request);
     if (!session || session.user_id !== this.store.db.userId) throw new ApiError(401, "unauthenticated", "Owner session required or expired");
     return session;
@@ -93,20 +94,21 @@ export class Auth {
     if (principal.source !== "manual") throw new ApiError(403, "forbidden", "Only owner credentials create sessions");
     return new Auth(new Store(new TenantDb(this.store.db.sql, principal.user_id), this.store.now)).createOwnerSession();
   }
-  async createOwnerSession() {
+  async createOwnerSession(authenticatedAt = this.store.now()) {
     const value = secret();
     const csrfToken = secret();
     const expires = this.store.now() + (this.hostedOrigin ? 30 : 7) * 24 * 60 * 60 * 1000;
     await this.store.db.run("DELETE FROM sessions WHERE expires_at<=? AND user_id=?", [this.store.now()]);
-    await this.store.db.run("INSERT INTO sessions(hash,principal_id,csrf,expires_at,user_id) VALUES(?,?,?,?,?)", [hash(value), "owner", csrfToken, expires]);
+    await this.store.db.run("INSERT INTO sessions(hash,principal_id,csrf,expires_at,created_at,authenticated_at,user_id) VALUES(?,?,?,?,?,?,?)",
+      [hash(value), "owner", csrfToken, expires, this.store.now(), authenticatedAt]);
     return { value, csrfToken, expiresAt: new Date(expires).toISOString() };
   }
-  async signInUser(userId: string, request: Request) {
+  async signInUser(userId: string, request: Request, authenticatedAt: number) {
     const previous = await this.findSession(request);
     if (previous) {
       await new TenantDb(this.store.db.sql, previous.user_id).run("DELETE FROM sessions WHERE hash=? AND user_id=?", [previous.hash]);
     }
-    return new Auth(new Store(new TenantDb(this.store.db.sql, userId), this.store.now, this.control), false, this.hostedOrigin).createOwnerSession();
+    return new Auth(new Store(new TenantDb(this.store.db.sql, userId), this.store.now, this.control), false, this.hostedOrigin).createOwnerSession(authenticatedAt);
   }
   async csrf(request: Request, origins: ReadonlySet<string>) {
     const session = await this.session(request);

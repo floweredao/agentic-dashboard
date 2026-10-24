@@ -3,15 +3,15 @@ import { RecordInputSchema } from "../../shared/contracts";
 import { createAgent, inviteAgent, testAgent, type IssuedAgent } from "../account-api";
 import { errorMessage } from "../api";
 import { Dialog } from "../components/primitives";
-import { useDashboard } from "../state";
+import { useCredentials } from "../account-context";
 import { agentText } from "./agent-copy";
 
 export function AgentTokenDialog({ initial, onClose, onChanged }: {
   readonly initial: IssuedAgent | null; readonly onClose: () => void; readonly onChanged: () => Promise<void>;
 }) {
   const t = agentText();
-  const { csrfToken } = useDashboard();
-  const [name, setName] = useState("");
+  const { csrfToken } = useCredentials();
+  const [name, setName] = useState("omo");
   const [capture, setCapture] = useState(false);
   const [issued, setIssued] = useState(initial);
   const [invitation, setInvitation] = useState<Awaited<ReturnType<typeof inviteAgent>> | null>(null);
@@ -41,6 +41,10 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
       {!issued && !invitation && <form className="account-stack" onSubmit={event => {
         event.preventDefault(); void run(async () => { setIssued(await createAgent({ name, capture }, csrfToken)); await onChanged(); });
       }}>
+        <label className="field"><span>{t.preset}</span><select value={["omo", "codex", "chatgpt"].includes(name) ? name : "custom"}
+          onChange={event => setName(event.target.value === "custom" ? "" : event.target.value)}>
+          {["omo", "codex", "chatgpt"].map(preset => <option key={preset} value={preset}>{preset}</option>)}<option value="custom">{t.custom}</option>
+        </select></label>
         <label className="field"><span>{t.name}</span><input value={name} onChange={event => setName(event.target.value)}
           pattern="[a-z][a-z0-9-]{0,31}" maxLength={32} required autoComplete="off" /></label>
         <label className="account-check"><input type="checkbox" checked={capture} onChange={event => setCapture(event.target.checked)} />{t.capture}</label>
@@ -54,14 +58,18 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
         <div className="account-actions">
           <button className="btn btn-primary" disabled={pending} onClick={() => void copy(issued.key)}>{copied ? t.copied : t.copy}</button>
           <button className="btn btn-outline" disabled={pending} onClick={() => void copy(`header = "Authorization: Bearer ${issued.key}"\n`)}>{t.copyConfig}</button>
+          <button className="btn btn-outline" disabled={pending} onClick={() => void copy(JSON.stringify({ url: origin, agent: issued.agent.name, token: issued.key }, null, 2))}>{t.copyJson}</button>
         </div>
+        <p className="setting-note">{t.jsonNote}</p><p className="setting-note">{t.browserTest}</p>
         <button className="btn btn-outline" disabled={pending} onClick={() => void run(async () => {
           const saved = await testAgent(issued.key, record); setVerified(saved.id); await onChanged();
         })}>{t.test}</button>
         {verified && <p role="status">{t.verified} · <a href={`#/library/${verified}`} onClick={event => { if (!close()) event.preventDefault(); }}>{t.view}</a></p>}
         <p className="setting-note">{t.cli}</p>
         <pre className="account-code">{`agentic-dashboard connect --url '${origin}' --agent '${issued.agent.name}' --key-stdin`}</pre>
+        <button className="btn btn-outline" onClick={() => void copy(`agentic-dashboard connect --url '${origin}' --agent '${issued.agent.name}' --key-stdin`)}>{t.copyConnect}</button>
         <p className="setting-note">{t.curl}</p><pre className="account-code">{command}</pre>
+        <button className="btn btn-outline" onClick={() => void copy(command)}>{t.copySave}</button>
       </>}
       {invitation && <><p className="setting-note">{t.installNote}</p><pre className="account-code">{command}</pre>
         <button className="btn btn-primary" onClick={() => void copy(command)}>{copied ? t.copied : t.copyCommand}</button></>}
