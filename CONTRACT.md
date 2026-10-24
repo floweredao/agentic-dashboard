@@ -21,7 +21,7 @@ Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. A
 
 A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
 
-Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
+Owner sessions last 7 days; replacing the owner key in `credentials.json` ends every session the old key opened on the next start. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
 
 ## Records
 
@@ -224,7 +224,7 @@ With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](doc
 
 ## Limits and checks
 
-- 300 requests per minute per credential; unknown credentials share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
+- 300 requests per minute per credential (an agent key or an owner session); unknown credentials, a cookie that names no session among them, share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
 - Requests must carry an allowed `Host` (else `421 invalid_host`) and, when present, an allowed `Origin` (else `403 origin`).
 - JSON bodies only (`415 unsupported_media_type`), size-capped (`413 too_large`).
 - Every response sets a strict Content-Security-Policy (scripts from the app only; images and media also from `data:` and `blob:`), `X-Frame-Options: DENY` and `nosniff`. Existing content-hashed static files under `/assets/` use `Cache-Control: public, max-age=31536000, immutable`; HTML, API data, stable filenames and missing-file fallbacks stay `no-store`.
