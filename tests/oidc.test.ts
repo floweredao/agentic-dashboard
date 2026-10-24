@@ -1,35 +1,6 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { z } from "zod";
-import { createApp } from "../server/app";
-import { mockOidc } from "./helpers/mock-oidc";
-
-const origin = "http://127.0.0.1:4390";
-async function fixture(maxUsers = 50, appOrigin = origin) {
-  let now = Date.parse("2026-10-24T12:00:00Z");
-  const issuer = await mockOidc(() => now);
-  const directory = mkdtempSync(join(tmpdir(), "oidc-"));
-  const app = await createApp({
-    databasePath: ":memory:", credentialsPath: join(directory, "credentials.json"), privateOrigin: appOrigin, port: 4390, pushEnabled: false,
-    now: () => now, hosted: {
-      sessionSigningKey: crypto.randomUUID() + crypto.randomUUID(), google: { clientId: "test-client", clientSecret: crypto.randomUUID() },
-      maxUsers, endpoints: issuer.endpoints,
-    },
-  });
-  const call = (path: string, headers: HeadersInit = {}) => app.fetch(new Request(`${appOrigin}${path}`, { headers }));
-  async function start() {
-    const response = await call("/auth/google/start");
-    expect(response.status).toBe(302);
-    const cookie = response.headers.get("set-cookie")?.split(";")[0] ?? "";
-    const authorize = await fetch(response.headers.get("location") ?? "", { redirect: "manual" });
-    return { cookie, callback: new URL(authorize.headers.get("location") ?? "") };
-  }
-  const finish = (flow: Awaited<ReturnType<typeof start>>) => call(flow.callback.pathname + flow.callback.search, { Cookie: flow.cookie });
-  return { app, issuer, call, start, finish, advance(ms: number) { now += ms; },
-    async close() { await app.close(); issuer.close(); rmSync(directory, { recursive: true, force: true }); } };
-}
+import { oidcFixture as fixture, oidcOrigin as origin } from "./helpers/oidc-app";
 
 test("Google callback creates a personal user and a thirty-day session when PKCE and claims agree", async () => {
   const f = await fixture();
@@ -143,18 +114,18 @@ test("hosted mode refuses owner-key and trusted-header bootstrap", async () => {
   } finally { await f.close(); }
 });
 
-test("auth attempts are limited per first forwarded IP hop", async () => {
-  const f = await fixture();
+test("auth attempts share the last trusted hop despite spoofed leading values", async () => {
+  const f = await fixture(50, origin, true);
   try {
     // Given an exhausted minute for one client behind the proxy.
-    for (let i = 0; i < 20; i++) await f.call("/auth/google/start", { "X-Forwarded-For": "192.0.2.1, 192.0.2.2" });
-    // When the same client changes only the proxy hop.
-    const rejected = await f.call("/auth/google/start", { "X-Forwarded-For": "192.0.2.1, 192.0.2.3" });
+    for (let i = 0; i < 20; i++) await f.call("/auth/google/start", { "X-Forwarded-For": `192.0.2.${i}, 198.51.100.1` });
+    // When the same client spoofs a different leading hop.
+    const rejected = await f.call("/auth/google/start", { "X-Forwarded-For": "192.0.2.99, 198.51.100.1" });
     // Then it is limited while another client can sign in.
     expect(rejected.status).toBe(429);
-    expect((await f.call("/auth/google/start", { "X-Forwarded-For": "192.0.2.4" })).status).toBe(302);
+    expect((await f.call("/auth/google/start", { "X-Forwarded-For": "192.0.2.4, 198.51.100.2" })).status).toBe(302);
     f.advance(60000);
-    expect((await f.call("/auth/google/start", { "X-Forwarded-For": "192.0.2.1" })).status).toBe(302);
+    expect((await f.call("/auth/google/start", { "X-Forwarded-For": "192.0.2.1, 198.51.100.1" })).status).toBe(302);
   } finally { await f.close(); }
 });
 

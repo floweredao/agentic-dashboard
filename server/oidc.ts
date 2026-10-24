@@ -25,7 +25,8 @@ const endpoints: GoogleEndpoints = {
   token: "https://oauth2.googleapis.com/token", jwks: "https://www.googleapis.com/oauth2/v3/certs",
   issuers: ["https://accounts.google.com", "accounts.google.com"],
 };
-const transaction = z.object({ state: z.string(), nonce: z.string(), verifier: z.string(), started: z.number() }).strict();
+const transaction = z.object({ state: z.string(), nonce: z.string(), verifier: z.string(), started: z.number(),
+  client: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
 const claims = z.object({
   iss: z.string(), aud: z.union([z.string(), z.array(z.string()).min(1)]), azp: z.string().optional(),
   sub: z.string().min(1).max(255), exp: z.number(), iat: z.number(), nonce: z.string(),
@@ -39,17 +40,19 @@ const same = (a: string, b: string) => {
 export const oidcCookie = (value: string, secure: boolean, maxAge = 600) =>
   `oidc_tx=${value}; Path=/auth/google; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
 
-export function createOidc(options: { readonly hosted: HostedAuth; readonly origin: string; readonly control: ControlDb; readonly now: () => number }) {
+export function createOidc(options: { readonly hosted: HostedAuth; readonly origin: string; readonly control: ControlDb;
+  readonly now: () => number; readonly clientKey: (request: Request) => string }) {
   const { hosted, origin, control, now } = options;
   const provider = hosted.endpoints ?? endpoints;
   const verify = createJwks(provider.jwks, now);
   const sign = (body: string) => createHmac("sha256", hosted.sessionSigningKey).update(body).digest("base64url");
   return {
-    async start() {
-      const tx = { state: secret(), nonce: secret(), verifier: Buffer.from(crypto.getRandomValues(new Uint8Array(64))).toString("base64url"), started: now() };
+    async start(request: Request) {
+      const tx = { state: secret(), nonce: secret(), verifier: Buffer.from(crypto.getRandomValues(new Uint8Array(64))).toString("base64url"),
+        started: now(), client: sign(`oauth-client:${options.clientKey(request)}`) };
       const body = Buffer.from(JSON.stringify(tx)).toString("base64url");
       const cookie = `${body}.${sign(body)}`;
-      await control.startOAuth(hash(cookie), now() + 600000);
+      await control.startOAuth(hash(cookie), now() + 600000, tx.client);
       const url = new URL(provider.authorization);
       url.search = new URLSearchParams({
         response_type: "code", client_id: hosted.google.clientId, redirect_uri: `${origin}/auth/google/callback`,
@@ -73,7 +76,7 @@ export function createOidc(options: { readonly hosted: HostedAuth; readonly orig
       if (!parsed.success) throw invalidOidc();
       const tx = parsed.data;
       if (!same(state, tx.state) || now() < tx.started || now() >= tx.started + 600000) throw invalidOidc();
-      if (!await control.consumeOAuth(hash(cookie), now())) throw invalidOidc();
+      if (!await control.consumeOAuth(`${tx.client}:${hash(cookie)}`, now())) throw invalidOidc();
       let result: unknown;
       try {
         result = await ky.post(provider.token, { timeout: 10000, retry: 0, body: new URLSearchParams({
