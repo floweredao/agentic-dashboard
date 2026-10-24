@@ -535,7 +535,7 @@ export function DigestReader({ id, part }: { readonly id: string; readonly part:
     scrolledTo.current = focus;
     document.getElementById(`item-${focus.replace(":", "-")}`)?.scrollIntoView({ block: "center" });
   }, [digest, focus, collapsed]);
-  if (failed) return <div className="reader-empty"><Empty>{failed}</Empty></div>;
+  if (failed) return <div className="reader-empty" role="alert"><Empty>{failed}</Empty></div>;
   if (!digest) return <div className="reader-empty" role="status"><Empty icon={<Newspaper size={20} aria-hidden="true" />}>{t.loading}</Empty></div>;
   const unread = filled.some(each => readAtOf(each) === null);
   /** Mark as read marks every unread part; mark as unread (only when all are read) marks them all unread. One toast for the whole change. */

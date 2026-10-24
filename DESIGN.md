@@ -98,4 +98,4 @@ Panes sit on the canvas separated by hairlines, without shadows. Only dialogs an
 
 ## Accessibility
 
-Landmarks for navigation, main content, the list pane and the reader article. One visible focus ring everywhere, 44px touch targets on phones, labelled icon buttons. Color is never the only signal: unread is a dot, a weight and words in the accessible name. Every string exists in English and Korean. Escape closes a dialog from its own keydown handler.
+Landmarks for navigation, main content, the list pane and the reader article. One visible focus ring everywhere, 44px touch targets on phones, labelled icon buttons. Color is never the only signal: unread is a dot, a weight and words in the accessible name. Every string exists in English and Korean. Escape closes a dialog from its own keydown handler. Focus never drops to the page when the control holding it goes: leaving a reader lands on the row that was open (on main when that row has left the list), and restoring or deleting a trash item lands on the next item's Restore (on main once the trash is empty). A digest that fails to load gives its reason in an alert.
