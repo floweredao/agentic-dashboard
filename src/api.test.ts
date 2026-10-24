@@ -72,3 +72,8 @@ test("an unknown code keeps a Korean server message and otherwise falls back to 
 test("a network failure is reported as a connection problem", async () => {
   expect(await errorMessage(new TypeError("Failed to fetch"))).toBe("서버에 연결하지 못했어요. 네트워크 연결을 확인하고 다시 시도해 주세요.");
 });
+
+test("an expired session in Korean names the owner key, as the sign-in screen does", async () => {
+  expect(await errorMessage(httpError(401, { error: { code: "unauthenticated", message: "Authentication required" } })))
+    .toBe("로그인이 필요하거나 세션이 만료됐어요. 소유자 키로 다시 연결해 주세요.");
+});
