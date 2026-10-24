@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import { NARRATABLE_KINDS, NARRATION_LIMITS } from "../shared/contracts";
 import type { DashboardRecord, NarrationState, NarrationStatus, NarrationStyle } from "../shared/contracts";
-import { ApiError } from "./errors";
+import { ApiError, RetryError } from "./errors";
 import type { Principal } from "./store";
 import { type NarrationOptions, type Job } from "./narration-types";
 import { sourceHash } from "./narration-text";
@@ -56,6 +56,9 @@ export function createNarration(options: NarrationOptions) {
     const startedJob = await store.db.tx(async () => {
     const hash = sourceHash(record);
     const current = (await row(record.id));
+    if (current?.retry_at && Date.parse(current.retry_at) > store.now()) throw new RetryError({
+      code: "narration_retry_later", message: "Wait for the provider retry deadline before starting again", retryAt: current.retry_at,
+    });
     const style = chosen ?? current?.style ?? "read";
     const settings = (await autoSettings());
     // A digest has no summary of its own to choose: it is always read whole.
@@ -81,7 +84,7 @@ export function createNarration(options: NarrationOptions) {
           VALUES(?,'queued',?,?,?,?,0,?,?,?)`, [record.id, hash, principal.id, timestamp, timestamp, style, scope]));
       } else {
         (await set(record.id, { status: "queued", style, scope, job_hash: hash, requested_by: principal.id, requested_at: timestamp,
-          attempts: owner && force ? 0 : attempts, error: null, progress_done: null, progress_total: null }));
+          attempts: owner && force ? 0 : attempts, error: null, retry_at: null, progress_done: null, progress_total: null }));
       }
       (await store.db.run("INSERT INTO narration_runs(record_id,started_at,user_id) VALUES(?,?,?)", [record.id, timestamp]));
       return true;

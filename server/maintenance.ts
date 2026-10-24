@@ -56,6 +56,7 @@ export function createMaintenance(options: {
         await scope.retryDeferred?.();
         await scope.store.db.run("DELETE FROM narration_runs WHERE started_at<? AND user_id=?", [new Date(now() - 31 * 86400000).toISOString()]);
         await scope.store.db.run("DELETE FROM background_jobs WHERE completed_at<? AND user_id=?", [new Date(now() - 14 * 86400000).toISOString()]);
+        await scope.store.db.run("DELETE FROM record_changes WHERE version<(SELECT version-5000 FROM record_sync WHERE record_sync.user_id=record_changes.user_id) AND user_id=?", []);
       }
       for (const { id } of ids.parse(await sql.all("SELECT id FROM users WHERE deleted_at IS NOT NULL"))) await options.audio.removeAll(id);
       const name = `${day}.ndjson.gz`;

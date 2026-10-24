@@ -3,6 +3,7 @@ import { DashboardRecordSchema, DateSchema, RecordKindSchema, ReviewStateSchema,
 import type { DashboardRecord, RecordDocument, RecordKind, TrashItem } from "../shared/contracts";
 import { ApiError } from "./errors";
 import { RecordStore } from "./record-store";
+import { recordChanged } from "./record-sync";
 import { AGENT_READABLE_KINDS, SHARED_WORK_KINDS, agentView, CONTINUABLE, type Principal } from "./record-policy";
 import { openSql } from "./db";
 import { TenantDb } from "./tenant-db";
@@ -50,6 +51,7 @@ export class Store extends RecordStore {
       (await this.db.run("DELETE FROM requests WHERE (json_extract(response,'$.id')=?) AND user_id=?", [id]));
       await this.db.run("DELETE FROM shares WHERE record_id=? AND user_id=?", [id]);
       (await this.db.run("DELETE FROM records WHERE (id=?) AND user_id=?", [id]));
+      await recordChanged(this.db, id);
       (await this.db.run("INSERT OR REPLACE INTO trash(id,data,created_by,deleted_at,user_id) VALUES(?,?,?,?,?)", [id, JSON.stringify(current), current.createdBy, timestamp]));
     });
   }

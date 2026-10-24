@@ -54,3 +54,26 @@ test("public share requests have separate address limits with a retry deadline",
     expect((await f.call("/s/missing", { headers: { "X-Forwarded-For": "192.0.2.2" } })).status).toBe(404);
   } finally { await f.close(); }
 });
+
+test("provider retry metadata survives job completion and blocks premature starts", async () => {
+  // Given: a fake provider's exact Retry-After on a fixed clock.
+  const tts = fake();
+  tts.scriptErrors.push(new ProviderError("quota_minute", false, 30000));
+  const f = await hostedFixture({ now: () => Date.parse("2026-01-01T12:00Z"),
+    narration: { provider: tts.provider } });
+  try {
+    const response = await f.call("/api/v1/records", { method: "POST", body: { requestId: "retry",
+      record: { kind: "note", title: "Retry", body: "A record." } } });
+    const { record } = z.object({ record: z.object({ id: z.string() }) }).parse(await response.json());
+    await f.call(`/api/v1/records/${record.id}/narration`, { method: "POST", body: {} });
+    await f.a.scope.narration.idle();
+    // When: the completed state is fetched and a second start is attempted.
+    const state = await f.call(`/api/v1/records/${record.id}/narration`);
+    const retry = await f.call(`/api/v1/records/${record.id}/narration`, { method: "POST", body: { force: true } });
+    // Then: the server retains and enforces the provider deadline.
+    expect(await state.json()).toMatchObject({ narration: { retryAt: "2026-01-01T12:00:30.000Z" } });
+    expect(retry.status).toBe(429);
+    expect(retry.headers.get("Retry-After")).toBe("30");
+    expect(retry.headers.get("X-RateLimit-Scope")).toBe("narration");
+  } finally { await f.close(); }
+});
