@@ -6,19 +6,20 @@ import { channelKeys } from "../model";
 import { strings } from "../i18n";
 import { formatRoute } from "../router";
 import { useDashboard } from "../state";
+import { config } from "../config";
 
 const text = strings({
   en: {
     title: "More", work: "Work", tasks: "Tasks", tasksNote: "Shared with agents · open tasks also show on Home",
     tidy: "Clean up", trash: "Trash", trashNote: (days: number) => `Deleted items are kept for ${days} days`,
-    channels: "Connections", manage: "Manage channels", manageNote: (count: number) => `${count} connected · Import JSON · Sign out`,
-    app: "App", settings: "Settings", settingsNote: "Language · Voice · Notifications",
+    channels: "Agent connections", manage: "Agent connections", manageNote: (count: number) => `${count} connected · Import JSON · Sign out`,
+    app: "App", settings: "Settings", language: "Language", voice: "Voice", notifications: "Notifications",
   },
   ko: {
     title: "더보기", work: "일", tasks: "할 일", tasksNote: "에이전트와 함께 보는 일 · 열린 일은 메인에도 떠요",
     tidy: "정리", trash: "휴지통", trashNote: (days: number) => `삭제한 항목은 ${days}일 동안 보관`,
-    channels: "연결", manage: "채널 관리", manageNote: (count: number) => `${count}개 연결 · JSON 가져오기 · 로그아웃`,
-    app: "앱", settings: "설정", settingsNote: "언어 · 음성 · 알림",
+    channels: "에이전트 연결", manage: "에이전트 연결", manageNote: (count: number) => `${count}개 연결 · JSON 가져오기 · 로그아웃`,
+    app: "앱", settings: "설정", language: "언어", voice: "음성", notifications: "알림",
   },
 });
 
@@ -61,7 +62,8 @@ export function MorePane() {
       <Item href={link("channels")} icon={<RadioTower size={18} aria-hidden="true" />} label={t.manage} note={t.manageNote(channelKeys.length)} />
     </Group>
     <Group id="more-app" title={t.app}>
-      <Item href={link("settings")} icon={<Bell size={18} aria-hidden="true" />} label={t.settings} note={t.settingsNote} />
+      <Item href={link("settings")} icon={<Bell size={18} aria-hidden="true" />} label={t.settings}
+        note={[t.language, ...(config.features.narration ? [t.voice] : []), ...(config.features.push ? [t.notifications] : [])].join(" · ")} />
     </Group>
   </div>;
 }

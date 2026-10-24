@@ -41,7 +41,7 @@
 .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .nav-count.strong { color: var(--accent); font-weight: 700; }
-.nav-section { padding: 18px 10px 6px; color: var(--faint); font-size: 11.5px; font-weight: 600; letter-spacing: 0.2px; }
+.nav-section { padding: 18px 10px 6px; color: var(--faint); font-size: var(--text-label); font-weight: 600; letter-spacing: 0.2px; }
 /* Sticky so a short window still shows the sync time and refresh button without scrolling the sidebar.
    It also covers the sidebar's bottom padding (same layout at rest), so nothing scrolls by underneath it. */
 .sidebar-foot {

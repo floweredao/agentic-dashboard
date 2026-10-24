@@ -46,10 +46,13 @@ System fonts only: `-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "N
 | Row title | 14.5px / 1.4 | 600 unread, 500 read |
 | UI text | 14px / 1.5 | 500 |
 | Row summary | 13px / 1.5 | 400 |
-| Meta, chips | 12px / 1.4 | 500 |
-| Section label | 11.5px / 1.3 | 600 |
+| Persistent meta (`--text-meta`) | 13px / 1.4 | 500 |
+| Section label (`--text-label`) | 13px / 1.4 | 600 |
+| Compact chips | 12px / 1.4 | 500 |
 
 Numbers use tabular figures.
+
+Persistent labels in Home, Library, Digest, Settings and navigation use the 13px tokens, expressed in rem so browser text enlargement scales them. Compact transient indicators may remain smaller.
 
 ## Spacing and layout
 
@@ -80,6 +83,10 @@ Routes are hash based and the URL owns committed state: `#/home` (the first scre
 - **Listen:** commands live in the reader menu. Make audio asks for Read aloud or Podcast (records) or which audio, the whole digest or a part (digests), as radio cards. A running job is a percent bar that eases through its real stages, says when it waits for the provider, and has a cancel button that says it's cancelling until the server confirms. A trash button beside the player, folded or playing, deletes only that audio. A closed error stays closed on this device (`agentic:listen-dismissed`), also when a retry fails again for the same reason on the same audio; another reason or new audio shows it again. A failed remake over audio that exists keeps the player and adds one quiet status line under it (the reason, Retry and the same x) instead of the alert. Playback starts at 1x and keeps a rate the listener picks.
 - **Digest reader:** the title comes first, mark read sits in the ⋯ More beside the date title, and items read as a list: each summary's first sentence before its context, one update tag. A section bar sticks to the top and stays one row at every width: section tabs with count badges scroll sideways when they do not fit (the hidden edge fades) and underline the section being read, then Titles only as an icon toggle, which folds items to their titles, and an end line closes the digest.
 - **Language:** follows the system by default. Settings is the only place to choose Follow the system, English or 한국어, stored per device (`agentic:locale`).
+- **Settings recovery:** narration voices and automatic audio are independent of push. Each keeps its heading while loading and shows a text error with Retry on failure. A rate-limited action stays disabled until `Retry-After` elapses; drafts stay editable. Installed-app help states that internet is required.
+- **Startup recovery:** a visible Starting the service status precedes authentication and data loading. Only unauthorized visits see sign-in; service or connection failures show an error and Retry, without a sign-in action.
+- **Connection naming:** Agent connections / 에이전트 연결 names the sidebar entry, More entry and destination. Settings summaries list Language, then Voice and Notifications only when those features are enabled.
+- **Layout reference:** StyleGallery `recipes/saas-settings.md` (installed CLI corpus) informed the stable section headings and constrained vertical stack. The existing main pane owns desktop scrolling and the document owns phone scrolling; sections add no scroll containers.
 - **Dialogs:** native `<dialog>`, radius 12, a bottom sheet on phones.
 - **Toasts:** bottom center, ink fill, `role=status`, 4 seconds (6 with Undo).
 - **Empty states:** a 20px muted icon and one factual line.

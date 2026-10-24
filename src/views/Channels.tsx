@@ -11,6 +11,7 @@ import { channelKeys, channelOf, channelLabel, isRecord, relativeTime } from "..
 import type { Channel } from "../model";
 import { formatRoute, viewTitles } from "../router";
 import { useDashboard } from "../state";
+import { useRateLimited } from "../rate-limit";
 
 const text = strings({
   en: {
@@ -75,11 +76,13 @@ export function ChannelsView() {
   const [json, setJson] = useState("");
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
+  const limited = useRateLimited();
   const live = records.filter(record => isRecord(record) && record.archivedAt === null);
   const agents = channelKeys.filter(channel => channel !== "share" && channel !== "manual");
 
   const submitImport = async (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
     event.preventDefault();
+    if (limited || importing) return;
     setError("");
     setImporting(true);
     try {
@@ -130,11 +133,13 @@ export function ChannelsView() {
       <form className="import-form" onSubmit={submitImport}>
         <label className="field">
           <span>{t.importField}</span>
-          <textarea value={json} onChange={event => setJson(event.target.value)} rows={8} spellCheck={false} />
+          <textarea value={json} onChange={event => setJson(event.target.value)} rows={8} spellCheck={false}
+            aria-invalid={Boolean(error)} aria-describedby={error ? "import-error" : undefined} />
         </label>
-        {error && <p className="form-error" role="alert">{error}</p>}
+        <pre className="channel-note">{'{"kind":"note","title":"Note","body":"Details","tags":["note"]}'}</pre>
+        {error && <p id="import-error" className="form-error" role="alert">{error}</p>}
         <div className="channel-actions">
-          <button type="submit" className="btn btn-primary" disabled={importing || json.trim() === ""}>{t.importButton}</button>
+          <button type="submit" className="btn btn-primary" disabled={limited || importing || json.trim() === ""}>{t.importButton}</button>
         </div>
       </form>
     </details>
@@ -172,9 +177,11 @@ export function LoginDialog({ onClose }: { readonly onClose: () => void }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const limited = useRateLimited();
 
   const submit = async (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
     event.preventDefault();
+    if (limited || connecting) return;
     setError("");
     setConnecting(true);
     try {
@@ -196,7 +203,7 @@ export function LoginDialog({ onClose }: { readonly onClose: () => void }) {
       <p className="login-note">{t.keyNote}</p>
       <div className="dialog-actions">
         <button type="button" className="btn btn-quiet" onClick={onClose}>{t.cancel}</button>
-        <button type="submit" className="btn btn-primary" disabled={connecting || token.trim() === ""}>{t.connect}</button>
+        <button type="submit" className="btn btn-primary" disabled={limited || connecting || token.trim() === ""}>{t.connect}</button>
       </div>
     </form>
   </Dialog>;

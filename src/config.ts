@@ -1,4 +1,5 @@
 import { z } from "zod";
+import ky from "ky";
 import { systemTimeZone } from "../shared/time";
 
 const ConfigSchema = z.object({
@@ -31,8 +32,7 @@ export function configure(next: ConfigOverrides) {
 
 /** Loads GET /api/v1/config (no auth) once, before the app renders. */
 export async function loadConfig(): Promise<AppConfig> {
-  const response = await fetch("/api/v1/config", { credentials: "same-origin" });
-  if (!response.ok) throw new Error(`GET /api/v1/config failed with ${response.status}`);
+  const response = await ky.get("/api/v1/config", { credentials: "same-origin", retry: 0 });
   configure(ConfigSchema.parse(await response.json()));
   return config;
 }
