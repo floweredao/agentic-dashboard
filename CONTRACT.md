@@ -29,6 +29,8 @@ Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSi
 
 ### Optional hosted Google authentication
 
+After a successful JWKS refresh, only keys in the returned set are accepted. A previously cached key may be reused only when the refresh fails.
+
 With Google authentication configured, local owner-key and trusted-header bootstrap are disabled. `GET /auth/google/start` uses PKCE S256, random state/nonce and a signed ten-minute `oidc_tx` cookie. A global `oauth_transactions` row is atomically consumed before code exchange; the same callback cannot create another session. ID tokens require RS256 using the configured provider JWKS, allowed issuer, audience/authorized party, transaction-bound nonce and issue time, expiry and a boolean verified email. Token-selected key URLs are rejected. Production endpoints are Google's; local mock endpoints are an application-construction test seam, not a public request option.
 
 Users are identified only by Google subject, never merged by email. A deleted identity receives a new tenant id. Signups are limited to `MAX_USERS` active hosted accounts (default 50; the local owner is excluded); existing users can still sign in. Capacity returns a 403 explanation with a self-hosting alternative.
