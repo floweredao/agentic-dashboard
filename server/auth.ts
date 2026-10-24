@@ -30,6 +30,9 @@ export class Auth {
   constructor(readonly store: Store, credentialsPath: string, private readonly demo = false) {
     ensureCredentials(credentialsPath);
     const credentials = readCredentials(credentialsPath);
+    // A new owner key (credentials.json replaced) ends every session the old key opened.
+    store.db.query("DELETE FROM sessions WHERE principal_id='owner' AND EXISTS (SELECT 1 FROM principals WHERE id='owner' AND token_hash<>?)")
+      .run(hash(credentials.owner));
     store.db.query(`INSERT INTO principals(id,source,token_hash,created_at) VALUES('owner','manual',?,?)
       ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`).run(hash(credentials.owner), new Date(store.now()).toISOString());
   }
