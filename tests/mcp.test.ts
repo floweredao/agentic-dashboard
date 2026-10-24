@@ -2,9 +2,9 @@ import { afterAll, afterEach, expect, test } from "bun:test";
 import { z } from "zod";
 import { agentRecord, fixture, payload, recordResult } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 const mcpUrl = "http://127.0.0.1:4313/mcp";
 const legacy = "2025-06-18";
@@ -86,8 +86,8 @@ for (const version of [legacy, stateless]) test(`save_record (${version}) attrib
 test("save_record merges an identical ChatGPT save sent again with a new requestId within ten minutes", async () => {
   // Given: a controllable clock, and ChatGPT already saved a note.
   let clock = Date.parse("2026-09-27T11:58:33Z");
-  f.close();
-  f = fixture(10000, () => clock);
+  (await f.close());
+  f = (await fixture(10000, () => clock));
   const record = agentRecord({ kind: "note", title: "연결 시험" });
   const first = z.object({ id: z.string().uuid() }).parse((await call("save_record", { requestId: "connection-test-b79c", record })).structuredContent);
   // When: a second run sends the same record 23 seconds later under a fresh requestId, then again after the window.

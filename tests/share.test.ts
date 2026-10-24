@@ -5,7 +5,7 @@ import { generateCode, normalizeCode } from "../server/share";
 
 test("an incomplete agent record returns structured field issues without echoing content", async () => {
   // Given: an agent's research record lacks its required summary.
-  const f = setup();
+  const f = (await setup());
   // When: it tries to save the incomplete record.
   const response = await f.call("/api/v1/records", "POST", payload({
     kind: "research", title: "Incomplete", body: "PRIVATE-CONTENT", tags: ["test"], fields: {},
@@ -21,13 +21,13 @@ test("an incomplete agent record returns structured field issues without echoing
 
 const shareSchema = z.object({ code: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/), url: z.string(), createdAt: z.iso.datetime() }).strict();
 const shareResult = z.object({ share: shareSchema });
-let fixtures: ReturnType<typeof fixture>[] = [];
-afterEach(() => { for (const f of fixtures) f.close(); fixtures = []; });
-function setup() { const f = fixture(); fixtures.push(f); return f; }
+let fixtures: Awaited<ReturnType<typeof fixture>>[] = [];
+afterEach(async () => { for (const f of fixtures) (await f.close()); fixtures = []; });
+async function setup() { const f = (await fixture()); fixtures.push(f); return f; }
 
 test("Markdown follows the configured locale without changing JSON keys or source content", async () => {
   // Given: a Korean server and a shared Korean record.
-  const f = fixture(10000, Date.now, { locale: "ko" });
+  const f = (await fixture(10000, Date.now, { locale: "ko" }));
   fixtures.push(f);
   const h = await f.login();
   const record = await ownerRecord(f, h);
@@ -41,7 +41,7 @@ test("Markdown follows the configured locale without changing JSON keys or sourc
   expect(json).toMatchObject({ record: { kind: "research", source: "manual", summary: "짧은 요약" } });
 });
 
-async function ownerRecord(f: ReturnType<typeof fixture>, headers: Record<string, string>) {
+async function ownerRecord(f: Awaited<ReturnType<typeof fixture>>, headers: Record<string, string>) {
   const response = await f.call("/api/v1/records", "POST", payload({
     kind: "research", title: "공유할 조사 보고", body: "본문 내용입니다.", tags: ["ai", "공유"],
     links: [{ label: "원문", url: "https://example.com/a" }, { label: "", url: "https://example.com/b" }],
@@ -50,14 +50,14 @@ async function ownerRecord(f: ReturnType<typeof fixture>, headers: Record<string
   expect(response.status).toBe(201);
   return recordResult.parse(await response.json()).record;
 }
-async function share(f: ReturnType<typeof fixture>, id: string, headers: Record<string, string>) {
+async function share(f: Awaited<ReturnType<typeof fixture>>, id: string, headers: Record<string, string>) {
   const response = await f.call(`/api/v1/records/${id}/share`, "POST", undefined, headers);
   expect(response.status).toBe(201);
   return shareResult.parse(await response.json()).share;
 }
 
 test("owner creates one share per record and reads it back", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const record = await ownerRecord(f, h);
   const empty = await f.call(`/api/v1/records/${record.id}/share`, "GET", undefined, h);
@@ -73,7 +73,7 @@ test("owner creates one share per record and reads it back", async () => {
 });
 
 test("share link serves Markdown without private notes and JSON projection without auth", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const record = await ownerRecord(f, h);
   const created = await share(f, record.id, h);
@@ -107,7 +107,7 @@ test("share link serves Markdown without private notes and JSON projection witho
 });
 
 test("a continuing record's share names the earlier record by title and id", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const earlier = await ownerRecord(f, h);
   const created = await f.call("/api/v1/records", "POST", payload({ kind: "note", title: "이어지는 메모", body: "후속", fields: { previousId: earlier.id } }), h);
@@ -119,7 +119,7 @@ test("a continuing record's share names the earlier record by title and id", asy
 });
 
 test("code lookup is forgiving but rejects unknown or malformed codes", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const record = await ownerRecord(f, h);
   const { code } = await share(f, record.id, h);
@@ -139,7 +139,7 @@ test("code lookup is forgiving but rejects unknown or malformed codes", async ()
 });
 
 test("normalization maps O to 0 and I/L to 1", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const record = await ownerRecord(f, h);
   const { code } = await share(f, record.id, h);
@@ -152,7 +152,7 @@ test("normalization maps O to 0 and I/L to 1", async () => {
 });
 
 test("management routes require owner session and CSRF", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const record = await ownerRecord(f, h);
   const path = `/api/v1/records/${record.id}/share`;
@@ -169,7 +169,7 @@ test("management routes require owner session and CSRF", async () => {
 });
 
 test("public agent listener does not expose share routes", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const record = await ownerRecord(f, h);
   const { code } = await share(f, record.id, h);
@@ -179,7 +179,7 @@ test("public agent listener does not expose share routes", async () => {
 });
 
 test("revoke, record deletion and restart", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const record = await ownerRecord(f, h);
   const first = await share(f, record.id, h);
@@ -189,7 +189,7 @@ test("revoke, record deletion and restart", async () => {
   const second = await share(f, record.id, h);
   expect(second.code).not.toBe(first.code);
 
-  f.restart();
+  (await f.restart());
   const h2 = await f.login();
   expect((await f.call(`/s/${second.code}`)).status).toBe(200);
   const kept = await f.call(`/api/v1/records/${record.id}/share`, "GET", undefined, h2);
@@ -201,7 +201,7 @@ test("revoke, record deletion and restart", async () => {
 });
 
 test("agent-created task shares render task meta and project nextAction", async () => {
-  const f = setup();
+  const f = (await setup());
   const h = await f.login();
   const created = await f.call("/api/v1/records", "POST", payload(agentRecord({ kind: "task", title: "Ship share", status: "todo", dueDate: "2026-10-01" })), bearer("omo"));
   expect(created.status).toBe(201);

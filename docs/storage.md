@@ -67,3 +67,13 @@ Record scripts omit tables, code, references, work-log sections and citation
 markers before generation. They explain the complete document for listening,
 preserving facts, uncertainty and conditions. Existing audio is not made stale
 solely because script-writing rules change.
+
+## Tenant storage and upgrades
+
+`server/schema.ts` inventories all 17 tenant tables. Each row has `user_id`; composite keys prevent principal names, request IDs, digest slots or narration settings from colliding across accounts. Only named capability lookups and the global narration count use `ControlDb`. Per-account queries use `TenantDb`, which binds the account identity.
+
+`server/migrations.ts` applies ordered, transactional versions recorded in `schema_migrations`. Pre-tenant files are rebuilt with every existing row assigned to `local`; documents, reactions, automation settings and saved audio metadata are preserved. `users` holds account metadata. The API continues to omit internal tenant columns.
+
+Local audio paths remain unchanged for the implicit owner. Other accounts use separate hashed directories below `audio/users/`; one account cannot prune another account's files. SQL statements are asynchronous on both backends. Transaction serialization includes unrelated reads and writes, so an await cannot accidentally admit another request into a transaction.
+
+Tests exercise libSQL against an isolated local `file:` database without a hosted account. Set `LIBSQL_TEST_URL` only to a disposable local libSQL server to additionally exercise that transport.

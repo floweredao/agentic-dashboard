@@ -4,9 +4,9 @@ import { Store } from "../server/store";
 import { RecordInputSchema, TITLE_MAX_WIDTH, schemaInfo, titleWidth } from "../shared/contracts";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 const longTitle = "OmO에서 Opus가 한국어 지침을 무시하고 영어로 답하는 원인";
 const errorBody = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
@@ -49,14 +49,14 @@ test("owner titles are not limited", async () => {
   expect(recordResult.parse(await response.json()).record.title).toBe(longTitle);
 });
 
-test("a replay of an earlier save stays successful", () => {
-  const store = new Store(":memory:", Date.now);
-  store.db.query("INSERT INTO principals(id,source,token_hash) VALUES('omo','omo','x')").run();
+test("a replay of an earlier save stays successful", async () => {
+  const store = await Store.open(":memory:", Date.now);
+  (await store.db.run("INSERT INTO principals(id,source,token_hash,user_id) VALUES('omo','omo','x',?)", []));
   const input = RecordInputSchema.parse({ kind: "research", title: longTitle });
-  const first = store.create({ id: "omo", source: "manual" }, "req-1", input, input);
-  const again = store.create({ id: "omo", source: "omo" }, "req-1", input, input);
+  const first = (await store.create({ id: "omo", source: "manual" }, "req-1", input, input));
+  const again = (await store.create({ id: "omo", source: "omo" }, "req-1", input, input));
   expect(again).toMatchObject({ replayed: true, record: { id: first.record.id } });
-  expect(() => store.create({ id: "omo", source: "omo" }, "req-2", input, { ...input, x: 1 })).toThrow(expect.objectContaining({ code: "title_too_long", status: 400 }));
+  await expect(store.create({ id: "omo", source: "omo" }, "req-2", input, { ...input, x: 1 })).rejects.toThrow(expect.objectContaining({ code: "title_too_long", status: 400 }));
 });
 
 test("MCP save_record surfaces title_too_long as a tool error", async () => {
