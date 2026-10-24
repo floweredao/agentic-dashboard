@@ -11,7 +11,7 @@ This document describes what the server promises: the data model, the HTTP API, 
 
 Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key.
 
-A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
+A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`). `invite` prints when the code expires in `TIME_ZONE` from server.env (the host's zone when it is unset or unknown).
 
 Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
 
@@ -111,7 +111,7 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 
 | Route | Who | Result |
 |---|---|---|
-| `GET /api/v1/records` | owner, agent | `{ items, nextCursor }`; query `kind`, `status`, `reviewState`, `archived` (`false`, `true`, `all`), `projectId`, `q`, `dueFrom`, `dueTo`, `limit` (1..50), `cursor` |
+| `GET /api/v1/records` | owner, agent | `{ items, nextCursor }`, newest first (`createdAt`, then `id`, both descending); query `kind`, `status`, `reviewState`, `archived` (`false`, `true`, `all`), `projectId`, `q`, `dueFrom`, `dueTo`, `limit` (1..50), `cursor` |
 | `POST /api/v1/records` | owner, agent | 201 `{ record, replayed: false }` |
 | `GET /api/v1/records/:id` | owner, agent | `{ record }` |
 | `PATCH /api/v1/records/:id` | owner, agent (own records) | `{ record }` |
