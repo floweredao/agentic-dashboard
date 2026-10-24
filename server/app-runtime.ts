@@ -86,13 +86,14 @@ export async function createRuntime(options: AppOptions, store: Store) {
   const digestRoute = () => { if (!digestOn) throw new ApiError(404, "feature_disabled", "Digests are turned off on this dashboard"); };
 
   /**
-   * The owner signed in through the trusted proxy: right header value, over the configured HTTPS origin, without a key.
+   * The local owner signed in through the trusted proxy: right header value, over the configured HTTPS origin, without a key.
    * `strictHost` demands the Host header itself instead of falling back to the request URL (capture does).
    */
   const trustedOwner = (c: Context, strictHost = false) => {
     const trusted = options.trustedIdentity;
     const host = strictHost ? c.req.header("host") : c.req.header("host") ?? new URL(c.req.url).host;
-    return trusted !== undefined && trusted.login !== "" && !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
+    return store.db.userId === "local" && trusted !== undefined && trusted.login !== "" &&
+      !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
       host === privateUrl.host && c.req.header(trusted.header) === trusted.login;
   };
 
