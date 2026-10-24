@@ -35,6 +35,7 @@ test("startup retries server failures, settings retry load failures, and rate li
       ? Response.json({ error: { code: "internal_error", message: "Internal failure" } }, { status: 503 })
       : Response.json({ csrfToken: "csrf-test", expiresAt: "2026-10-30T00:00:00Z" });
     if (path === "/api/v1/records") return Response.json({ items: [record], nextCursor: null });
+    if (path === "/api/v1/records/changes") return Response.json({ cursor: 0, items: [], deletedIds: [], hasMore: false, reset: false });
     if (path === "/api/v1/narration/auto") return settingsFail
       ? Response.json({ error: { code: "internal_error", message: "Failed" } }, { status: 503 })
       : Response.json({ digests: "off", records: "off", scope: "full" });
