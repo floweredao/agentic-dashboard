@@ -340,7 +340,7 @@ const errorText = strings<ErrorText>({
         narration_busy: "음성을 만드는 중이에요. 끝난 뒤 다시 시도해 주세요.",
         demo_read_only: "읽기 전용 데모라서 바꾼 내용은 저장되지 않아요.",
       }),
-      signIn: "로그인이 필요하거나 세션이 만료됐어요. 소유자 토큰으로 다시 연결해 주세요.",
+      signIn: "로그인이 필요하거나 세션이 만료됐어요. 소유자 키로 다시 연결해 주세요.",
       failedStatus: status => `요청을 처리하지 못했어요 (${status}).`,
       badShape: issues => `입력값이나 서버 데이터의 형식이 맞지 않아요: ${issues}`,
       offline: "서버에 연결하지 못했어요. 네트워크 연결을 확인하고 다시 시도해 주세요.",

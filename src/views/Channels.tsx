@@ -18,7 +18,7 @@ const text = strings({
     share: "Links saved with the share button",
     manual: "Records you saved in this app",
     lastUsed: "Last used", removed: "Removed",
-    noAgents: "No agents yet. Register one with",
+    noAgents: "No agents yet. Register one with", registerCommand: "bun run agents add <name>",
     noAgentsAfter: "and give it the key that command prints.",
     total: "All", pending: "To review", latest: "Latest", none: "None", view: "View records",
     importSummary: "Advanced · Import JSON",
@@ -39,7 +39,7 @@ const text = strings({
     share: "iPhone 공유 버튼으로 저장한 링크",
     manual: "이 앱에서 직접 저장한 기록",
     lastUsed: "마지막 사용", removed: "연결 해제됨",
-    noAgents: "아직 에이전트가 없어요. 다음 명령으로 등록하고",
+    noAgents: "아직 에이전트가 없어요. 다음 명령으로 등록하고", registerCommand: "bun run agents add <이름>",
     noAgentsAfter: "출력된 키를 에이전트에 넣어 주세요.",
     total: "전체", pending: "미확인", latest: "최근", none: "없음", view: "기록 보기",
     importSummary: "고급 · JSON으로 가져오기",
@@ -96,7 +96,7 @@ export function ChannelsView() {
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen /><h1>{viewTitles.channels}</h1></div>
     </header>
-    {agents.length === 0 && <p className="channel-note">{t.noAgents} <code>bun run agents add &lt;name&gt;</code> {t.noAgentsAfter}</p>}
+    {agents.length === 0 && <p className="channel-note">{t.noAgents} <code>{t.registerCommand}</code> {t.noAgentsAfter}</p>}
     <div className="channel-grid">
       {channelKeys.map(channel => {
         const items = live.filter(record => channelOf(record) === channel);
