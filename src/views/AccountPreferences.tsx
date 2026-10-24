@@ -18,7 +18,8 @@ export function AccountPreferences({ account, csrfToken, onAccount }: {
 }) {
   const t = text();
   const [locale, setLocale] = useState(account.locale);
-  const [timeZone, setTimeZone] = useState(account.timeZone);
+  const [timeZone, setTimeZone] = useState(() => account.timeZoneSaved === false
+    ? Intl.DateTimeFormat().resolvedOptions().timeZone : account.timeZone);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
