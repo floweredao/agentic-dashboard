@@ -25,7 +25,7 @@ Three logical collections share one table: projects (`project`), tasks (`task`) 
 {
   kind: "project" | "task" | "research" | "work-report" | "note" | "social";
   title: string;                 // trimmed, 1..200
-  body: string;                  // default "", at most 120000; record POST and PATCH bodies up to 512 KiB
+  body: string;                  // default "", at most 120000; record POST and PATCH bodies, and MCP requests, up to 512 KiB
   status: string;                // default "new"
   projectId: string | null;      // UUID of a project
   taskId: string | null;         // UUID of a task
