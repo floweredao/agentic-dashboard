@@ -1,10 +1,20 @@
-# Hosted account foundation
+# Hosted accounts
 
 `AUTH_MODE=local` keeps SQLite, owner-key login, optional trusted proxy login and environment-backed Gemini credentials. `AUTH_MODE=google` enables account sign-in, account-scoped agent tokens, bearer capture/MCP and encrypted personal Gemini keys. It uses only the main listener.
 
 Switching an existing database to Google mode does not publish its local account. Local records, share codes, invitations and credentials stay stored but cannot be used on the hosted origin. A Google subject bound to the local row is refused rather than silently linked. No new anonymous user row is created, and local-account background services are not resumed. Hosted users' explicit share links continue to work. Use local mode to access the old account; any data migration is a separate decision.
 
-This is an application foundation, not a public-service launch. Operator alert delivery, public legal policies, onboarding completion, account export/deletion, hosted storage and operational jobs belong to the remaining hosted-service plan. `OWNER_ALERT_EMAIL`, `CONTACT_EMAIL` and the task/bucket fields are parsed for that layer; capacity has an injectable `onCapacity` hook, not an email sender.
+The included tooling can deploy this mode; there is no public multi-user instance yet. The read-only demo is not an account service. [Deploying](deploy.md#hosted-google-sign-in-deployment-tooling) covers Cloud Run, Turso, private GCS audio/backups, Cloud Tasks, Scheduler, Secret Manager and budget alerts. Tooling has local tests and dry-run verification, not production acceptance evidence.
+
+## First sign-in and account controls
+
+New accounts enter `/welcome`: choose language and time zone, connect an agent, configure digests, optionally add a personal Gemini key, and review home-screen/push setup. Finish requires a real external agent save through REST without a browser Origin or bearer MCP; the browser's test record alone does not count. Returning onboarded accounts open the dashboard. Settings can replay setup and change account preferences.
+
+Settings also offers a credential-free `.tar.gz` export and account deletion. Export includes saved content, documents, comments, digests, scripts and referenced audio, but no token/session hashes, Gemini ciphertext or push encryption credentials. It is not the operator backup or an import format. Generation and download each stop after 60 seconds without byte progress. The tar and gzip each have a 64 MiB cap; one export per account and two per instance protect memory. Busy-account responses are 429, full-instance responses 503, with `Retry-After: 60`; ordinary reading remains available.
+
+Deletion requires exact email confirmation and recent provider reauthentication, not merely a new dashboard session. It revokes sessions/tokens, removes tenant rows, scrubs identity/key fields and deletes the audio prefix (maintenance retries failures). The Google subject remains in a tombstone; signing in later creates a new empty account. Backups expire after 14 days and restores honor tombstones. See the reauthentication interoperability caveat below before offering deletion on a live Google client.
+
+`/privacy` and `/terms` are public, localized pages linked from sign-in, setup and Settings. Set the real public `CONTACT_EMAIL` and declare the actual `DATABASE_REGION`; the database region is not inferred from Cloud Run.
 
 ## Operator configuration
 
@@ -16,9 +26,13 @@ Provide `APP_SECRETS` as private JSON, with:
 - `sessionSigningKey`, an independent random secret of at least 32 characters;
 - `kek`, a version-number-to-base64 map of 32-byte AES keys, for example version `1`;
 - `vapid.publicKey` and `vapid.privateKey` when push is enabled;
-- optional `turso.authToken/platformToken/org` and `resend.apiKey` for the hosted operations layer.
+- optional `turso.authToken/platformToken/org` and `resend.apiKey` for database access, usage monitoring and operator alerts.
 
 Keep the JSON out of source, logs, screenshots and shell history. `DATABASE_AUTH_TOKEN` takes precedence over the Turso token in that JSON. `MAX_USERS` defaults to 50 active hosted accounts; existing accounts can still sign in at capacity.
+
+`OWNER_ALERT_EMAIL` plus the Resend key enable operator-only sign-up, capacity, maintenance-failure and usage alerts; no email goes to users. Turso usage monitoring also needs the platform token and organization. Daily maintenance backs up database rows to private GCS, checks usage, and retries deleted-account audio cleanup. Keep backup credentials private. Internal task routes require a verified Google service-account OIDC token with the configured audience; a public Cloud Run listener does not make them public actions.
+
+Hosted narration defaults to 10 jobs per account per server-zone day and 60 across the service. `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT` and `OWNER_USER_LIMITS` configure these limits. Automatic narration starts off. Provider quota is separate; adding a key does not promise generation capacity.
 
 ### Sign-in limits and proxy topology
 
@@ -45,6 +59,47 @@ To rotate encryption keys, add a higher-numbered KEK while keeping the old versi
 Personal keys are managed in Settings. Model-list validation says **Key accepted**, not **Audio ready**. Reading and saving need no provider key. Hosted automatic audio starts off; title enrichment uses the account's key and `AI_FILL_MODEL` (default `gemini-3.5-flash-lite`).
 
 Validation reports whether the selected script and speech models appear in the key's model list. It does not generate audio or spend model credits. A later visit labels this availability check as not checked; the first actual job separately reports credential, permission, missing-model and quota failures.
+
+## Runtime environment reference
+
+This inventory covers every setting parsed by `server/config.ts`, including
+advanced overrides not shown in `.env.example`. Deployment-file fields such as
+`PROJECT_ID` are tooling inputs, not application environment variables; see
+[deploy.md](deploy.md#one-private-configuration-file).
+
+| Variables | Meaning and mode |
+|---|---|
+| `HOST`, `PORT` | Main binding, default `127.0.0.1:4310`; container uses `0.0.0.0:8080` |
+| `AUTH_MODE`, `APP_SECRETS` | `local` by default; `google` requires the secret JSON described above |
+| `APP_ORIGIN`, `APP_NAME` | Exact browser origin and display name; default name `Agentic Dashboard` |
+| `DATA_DIR`, `DATABASE_PATH`, `CREDENTIALS_PATH` | Data root `data`; optional overrides for `dashboard.sqlite` and local `credentials.json` |
+| `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | Local/file or remote libSQL/HTTPS backend and private remote credential; URL overrides database path |
+| `STATIC_DIR` | Built web assets, default `dist` |
+| `TIME_ZONE`, `LOCALE` | Server calendar/day-reset zone (host zone by default) and push/default UI language (`en` by default); account calendar preferences are separate |
+| `AUTH_TRUST_PROXY`, `K_SERVICE`, `TRUSTED_PROXY_HOPS` | Forwarded-address trust, automatic Cloud Run detection, and right-counted trusted hop; Google mode only |
+| `AUTH_START_LIMIT`, `PENDING_SIGN_IN_LIMIT` | Global per-instance starts/minute and shared pending-row cap, default `900` / `10000`; cap must exceed ten times starts |
+| `MAX_USERS` | Maximum active hosted accounts, default `50`; `0` closes new sign-ups |
+| `TRUSTED_USER_HEADER`, `OWNER_LOGIN` | Local trusted proxy login; set both or neither, unavailable in Google mode |
+| `ENABLE_AGENT_INGRESS`, `AGENT_PORT`, `PUBLIC_API_BASE_URL` | Local-only extra record listener, off / `4312`; optional public agent API address used in setup |
+| `ENABLE_MCP`, `MCP_PORT`, `MCP_AGENT` | Local-only extra MCP listener, off / `4313`, requiring an active named agent and bearer; Google mode uses main `/mcp` |
+| `PUSH`, `VAPID_PATH`, `VAPID_SUBJECT` | Push on by default; optional local key-file override and `mailto:`/HTTPS subject. Hosted keys and subject come from secrets/origin |
+| `DIGEST`, `NARRATION` | Feature switches, both on by default; narration also needs a usable provider/key |
+| `NARRATION_TTS_MODEL`, `NARRATION_SCRIPT_MODEL`, `NARRATION_KEY_SCRIPT_MODEL` | Speech (`gemini-3.8-flash-tts`), Vertex script (`gemini-4-argon`) and key script (`gemini-3.8-flash`) model names |
+| `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` | Default primary/secondary voices, `Kore` / `Puck`; users can choose voices in Settings |
+| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini` by default; `vertex` requires a project and ADC, location defaults to `global` |
+| `NARRATION_RECORD_AUTO`, `NARRATION_DIGEST_AUTO` | Local record default `read` (`off`, `read`, `podcast`); digest default `off` (`off`, `parts`, `all`). Hosted record automation starts off |
+| `NARRATION_CONCURRENCY` | Concurrent jobs per tenant, `1..4`, default `2` |
+| `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT`, `OWNER_USER_LIMITS` | Local/account daily starts `20`/`10`, service-wide `60`, and account-ID-to-limit JSON overrides; failed starts count |
+| `AUDIO_DIR`, `AUDIO_BUCKET` | Optional local audio directory; private GCS backend when bucket is set |
+| `GEMINI_API_KEY` | Local environment-backed key; hosted users supply their own encrypted key in Settings |
+| `AI_FILL_COMMAND`, `AI_FILL_SOURCES`, `AI_FILL_MODEL` | Local stdin/stdout command and comma-separated sources; hosted title fill uses the personal key and model, default `gemini-3.5-flash-lite` |
+| `OWNER_ALERT_EMAIL`, `CONTACT_EMAIL`, `DATABASE_REGION` | Operator-only alert recipient, required hosted public contact, and operator-declared database location |
+| `TASKS_QUEUE`, `TASKS_SERVICE_ACCOUNT` | Set together with `APP_ORIGIN` for Cloud Tasks; otherwise in-process work and local maintenance timers |
+| `DEMO`, `DEMO_HOSTED_URL` | Read-only local demo off by default; optional hosted-account destination. Demo cannot run with Google auth or write integrations |
+
+Local Vertex credentials use `GOOGLE_APPLICATION_CREDENTIALS` or the standard
+ADC file created by `gcloud auth application-default login`. This credential-file
+lookup is in `server/vertex.ts`, not the main config schema; keep it private.
 
 ## Deletion reauthentication
 
