@@ -249,16 +249,16 @@ export const NarrationVoiceSettingsSchema = z.object({
 export type NarrationVoiceSettings = z.infer<typeof NarrationVoiceSettingsSchema>;
 /**
  * GET and PUT /api/v1/narration/auto (Settings › Automatic audio). `digests`: a digest's audio is made when it arrives, for
- * each changed part (`parts`), as one audio of the whole digest (`all`) or not at all. `records`: a new research or work
- * report gets its audio in that style; while it is on, the daily limit is at least `autoDailyRuns`. `scope`: what a record's
+ * each changed part (`parts`), as one audio of the whole digest (`all`) or not at all. `records`: a narratable record
+ * gets its audio on creation and text edits in that style; while it is on, the daily limit is at least `autoDailyRuns`. `scope`: what a record's
  * audio reads, its full document or only its summary (conclusion, summary, next actions). Unchanged content is never made again.
  */
 export const NarrationAutoSchema = z.object({
   digests: z.enum(["off", "parts", "all"]), records: z.enum(["off", "read", "podcast"]), scope: z.enum(["full", "summary"]),
 }).strict();
 export type NarrationAuto = z.infer<typeof NarrationAutoSchema>;
-/** The record kinds whose new records get audio when New records is on. */
-export const AUTO_NARRATED_KINDS = ["research", "work-report"] as const;
+/** Every narratable kind gets automatic audio on creation and meaningful text edits when enabled. */
+export const AUTO_NARRATED_KINDS = NARRATABLE_KINDS;
 
 /**
  * A record's attached HTML document (full document), for research, work-report, note and social records. The dashboard shows

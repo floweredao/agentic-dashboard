@@ -17,7 +17,7 @@ import { enrichCapture, type CaptureEnrichment } from "./capture-enrichment";
 import { ApiError } from "./errors";
 import { json } from "./json-body";
 import { createMcpHandler } from "./mcp";
-import { createNarration, type NarrationOptions } from "./narration";
+import { createNarration, narrationSourceChanged, type NarrationOptions } from "./narration";
 import { projectRecord, renderMarkdown, Shares } from "./share";
 import { agentCanRead, agentView, Store } from "./store";
 // Bundled at build time (bun build --compile, the Docker image and vite all read package.json), so it is the one version source.
@@ -89,7 +89,13 @@ export function createApp(options: AppOptions = {}) {
   const comments = new Comments(store);
   const digests = new Digests(store, timeZone);
   const capturing = new Map<string, Promise<CaptureEnrichment>>();
-  const aiFill = options.aiFill ? createAiFill({ store, ...options.aiFill }) : null;
+  /** New records whose audio waits for their AI title fill, so it reads the filled title and summary. */
+  const afterFill = new Set<string>();
+  const aiFill = options.aiFill ? createAiFill({ store, ...options.aiFill, onSettled: id => {
+    if (!afterFill.delete(id)) return;
+    try { autoNarrate(store.get(id)); }
+    catch (error) { if (!(error instanceof ApiError) || error.status !== 404) throw error; }
+  } }) : null;
   aiFill?.sweep();
   const narration = createNarration({ provider: null, ...options.narration, store,
     timeZone,
@@ -123,10 +129,19 @@ export function createApp(options: AppOptions = {}) {
     return trusted !== undefined && trusted.login !== "" && !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
       host === privateUrl.host && c.req.header(trusted.header) === trusted.login;
   };
-  /** Automatic audio for new records: a new research or work report gets its audio in the chosen style, in the background. */
-  const autoNarrate = (record: DashboardRecord) => {
-    const style = narration.autoSettings().records;
-    if (style !== "off" && AUTO_NARRATED_KINDS.some(kind => kind === record.kind)) narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
+  /** New and edited narratable records share the owner's automatic audio setting. */
+  const autoNarrate = (record: DashboardRecord, edited = false) => {
+    const setting = narration.autoSettings().records;
+    if (setting === "off" || !AUTO_NARRATED_KINDS.some(kind => kind === record.kind)) return;
+    const style = (edited ? narration.styleOf(record.id) : null) ?? setting;
+    narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
+  };
+  const newRecord = (record: DashboardRecord, fill: boolean) => {
+    if (fill && aiFill) { afterFill.add(record.id); aiFill.enqueue(record.id); }
+    else autoNarrate(record);
+  };
+  const editedRecord = (before: DashboardRecord, after: DashboardRecord) => {
+    if (narrationSourceChanged(before, after)) autoNarrate(after, true);
   };
   /** An agent's timeline entry: a reply to an owner comment notifies `reply`, moving its item to review notifies `review`. */
   const notifyEntry = (comment: Comment, updated: DashboardRecord | null) => {
@@ -240,7 +255,7 @@ export function createApp(options: AppOptions = {}) {
           links: [{ label: "Source", url: url.href }],
         });
         const result = store.create({ id: "owner", source: "manual" }, requestId, record, { url: url.href }, "pending");
-        if (!result.replayed) aiFill?.enqueue(result.record.id);
+        if (!result.replayed) newRecord(result.record, true);
         return c.json(result, result.replayed ? 200 : 201);
       });
       app.get("/api/health", c => c.json({ status: "ok" }));
@@ -297,9 +312,14 @@ export function createApp(options: AppOptions = {}) {
         const principal = auth.authenticate(c.req.raw, false);
         if (principal.source === "manual") auth.csrf(c.req.raw, origins);
         const patch = RecordPatchSchema.parse(await json(c.req.raw, RECORD_LIMITS.requestBytes));
-        if (principal.source === "manual") return c.json({ record: store.patch(c.req.param("id"), patch) });
         const before = store.get(c.req.param("id"));
+        if (principal.source === "manual") {
+          const record = store.patch(c.req.param("id"), patch);
+          editedRecord(before, record);
+          return c.json({ record });
+        }
         const record = store.agentPatch(principal, c.req.param("id"), patch);
+        editedRecord(before, record);
         notifyReview(before, record);
         return c.json({ record });
       });
@@ -507,9 +527,8 @@ export function createApp(options: AppOptions = {}) {
       if (principal.source === "manual") auth.csrf(c.req.raw, origins);
       const input = createSchema.parse(await json(c.req.raw, RECORD_LIMITS.requestBytes));
       const result = store.create(principal, input.requestId, RecordInputSchema.parse(input.record), input.record);
-      if (!result.replayed && aiFillSources.has(principal.source)) aiFill?.enqueue(result.record.id);
+      if (!result.replayed) newRecord(result.record, aiFillSources.has(principal.source));
       if (!result.replayed && principal.source !== "manual") notifyReview(null, result.record);
-      if (!result.replayed) autoNarrate(result.record);
       return c.json(result, result.replayed ? 200 : 201);
     });
     app.get("/api/v1/records/:id", c => {
@@ -535,7 +554,7 @@ export function createApp(options: AppOptions = {}) {
   const mcpDisabled = async () => Response.json({ error: { code: "feature_disabled", message: "MCP needs MCP_AGENT" } }, { status: 503 });
   const mcpFetch = mcpAgent === undefined ? mcpDisabled : createMcpHandler({ store, agent: { id: mcpAgent, source: mcpAgent },
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
-    onCreate: id => { if (aiFillSources.has(mcpAgent)) aiFill?.enqueue(id); autoNarrate(store.get(id)); } });
+    onCreate: id => newRecord(store.get(id), aiFillSources.has(mcpAgent)), onUpdate: editedRecord });
   return { fetch: (request: Request) => privateApp.fetch(request), publicFetch: (request: Request) => publicApp.fetch(request),
     mcpFetch, aiFill, narration, push, agents, invites, timeZone, purgeTrash: () => { const purged = store.purgeTrash(); narration.prune(); return purged; },
     close: () => store.close() };

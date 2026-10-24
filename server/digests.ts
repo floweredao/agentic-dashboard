@@ -240,7 +240,7 @@ export class Digests {
       : digest.sections.filter(section => section.kind === part);
     if (sections.length === 0) return null;
     const lines: string[] = [];
-    const message = (item: DigestMessage) => `- [${item.importance}] ${item.from}: ${item.subject}. ${item.summary}${item.action ? ` ${item.action}` : ""}`;
+    const message = (item: DigestMessage) => `- [${item.importance}] ${item.from}: ${item.subject}. ${item.summary}`;
     const article = (item: DigestArticle) => `- ${item.title}${item.source ? ` (${item.source})` : ""}: ${item.summary}`;
     for (const section of sections) {
       if (!section.items.length) continue;
