@@ -5,6 +5,7 @@ export const AccountLocaleSchema = z.enum(["system", "en", "ko"]);
 export const AccountFeaturesSchema = z.object({ digest: z.boolean(), push: z.boolean() }).strict();
 export const AccountSchema = z.object({
   id: z.string(), email: z.email().nullable(), locale: AccountLocaleSchema, timeZone: z.string(),
+  timeZoneSaved: z.boolean().optional(),
   onboardedAt: z.string().nullable(), agentSaveVerified: z.boolean(), features: AccountFeaturesSchema,
   agentSaveRecordId: z.string().nullable().default(null),
 });

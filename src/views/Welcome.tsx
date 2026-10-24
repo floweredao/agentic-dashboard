@@ -64,7 +64,7 @@ export function Welcome({ account, csrfToken, onAccount }: {
     switch (step) {
       case 0: return <AccountPreferences account={account} csrfToken={csrfToken} onAccount={onAccount} />;
       case 1: return <>
-        <p>{t.agent}</p><AgentConnections />
+        <p>{t.agent}</p><AgentConnections saveVerified={account.agentSaveVerified} />
         <p className="setting-note">{t.saved}</p>
         <pre className="account-code">{JSON.stringify(sampleRecord(), null, 2)}</pre>
         <pre className="account-code">{`bun scripts/agent.ts --url '${location.origin}' --file record.json`}</pre>
@@ -97,7 +97,7 @@ export function Welcome({ account, csrfToken, onAccount }: {
   })();
   return <main className="entry-page"><div className="setup-page">
     <header className="setup-header"><p className="setup-progress">{t.step(step + 1)}</p><h1>{t.title}</h1><p>{t.intro}</p></header>
-    <section className="setup-panel" aria-label={t.steps[step]}><h2>{t.steps[step]}</h2>{body}
+    <section className="setup-panel" aria-label={t.steps[step]}>{step !== 0 && <h2>{t.steps[step]}</h2>}{body}
       {message && <p role="status">{message}</p>}{error && <p role="alert" className="form-error">{error}</p>}
     </section>
     <footer className="setup-footer">
