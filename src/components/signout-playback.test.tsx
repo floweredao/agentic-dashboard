@@ -79,7 +79,7 @@ test("signing out stops a private record's audio and takes its title off the sys
     // When: the owner signs out from Channels.
     await view.evaluate(`location.hash = "#/channels"`);
     await press(view, ".session-section .btn");
-    await until(view, `() => document.querySelector(".toast > span")?.textContent`);
+    await until(view, `() => document.querySelector(".toast > span")?.textContent === "로그아웃했어요."`);
 
     // Then: nothing of the record is left playing, loaded or named on the lock screen.
     expect(JSON.parse(String(await view.evaluate(`(${player})()`)))).toEqual({ src: null, paused: true, media: null });
