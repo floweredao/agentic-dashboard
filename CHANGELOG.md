@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Port operational reading and accessibility fixes: equal phone tabs, two recent digests, full-screen digest reading, scalable text, touch targets and clearer states.
+- Narrate every new narratable record and meaningful text edit, defer temporary failures, and run independent jobs concurrently.
+- Separate Vertex and key script models, improve listening scripts, remove work logs and source lists, and add ffmpeg encoding plus portable storage documentation.
+
 All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),

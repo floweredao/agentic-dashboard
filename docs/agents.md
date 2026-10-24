@@ -159,3 +159,7 @@ If you want agents to reach only the record endpoints, turn on `ENABLE_AGENT_ING
 ## Skill file
 
 Agents that load skills (Codex, Claude Code and others) can install [skills/agentic-dashboard/SKILL.md](../skills/agentic-dashboard/SKILL.md), which teaches them the format and both ways to save. `agentic-dashboard connect` installs it for you with that computer's own command path; `agentic-dashboard skills install [--target claude-code|codex|omo|agents]` writes it again, and never replaces a skill file it didn't write unless you pass `--force`.
+
+## Portable storage and listening
+
+Every install uses the same [storage structure](storage.md) and [generated contracts](schema/agentic-dashboard.schema.json). Keep the full Markdown document in `body`, even when attaching HTML. Automatic audio covers all narratable record kinds and waits for configured title fill. Write conclusions and summaries as findings, not work logs: verification methods, tool details, kept/deleted files and closing reference lists are omitted from listening scripts. Keep relevant study limitations and counterarguments in the content sections. See [install.md](install.md) for machine-independent setup.

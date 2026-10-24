@@ -60,10 +60,10 @@ test("the reader hides the version and shows legacy fields only when filled", ()
   expect(html).not.toContain("<h3>더 알아볼 점</h3>");
   expect(html).not.toMatch(/v3\b/);
   expect(html).toContain("저장 9월 28일</p>");
-  // And: the secondary commands sit behind one menu button.
+  // And: the other secondary commands sit behind one menu button (7일 뒤 다시 보기 also has its own button in the bar).
   expect(html).toContain('aria-haspopup="menu"');
   expect(html).toContain('aria-expanded="false"');
-  expect(html).not.toContain("7일 뒤");
+  expect(html).not.toContain("후속 할 일");
 });
 
 test("the reader shows the edit date only when it falls on another Seoul day", () => {

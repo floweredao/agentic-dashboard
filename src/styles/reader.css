@@ -1,5 +1,5 @@
 .reader { min-height: 100%; }
-.reader-inner { width: 100%; max-width: 68ch; margin: 0 auto; padding: 32px 32px 72px; }
+.reader-inner { width: 100%; max-width: calc(42rem + 64px); margin: 0 auto; padding: 32px 32px 72px; }
 /* The top row: back + meta on the left, Full screen in the reading column's top-right corner (Close takes the same corner in full screen). */
 .reader-top { display: flex; align-items: flex-start; gap: 12px; }
 .reader-top-main { display: grid; flex: 1; min-width: 0; }
@@ -8,28 +8,28 @@
 .reader-corner-button { position: relative; flex: none; width: 32px; min-height: 32px; padding: 0; justify-content: center; border-color: var(--line); color: var(--ink); }
 @media (pointer: coarse) and (min-width: 768px) { .reader-corner-button::after { content: ""; position: absolute; inset: -6px; } }
 .reader-top .reader-meta { min-height: 32px; }
-.reader-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.reader-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--muted); font-size: 0.78125rem; font-weight: 500; }
 .reader-channel { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 600; }
 .reader-kind::before { content: "·"; margin-right: 10px; color: var(--faint); }
 .reader-title {
-  margin-top: 14px; color: var(--ink); font-size: 24px; line-height: 1.35; font-weight: 700; letter-spacing: -0.4px;
+  margin-top: 14px; color: var(--ink); font-size: 1.5rem; line-height: 1.35; font-weight: 700; letter-spacing: -0.4px;
   overflow-wrap: anywhere; word-break: keep-all;
 }
 .reader-title:focus { outline: none; }
 /* Phones focus the title on open; keyboard users get the ring, a tap does not. */
 .reader-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.reader-dates { margin-top: 8px; color: var(--faint); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.reader-dates { margin-top: 8px; color: var(--faint); font-size: 0.78125rem; font-variant-numeric: tabular-nums; }
 .reader-note {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; padding: 10px 12px;
-  border-radius: var(--r); background: var(--wash); color: var(--muted); font-size: 13px;
+  border-radius: var(--r); background: var(--wash); color: var(--muted); font-size: 0.8125rem;
 }
-.reader-note .btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.reader-note .btn { min-height: 32px; padding: 0 10px; font-size: 0.8125rem; }
 
 .reader-actions {
   position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px -8px 0; padding: 10px 8px;
   background: var(--surface); border-bottom: 1px solid var(--line);
 }
-.reader-actions .btn { min-height: 32px; padding: 0 10px; font-size: 13px; }
+.reader-actions .btn { min-height: 32px; padding: 0 10px; font-size: 0.8125rem; }
 .reader-actions .btn-outline { border-color: var(--line); }
 /* 확인함 is a status, not a dead button: quiet fill at full contrast, still disabled. */
 .reader-actions .btn-primary.is-confirmed:disabled { opacity: 1; background: var(--selected); color: var(--ink); }
@@ -45,7 +45,7 @@
 .menu-end { left: auto; right: 0; }
 .menu-item {
   display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--r);
-  background: transparent; color: var(--text); font-size: 13.5px; font-weight: 500; text-align: left; white-space: nowrap;
+  background: transparent; color: var(--text); font-size: 0.84375rem; font-weight: 500; text-align: left; white-space: nowrap;
 }
 .menu-item svg { color: var(--muted); flex-shrink: 0; }
 .menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--wash); outline: none; }
@@ -56,7 +56,7 @@
 .listen-bar {
   display: flex; align-items: center; gap: 8px; min-height: 40px; margin-top: 12px; padding: 3px 4px 3px 12px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--raised);
-  color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums;
+  color: var(--muted); font-size: 0.8125rem; font-variant-numeric: tabular-nums;
 }
 .listen-bar > svg { flex: none; }
 .listen-stage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -67,14 +67,14 @@
 .listen-fill { position: absolute; inset: 0; border-radius: inherit; background: var(--accent); transform-origin: left center; will-change: transform; transition: transform 300ms cubic-bezier(0.2, 0, 0, 1); }
 .listen-percent { flex: none; min-width: 4ch; color: var(--ink); text-align: right; }
 .listen-bar .icon-btn { width: 32px; min-height: 32px; height: 32px; margin-left: auto; flex: none; }
-.listen-bar .btn { min-height: 32px; padding: 0 10px; font-size: 13px; flex: none; }
+.listen-bar .btn { min-height: 32px; padding: 0 10px; font-size: 0.8125rem; flex: none; }
 .listen-error { color: var(--danger); }
 .listen-error .btn { margin-left: auto; color: var(--text); }
 .listen-error .btn + .icon-btn { margin-left: 0; }
 /* A failed remake under audio that still plays: a quiet line, not the alert box. */
-.listen-note { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding-left: 12px; color: var(--muted); font-size: 12.5px; }
+.listen-note { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding-left: 12px; color: var(--muted); font-size: 0.78125rem; }
 .listen-note .listen-stage { flex: 1 1 auto; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.35; }
-.listen-note .btn { min-height: 32px; padding: 0 8px; font-size: 12.5px; flex: none; color: var(--text); }
+.listen-note .btn { min-height: 32px; padding: 0 8px; font-size: 0.78125rem; flex: none; color: var(--text); }
 .listen-note .icon-btn { width: 32px; height: 32px; min-height: 32px; flex: none; }
 .listen-play {
   display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; border: 0; border-radius: 999px;
@@ -87,15 +87,15 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .listen-remove:hover { color: var(--danger); }
 .listen-open {
   display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px 0 0; border: 0; border-radius: 999px;
-  background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+  background: transparent; color: var(--muted); font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .listen-open:hover { color: var(--ink); }
 .listen-player { padding-left: 8px; }
 .listen-seek { flex: 1 1 auto; min-width: 48px; height: 20px; margin: 0; accent-color: var(--ink); }
-.listen-time { flex: none; font-size: 11.5px; white-space: nowrap; }
+.listen-time { flex: none; font-size: 0.71875rem; white-space: nowrap; }
 .listen-bar .listen-rate { min-width: 44px; padding: 0 6px; justify-content: center; }
 .listen-player .icon-btn { margin-left: 0; }
-.listen-script p { color: var(--text); font-size: 14.5px; line-height: 1.7; white-space: pre-line; word-break: keep-all; }
+.listen-script p { color: var(--text); font-size: 0.90625rem; line-height: 1.7; white-space: pre-line; word-break: keep-all; }
 .listen-script p + p { margin-top: 10px; }
 /* Make audio choice: two stacked options, the whole row is the radio's label. */
 .listen-styles { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
@@ -110,8 +110,8 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .listen-style input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--ink); }
 .listen-style input:focus-visible { outline: none; }
 .listen-style-text { display: grid; gap: 2px; min-width: 0; }
-.listen-style-text strong { color: var(--ink); font-size: 14.5px; font-weight: 600; }
-.listen-style-text span { color: var(--muted); font-size: 13px; line-height: 1.5; word-break: keep-all; }
+.listen-style-text strong { color: var(--ink); font-size: 0.90625rem; font-weight: 600; }
+.listen-style-text span { color: var(--muted); font-size: 0.8125rem; line-height: 1.5; word-break: keep-all; }
 .listen-styles + .form-note { margin-top: 12px; }
 .listen-styles:disabled .listen-style { cursor: default; opacity: .6; }
 @media (prefers-reduced-motion: reduce) { .listen-style, .listen-fill { transition: none; } }
@@ -131,11 +131,11 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 }
 
 .reader-lead { display: grid; gap: 14px; margin-top: 20px; padding: 16px 18px; border-radius: var(--r-lg); background: var(--raised); border: 1px solid var(--line); }
-.reader-lead h3 { color: var(--faint); font-size: 11.5px; font-weight: 700; letter-spacing: 0.2px; }
-.reader-lead .prose { margin-top: 4px; color: var(--ink); font-size: 15px; line-height: 1.65; }
+.reader-lead h3 { color: var(--faint); font-size: 0.71875rem; font-weight: 700; letter-spacing: 0.2px; }
+.reader-lead .prose { margin-top: 4px; color: var(--ink); font-size: 0.9375rem; line-height: 1.65; }
 
 .reader-section { margin-top: 32px; }
-.reader-section > h3 { margin-bottom: 8px; color: var(--muted); font-size: 11.5px; line-height: 1.3; font-weight: 600; letter-spacing: 0.2px; }
+.reader-section > h3 { margin-bottom: 8px; color: var(--muted); font-size: 0.71875rem; line-height: 1.3; font-weight: 600; letter-spacing: 0.2px; }
 .reader-body { margin-top: 0; }
 .reader-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 28px; }
 .reader-props {
@@ -143,8 +143,8 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
   border-top: 1px solid var(--line);
 }
 .reader-props div { display: grid; gap: 2px; min-width: 0; }
-.reader-props dt { color: var(--faint); font-size: 11.5px; font-weight: 600; }
-.reader-props dd { color: var(--muted); font-size: 13px; }
+.reader-props dt { color: var(--faint); font-size: 0.71875rem; font-weight: 600; }
+.reader-props dd { color: var(--muted); font-size: 0.8125rem; }
 
 .relation-list, .link-list { display: grid; gap: 2px; }
 .relation-list button {
@@ -152,13 +152,13 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
   background: transparent; color: var(--text); text-align: left; transition: background-color 120ms var(--ease);
 }
 .relation-list button:hover { background: var(--wash); }
-.relation-kind { color: var(--faint); font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.relation-kind { color: var(--faint); font-size: 0.75rem; font-weight: 600; flex-shrink: 0; }
 .relation-title { flex: 1; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .link-list { gap: 8px; }
 /* 이어지는 기록: 앞 기록 / 다음 기록 groups reuse the relation rows. */
 .continuation-group + .continuation-group { margin-top: 12px; }
-.continuation-label { margin: 0 0 2px 8px; color: var(--faint); font-size: 11.5px; line-height: 1.3; font-weight: 600; letter-spacing: 0.2px; }
-.continuation-missing { padding: 6px 8px; color: var(--faint); font-size: 13px; }
+.continuation-label { margin: 0 0 2px 8px; color: var(--faint); font-size: 0.71875rem; line-height: 1.3; font-weight: 600; letter-spacing: 0.2px; }
+.continuation-missing { padding: 6px 8px; color: var(--faint); font-size: 0.8125rem; }
 .continuation-id, .prose a.record-ref { font-family: var(--mono); font-size: 0.88em; font-variant-numeric: tabular-nums; }
 /* An in-app record reference: accent like other links, dotted until hovered so it reads as internal. */
 .prose a.record-ref { text-decoration-style: dotted; overflow-wrap: anywhere; }
@@ -173,8 +173,8 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .link-card:hover { background: var(--wash); }
 .link-card > svg { color: var(--accent); }
 .link-card-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.link-card-host { color: var(--faint); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
-.link-card-name { color: var(--ink); font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-card-host { color: var(--faint); font-size: 0.75rem; font-weight: 600; overflow-wrap: anywhere; }
+.link-card-name { color: var(--ink); font-size: 0.875rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inline-add { margin-top: 6px; margin-left: -8px; padding: 0 8px; color: var(--muted); }
 .reader-tags .inline-add { margin: 0; }
 /* With no tags before it, 태그 추가 lines its icon up with 링크 추가. */
@@ -182,18 +182,18 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .inline-add-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 8px; margin-top: 8px; min-width: 0; }
 .inline-add-field { display: block; min-width: 0; }
 .inline-add-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
-.inline-add-form .field-error { grid-column: 1 / -1; color: var(--danger); font-size: 12.5px; }
+.inline-add-form .field-error { grid-column: 1 / -1; color: var(--danger); font-size: 0.78125rem; }
 .inline-add-form .input[aria-invalid="true"] { border-color: var(--danger); }
 .inline-tag-add { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 100%; }
-.inline-tag-add .input { width: min(200px, 100%); min-height: 28px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; }
+.inline-tag-add .input { width: min(200px, 100%); min-height: 28px; padding: 3px 10px; border-radius: 999px; font-size: 0.78125rem; }
 
 /* Reading measure and spacing (WCAG 1.4.8): lines of at most 40 Korean characters, a paragraph gap well over the space
    between lines, and list items apart like short paragraphs. */
-.prose { max-width: 40em; color: var(--text); font-size: 16px; line-height: 1.75; overflow-wrap: break-word; }
-.prose.compact { font-size: 15px; line-height: 1.65; }
+.prose { max-width: 40em; color: var(--text); font-size: 1rem; line-height: 1.75; overflow-wrap: break-word; }
+.prose.compact { font-size: 0.9375rem; line-height: 1.65; }
 .prose > * + * { margin-top: 1.25em; }
-.prose h3 { margin-top: 32px; color: var(--ink); font-size: 19px; line-height: 1.4; font-weight: 700; letter-spacing: -0.2px; }
-.prose h4 { margin-top: 26px; color: var(--ink); font-size: 17px; line-height: 1.45; font-weight: 700; }
+.prose h3 { margin-top: 32px; color: var(--ink); font-size: 1.1875rem; line-height: 1.4; font-weight: 700; letter-spacing: -0.2px; }
+.prose h4 { margin-top: 26px; color: var(--ink); font-size: 1.0625rem; line-height: 1.45; font-weight: 700; }
 .prose > :first-child { margin-top: 0; }
 .prose strong { color: var(--ink); font-weight: 700; }
 .prose a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; overflow-wrap: anywhere; }
@@ -208,24 +208,24 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .prose blockquote { padding: 2px 0 2px 16px; box-shadow: inset 3px 0 0 var(--line-strong); color: var(--muted); }
 .prose code { padding: 1px 5px; border-radius: 5px; background: var(--raised); border: 1px solid var(--line); font-family: var(--mono); font-size: 0.88em; overflow-wrap: anywhere; }
 .prose pre { padding: 14px 16px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); overflow-x: auto; line-height: 1.6; }
-.prose pre code { padding: 0; border: 0; background: none; font-size: 13px; overflow-wrap: normal; white-space: pre; }
+.prose pre code { padding: 0; border: 0; background: none; font-size: 0.8125rem; overflow-wrap: normal; white-space: pre; }
 .prose hr { height: 1px; border: 0; background: var(--line); margin: 28px 0; }
 .table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
-.prose table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.55; }
+.prose table { width: 100%; border-collapse: collapse; font-size: 0.875rem; line-height: 1.55; }
 .prose th, .prose td { padding: 8px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; min-width: 88px; }
 .prose th { background: var(--raised); color: var(--ink); font-weight: 600; }
 .prose tr:last-child td { border-bottom: 0; }
 
 @media (max-width: 767px) {
   .reader-inner { padding: 20px 20px 40px; }
-  .reader-title { font-size: 21px; }
+  .reader-title { font-size: 1.3125rem; }
   .reader-actions { top: calc(var(--appbar) + var(--safe-top)); margin: 14px -20px 0; padding: 8px 20px; }
   .reader-actions .btn, .reader-corner-button, .reader-top .reader-meta { min-height: 44px; }
   .reader-corner-button { width: 44px; }
   .reader-actions .icon-toggle { width: 44px; }
   /* 다시 봤어요 keeps its name through aria-label; its visible text shrinks to nothing so only the icon shows. */
   .reader-actions .revisit-button { width: 44px; padding: 0; justify-content: center; gap: 0; font-size: 0; }
-  .menu-item { min-height: 44px; font-size: 15px; }
+  .menu-item { min-height: 44px; font-size: 0.9375rem; }
   .reader-actions .menu-wrap > .menu-button { width: 44px; min-height: 44px; }
   .relation-list button { min-height: 44px; }
   .link-card { min-height: 56px; }
@@ -247,35 +247,37 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
   .reader-actions .edit-label { display: none; }
   .reader-actions .edit-button { width: 44px; padding: 0; justify-content: center; }
   .reader-actions .menu-wrap { margin-left: auto; }
+  /* 7일 뒤 다시 보기 stays in the ⋯ menu only at this width, where the bar has no room for a sixth button. */
+  .reader-actions .snooze-button { display: none; }
   /* Six 44px buttons cannot share 280px: the disabled 확인함 steps aside; the 확인함 tag above still says it. */
   .reader-actions.has-revisit .is-confirmed { display: none; }
   .menu { left: auto; right: 0; }
-  .prose { font-size: 16px; }
+  .prose { font-size: 1rem; }
 }
 
 /* 진행 기록: agent reports and the owner's comments on a task or project, then the owner's comment box. */
 .timeline-list, .timeline-replies { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .timeline-item { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .timeline-item.from-owner { background: var(--raised); }
-.timeline-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12.5px; }
+.timeline-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 0.78125rem; }
 .timeline-author { color: var(--ink); font-weight: 650; }
-.timeline-body { margin-top: 6px; font-size: 15px; }
-.timeline-handled { margin-top: 8px; color: var(--faint); font-size: 12.5px; }
+.timeline-body { margin-top: 6px; font-size: 0.9375rem; }
+.timeline-handled { margin-top: 8px; color: var(--faint); font-size: 0.78125rem; }
 .timeline-handled.seen { color: var(--muted); }
 .timeline-handled.done { color: var(--ok); }
 .timeline-replies { margin-top: 10px; padding-left: 12px; box-shadow: inset 2px 0 0 var(--line-strong); }
 .timeline-replies .timeline-item { background: var(--surface); }
-.timeline-empty { color: var(--muted); font-size: 13.5px; }
+.timeline-empty { color: var(--muted); font-size: 0.84375rem; }
 .comment-form { display: grid; gap: 8px; margin-top: 14px; }
 .comment-form textarea {
   width: 100%; min-height: calc(3 * 1.6em + 18px); max-height: 40vh; padding: 8px 12px; border: 1px solid var(--line-strong);
-  border-radius: var(--r); background: var(--surface); color: var(--text); font: inherit; font-size: 15px; line-height: 1.6;
+  border-radius: var(--r); background: var(--surface); color: var(--text); font: inherit; font-size: 0.9375rem; line-height: 1.6;
   resize: none; field-sizing: content;
 }
 .comment-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .comment-form .btn { justify-self: end; gap: 6px; }
 @media (max-width: 767px) {
-  .comment-form textarea { font-size: 16px; }
+  .comment-form textarea { font-size: 1rem; }
   .comment-form .btn { justify-self: stretch; min-height: 44px; }
 }
 
@@ -288,7 +290,7 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .reader-pane { scroll-padding-top: 64px; }
 .reader-document { display: block; width: calc(100% + 64px); margin: 20px -32px 0; border: 0; border-top: 1px solid var(--line); background: transparent; color-scheme: normal; }
 .reader-lead.is-brief { gap: 8px; padding: 12px 16px; }
-.reader-lead.is-brief .prose { font-size: 14.5px; line-height: 1.6; }
+.reader-lead.is-brief .prose { font-size: 0.90625rem; line-height: 1.6; }
 .reader-fullscreen-body.has-document { max-width: 960px; }
 .reader-fullscreen-body .reader-document { width: calc(100% + 64px); margin: 20px -32px 0; }
 @media (max-width: 767px) {
@@ -303,7 +305,10 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 .reader-fullscreen-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px;
   padding: max(10px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left));
   background: var(--surface); border-bottom: 1px solid var(--line); }
-.reader-fullscreen-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 15px; font-weight: 700; }
+.reader-fullscreen-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 0.9375rem; font-weight: 700; }
 .reader-fullscreen-close { flex: none; }
-.reader-fullscreen-body { width: 100%; max-width: 76ch; margin: 0 auto; padding: 8px 32px calc(56px + env(safe-area-inset-bottom)); }
+.reader-fullscreen-body { width: 100%; max-width: calc(42rem + 64px); margin: 0 auto; padding: 8px 32px calc(56px + env(safe-area-inset-bottom)); }
 @media (max-width: 767px) { .reader-fullscreen-body { padding: 4px 16px calc(40px + env(safe-area-inset-bottom)); } }
+/* The digest's section bar sticks under the full-screen head (its height set by FullscreenReader), not under the app bar. */
+.reader-fullscreen .digest-bar { top: var(--reader-fullscreen-head, 0px); }
+@media (max-width: 767px) { .reader-fullscreen .digest-bar { margin-inline: -16px; } }

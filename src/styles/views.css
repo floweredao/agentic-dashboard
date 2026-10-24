@@ -5,25 +5,25 @@
 .today-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 4px; }
 .today-heading h2 { color: var(--faint); font-size: var(--text-label); font-weight: 600; letter-spacing: 0.2px; }
 .today-links { display: inline-flex; align-items: center; gap: 12px; }
-.today-more { display: inline-flex; align-items: center; gap: 2px; min-height: 32px; color: var(--muted); font-size: 12.5px; font-weight: 500; }
+.today-more { display: inline-flex; align-items: center; gap: 2px; min-height: 32px; color: var(--muted); font-size: 0.78125rem; font-weight: 500; }
 .today-card { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
 .today-card > li:last-child > .row, .today-card > li:last-child > .digest-row { border-bottom: 0; }
-.today-empty { padding: 12px 4px; color: var(--faint); font-size: 13.5px; }
+.today-empty { padding: 12px 4px; color: var(--faint); font-size: 0.84375rem; }
 .today-listen { display: grid; gap: 10px; padding: 12px 14px; }
 .today-listen-title { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 32px; color: var(--ink); }
 .today-listen-title svg { flex: none; color: var(--muted); }
-.today-listen-title strong { overflow: hidden; font-size: 14.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.today-listen-title strong { overflow: hidden; font-size: 0.90625rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .today-progress { position: relative; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .today-progress span { position: absolute; inset: 0; background: var(--ink); transform-origin: left center; }
 .today-listen-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.today-listen-time { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.today-listen-time { color: var(--muted); font-size: 0.78125rem; font-variant-numeric: tabular-nums; }
 .today-listen .listen-play { width: 36px; height: 36px; }
 
 /* Library: a continued record's earlier records fold under it behind one quiet toggle. */
 .thread-toggle { padding: 0 12px 4px 14px; }
 .thread-button {
   display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px; border-radius: 999px;
-  background: var(--wash); color: var(--muted); font-size: 12px; font-weight: 500;
+  background: var(--wash); color: var(--muted); font-size: 0.75rem; font-weight: 500;
 }
 .thread-button svg { transition: transform 160ms var(--ease); }
 .thread-button[aria-expanded="true"] svg { transform: rotate(180deg); }
@@ -39,7 +39,7 @@
 .more-list li + li { border-top: 1px solid var(--line); }
 .more-item {
   display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 12px 8px 14px;
-  color: var(--ink); font-size: 15px; font-weight: 500; transition: background-color 120ms var(--ease);
+  color: var(--ink); font-size: 0.9375rem; font-weight: 500; transition: background-color 120ms var(--ease);
 }
 /* Touch screens keep :hover on the last tapped row; only a real pointer gets the wash. */
 @media (hover: hover) { .more-item:hover { background: var(--wash); } }
@@ -47,10 +47,10 @@
 .more-text { flex: 1; display: grid; gap: 1px; min-width: 0; }
 .more-label, .more-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .more-note { color: var(--faint); font-size: var(--text-meta); font-weight: 500; white-space: normal; }
-.more-item .count { color: var(--faint); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.more-item .count { color: var(--faint); font-size: 0.8125rem; font-weight: 500; font-variant-numeric: tabular-nums; }
 .more-chevron { flex-shrink: 0; color: var(--faint); }
 
-.trash-page { display: grid; gap: 12px; width: 100%; max-width: 720px; margin-inline: auto; padding: 24px 16px 32px; }
+.trash-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; width: 100%; max-width: 720px; margin-inline: auto; padding: 24px 16px 32px; }
 .trash-head { display: grid; gap: 8px; padding: 0 16px; }
 .trash-empty, .trash-empty:hover { color: var(--danger); }
 .trash-list { display: grid; }
@@ -59,7 +59,7 @@
 .trash-main { flex: 1; display: grid; gap: 2px; min-width: 0; }
 .trash-title {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--ink); font-size: 14.5px; font-weight: 500; letter-spacing: -0.1px; line-height: 1.4;
+  color: var(--ink); font-size: 0.90625rem; font-weight: 500; letter-spacing: -0.1px; line-height: 1.4;
 }
 .trash-meta { color: var(--faint); font-size: var(--text-meta); font-weight: 500; line-height: 1.4; }
 .trash-purge-at { white-space: nowrap; }

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -59,14 +60,27 @@ export interface NarrationOptions {
   readonly sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   /** What Settings › Automatic audio starts with until the owner saves a choice; unset values are off and the full document. */
   readonly autoDefaults?: Partial<NarrationAuto>;
+  /** Jobs run at the same time (different records; one record never runs twice at once). Default 1. */
+  readonly concurrency?: number;
 }
 export type Narrator = ReturnType<typeof createNarration>;
+/** A running job: its controller, and the wait, step start and script try the owner sees. */
+interface Job { readonly id: string; readonly controller: AbortController; waitUntil: number | null; stepAt: number | null; scriptTry: number | null }
 /** The owner stopped this job; nothing more is paid for and the row was already settled by `cancel`. */
 class Cancelled extends Error {
   constructor() { super("cancelled"); this.name = "Cancelled"; }
 }
 
 /** Records are heard as whole documents: every section of the body is covered, not only its key points. */
+const EAR = [
+  "Explain the material as someone who knows it to a first-time listener without a screen. Fidelity to facts, conditions, comparisons, uncertainty and counterarguments comes before speaking style. Never turn correlation into cause or a description into advice.",
+  "Give each sentence one central idea, with its conditions and exceptions in the same or next sentence. Split long modifiers; never add words or fragments just to hit a length target.",
+  "Name each new topic in its first sentence. When numbering, say what is being counted. Recap only when needed to understand what follows; never invent a combined condition or conclusion.",
+  "Keep numbers and dates exact, with their units, signs, ranges, comparison groups and measurement conditions. Do not add conversions, size judgments or causal explanations.",
+  "Explain an unfamiliar term using only the role or explanation in the source, then name it. Do not invent definitions or metaphors, or paraphrase product and setting names.",
+  "Put brief attribution before research findings. Do not merge studies or read citation and grade tags aloud; retain the stated design and limitations without inferring them from a grade.",
+  "Ask a short question only when useful, then answer from the source. Preserve every source question and answer. Avoid filler, references to the screen and invented closing lessons.",
+].join("\n");
 const FULL_BODY = "Cover every section and paragraph of [Body]; leave none out. You may smooth, split or join sentences for listening, but never cut facts, figures or arguments. Even when the document is long, do not summarize it. But when the same fact, figure or definition appears in several places (summary, body, conclusion), tell it in full only the first time; later, add only what is new and point back briefly ('the seven parts mentioned earlier'). For check questions or Q&A, tell each question and each answer; never replace them with a mention that questions are included. Close only after the last paragraph has been covered.";
 /** A record part's script shorter than this share of its source was summarized, not told, so it is written once more with COVERAGE_AGAIN. */
 const COVERAGE_MIN = 0.6;
@@ -75,10 +89,10 @@ const COVERAGE_AGAIN = "The previous script covered only some of this part of [B
 const SUMMARY_ONLY = "This script covers the summary only. No [Body] is given, so ignore the rules above about covering the body. Tell the [Record]'s title, conclusion, summary and next actions in full, add nothing else, and keep it short enough to hear in a minute or two.";
 /**
  * Saved scripts are reused only when written under the current script rules; raise it when the rules change what a script covers.
- * 3: digests read like a newscast anchor (main stories first in full, no headline list, no commentary); records open with an
- * overview and say each repeated fact once.
+ * 7: digests finish each section in source order; records explain the full document for listening without
+ * closing source lists or work logs. Existing audio is not made stale by these script-writing rules.
  */
-const SCRIPT_RULES = 3;
+const SCRIPT_RULES = 7;
 /** The note added to the system prompt for one part of a body scripted in parts (`scriptParts`). */
 export function partNote(index: number, total: number, podcast: boolean, max: number) {
   const where = `This script is part ${index + 1} of ${total} of a long [Body] written in order, and the listener hears all parts back to back.`;
@@ -94,7 +108,8 @@ export const SCRIPT_SYSTEM = [
   "Write in the language the record is written in.",
   "Order: a two- or three-sentence overview (what the record is about and in what order you will cover it), then the conclusion and summary, then the body from start to end in order, then the next actions. Do not introduce again in the body what the overview already said; go straight to the content.",
   FULL_BODY,
-  "Turn lists into flowing sentences. Do not read tables, code, or source and reference lists.",
+  EAR,
+  "Turn lists into flowing sentences. Do not read tables, code, source lists or work logs (verification methods, tool details, kept or deleted files).",
   "Never read URLs, email addresses, file paths, code, footnote numbers or Markdown symbols. When a source matters, say only the site or document name.",
   "Say symbols in words (an arrow becomes 'to', % becomes 'percent'). Keep product and proper names as written.",
   "Use a calm, consistent declarative style. No greetings, no meta phrases such as 'This record', no interpretation or guesses beyond the source.",
@@ -123,18 +138,18 @@ const FACTS_AGAIN_ITEMS = 8;
 
 /**
  * A digest (articles and messages) read like a broadcast newscast anchor (BBC Academy running order, NHK broadcast-language
- * rules): a one-sentence opening, the two or three main stories told in full and never again, each section's remaining items
- * in the given order with related ones side by side, every new story marked aloud, nothing the summaries do not say, and a
+ * rules): a one-sentence opening, each section read in full in source order, every new story marked aloud,
+ * nothing the summaries do not say, and a
  * one-sentence sign-off.
  */
 export const DIGEST_SCRIPT_SYSTEM = [
   "You turn a digest of articles and messages into a script read by one newscast anchor. Use only what is in [Record] and [Body].",
   "Write in the language the digest is written in.",
   "Open with one sentence that names just the date and slot from the [Record] title (for example 'This is the morning news for October 17.'). No counts, greetings, program introduction or list of headlines.",
-  "Right after it, start with a line such as 'First, the top stories.' and tell the two or three most important articles of the whole [Body] in full, most important first. Each article section's first item is its top story. Never read or introduce again later an article told here.",
-  "Then cover every remaining item, in the order of the [Body] sections (## titles). Open each section as a corner in one sentence (for example 'Now, world news.'). Within a section keep the [Body] order (most important first), but when related items (the same country, conflict or market) are apart, read them side by side. Never drop or merge items.",
+  "After the opening, finish each [Body] section in order before starting the next. Do not create a cross-section top-stories segment. Each section starts with its first and most important item.",
+  "Open each section in one sentence using its title, then tell all its items in their stored order, most important first. Do not move stories between sections, skip them, merge them or repeat them.",
   "Make the boundary between stories audible. Start each new story with a handover such as 'Next.' or 'Turning to …', then say in the first sentence who did what. When a story continues the one before, say how ('On the same subject', 'Also in the Middle East'); when it does not, use 'Meanwhile' or 'In other news'. Never join unrelated stories with 'Also' or 'Related to this'. Never use the same handover twice in a row.",
-  "For an article, tell every sentence of its summary: every fact it states (who, what, figures, dates and times, names, quotes, background, what comes next), never only the first and last sentence. You may smooth, split or join sentences for listening, but never drop a fact. Name the source only when it matters. For a message, say who sent it, what it is about and what to do, in one or two sentences.",
+  "For an article, tell every sentence of its summary: every fact it states (who, what, figures, dates and times, names, quotes, background, what comes next), never only the first and last sentence. You may smooth, split or join sentences for listening, but never drop a fact. Name the source only when it matters. For a message, say who sent it, what it is about, and only the facts in its summary, in one or two sentences. Do not add action lines, recommendations or tasks.",
   "Add no commentary, mood, outlook or judgment the summaries do not state (for example 'The mood there remains tense.' or 'Investors are clearly nervous.'). End each item with its summary's last fact.",
   "Write numbers as in the source, in digits with their units (for example '5 sites', 'September 28', '5:40 pm'); how they are read is handled separately.",
   "Close with one sentence only (for example 'That was the morning news for October 17.'). No wrap-up, next actions or greetings. Never say the same thing twice.",
@@ -146,12 +161,13 @@ export const DIGEST_SCRIPT_SYSTEM = [
 ].join("\n");
 export const SPEECH_STYLE = "Calm, clear narration at a normal pace, with natural pauses between sentences";
 export const PODCAST_SCRIPT_SYSTEM = [
+  EAR,
   "You turn a saved research or work record into a podcast script in which two hosts talk it through. Use only what is in [Record] and [Body].",
   "Write in the language the record is written in.",
   "Host A has read the record and explains it; host B speaks for the listener, asks, points things out and sums up along the way. They take turns.",
   "Order: B briefly opens with what the episode is about and in what order it will go, then the conclusion and summary, then the body from start to end in order, then the next actions, and B closes in one sentence.",
   FULL_BODY,
-  "Turn lists into flowing speech. Do not read tables, code, or source and reference lists.",
+  "Turn lists into flowing speech. Do not read tables, code, source lists or work logs (verification methods, tool details, kept or deleted files).",
   "Never read URLs, email addresses, file paths, code, footnote numbers or Markdown symbols. When a source matters, say only the site or document name.",
   "Say symbols in words (an arrow becomes 'to', % becomes 'percent'). Keep product and proper names as written.",
   "Use a natural, polite conversational tone. No host names, show greetings, promotion to listeners, or interpretation, guesses or jokes beyond the source.",
@@ -209,6 +225,12 @@ function sourceHash(record: DashboardRecord) {
   const content = [record.title, text(record, "summary"), text(record, "conclusion"), record.body.trim(), text(record, "nextActions")];
   return new Bun.CryptoHasher("sha256").update(JSON.stringify(content)).digest("hex");
 }
+/** Whether an edit changed what a record's audio reads (title, summary, conclusion, body, next actions). */
+export function narrationSourceChanged(before: DashboardRecord, after: DashboardRecord) {
+  return sourceHash(before) !== sourceHash(after);
+}
+/** Automatic requests refused for a reason that passes (the day's limit, a full queue, no key), tried again by `retryDeferred`. */
+const RETRY_LATER = new Set(["narration_daily_limit", "narration_queue_full", "narration_unavailable"]);
 /** A body's parts and where the current one sits, when a record is scripted part by part. */
 interface BodyPart { readonly text: string; readonly index: number; readonly total: number }
 /** `part` null: only the record's summary fields (Summary only), no body. */
@@ -218,8 +240,6 @@ function scriptPrompt(record: DashboardRecord, label?: string, part?: BodyPart |
     const value = text(record, key);
     if (value) lines.push(`${label}: ${value}`);
   }
-  const sources = record.links.map(link => link.label.trim()).filter(Boolean);
-  if (sources.length) lines.push(`Sources: ${sources.join(", ")}`);
   if (part === null) return lines.join("\n");
   const heading = part && part.total > 1 ? `[Body ${part.index + 1}/${part.total}]` : "[Body]";
   lines.push("", heading, (part ? part.text : record.body.trim().slice(0, NARRATION_LIMITS.sourceChars)) || "(none)");
@@ -227,6 +247,9 @@ function scriptPrompt(record: DashboardRecord, label?: string, part?: BodyPart |
 }
 
 const SOURCE_HEADING = /^(?:\d+[.)]\s*)?(?:sources?|references?|bibliography|links?|출처|참고(?:\s*(?:자료|문헌|링크))?|참고한\s*자료|원문(?:\s*링크)?|링크)\s*:?$/i;
+const WORK_LOG_HEADING = /^(?:\d+[.)]\s*)?(?:verification|validation|research methods?(?:\s*(?:and|&)\s*limitations?)?|limitations?|what was kept (?:and|or) deleted|evidence (?:grades?|legend)|검증(?:\s*(?:방법|과정|내역))?|조사\s*방법(?:\s*(?:[·,]|및|과|와)\s*한계)?|못\s*한\s*것(?:\s*(?:[·,]|및|과|와)\s*한계)?|남긴\s*것\s*(?:[·,]|및|과|와)?\s*지운\s*것|근거\s*(?:강도|등급)(?:\s*표시)?)\s*:?$/i;
+const LANE_TAG = /\s*[(（](?:레인|lanes?)\s[^)）]*[)）]/gi;
+const CITE_TAG = /\s*\[[A-Z]{1,3}\d{0,3}(?:\s*[,·/]\s*[A-Z]{1,3}\d{0,3})*\](?!\()/g;
 const LINK_ONLY = /^\s*(?:[-*+]|\d+[.)])?\s*(?:\[[^\]]*\]\([^)]*\)|<?(?:https?:\/\/|www\.)\S+>?)\s*$/i;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 /**
@@ -246,14 +269,15 @@ export function listeningSource(body: string): string {
     if (heading) {
       const level = heading[1]?.length ?? 1;
       if (skipping && level > skipping) continue;
-      skipping = SOURCE_HEADING.test((heading[2] ?? "").replace(/[*_]/g, "").trim()) ? level : 0;
+      const title = (heading[2] ?? "").replace(/[*_]/g, "").trim();
+      skipping = SOURCE_HEADING.test(title) || WORK_LOG_HEADING.test(title) ? level : 0;
       if (skipping) continue;
-    } else if (bold && SOURCE_HEADING.test(bold[1]?.trim() ?? "")) {
+    } else if (bold && (SOURCE_HEADING.test(bold[1]?.trim() ?? "") || WORK_LOG_HEADING.test(bold[1]?.trim() ?? ""))) {
       skipping = skipping || 7;
       continue;
     } else if (skipping) continue;
     if (TABLE_ROW.test(line) || LINK_ONLY.test(line)) continue;
-    kept.push(line);
+    kept.push(line.replace(LANE_TAG, "").replace(CITE_TAG, ""));
   }
   return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -422,22 +446,33 @@ function wav(pcm: Uint8Array) {
   header.write("data", 36); header.writeUInt32LE(pcm.byteLength, 40);
   return Buffer.concat([header, pcm]);
 }
-/** AAC in an M4A container through macOS afconvert; keeps the WAV when afconvert is missing or fails. */
-export const afconvert: Encoder = async (wavPath, signal) => {
-  const out = wavPath.replace(/\.wav$/, ".m4a");
-  try {
-    const child = Bun.spawn(["/usr/bin/afconvert", "-f", "m4af", "-d", "aac", "-b", "64000", wavPath, out],
-      { stdin: "ignore", stdout: "ignore", stderr: "ignore", signal });
-    if (await child.exited === 0 && existsSync(out)) {
-      rmSync(wavPath, { force: true });
-      return { path: out, mime: "audio/mp4" };
+/**
+ * AAC in an M4A container through macOS afconvert when it exists, else ffmpeg from PATH (Linux and other installs), and the WAV is
+ * kept when neither is there or the encode fails.
+ */
+export function audioEncoder(tools: { readonly afconvert?: string; readonly ffmpeg?: string | null } = {}): Encoder {
+  const afconvertPath = tools.afconvert ?? "/usr/bin/afconvert";
+  const ffmpegPath = tools.ffmpeg === undefined ? Bun.which("ffmpeg") : tools.ffmpeg;
+  return async (wavPath, signal) => {
+    const out = wavPath.replace(/\.wav$/, ".m4a");
+    const command = existsSync(afconvertPath) ? [afconvertPath, "-f", "m4af", "-d", "aac", "-b", "64000", wavPath, out]
+      : ffmpegPath ? [ffmpegPath, "-nostdin", "-loglevel", "error", "-y", "-i", wavPath, "-c:a", "aac", "-b:a", "64k", out] : null;
+    if (command) {
+      try {
+        const child = Bun.spawn(command, { stdin: "ignore", stdout: "ignore", stderr: "ignore", signal });
+        if (await child.exited === 0 && existsSync(out)) {
+          rmSync(wavPath, { force: true });
+          return { path: out, mime: "audio/mp4" };
+        }
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+      }
     }
-  } catch (error) {
-    if (!(error instanceof Error)) throw error;
-  }
-  rmSync(out, { force: true });
-  return { path: wavPath, mime: "audio/wav" };
-};
+    rmSync(out, { force: true });
+    return { path: wavPath, mime: "audio/wav" };
+  };
+}
+export const afconvert: Encoder = audioEncoder();
 
 export function createNarration(options: NarrationOptions) {
   const { store, provider, audioDir } = options;
@@ -446,6 +481,7 @@ export function createNarration(options: NarrationOptions) {
   const timeZone = options.timeZone ?? "UTC";
   const timeoutMs = options.timeoutMs ?? 180_000;
   const retryDelayMs = options.retryDelayMs ?? 2000;
+  const concurrency = Math.max(1, options.concurrency ?? 1);
   const sleep = options.sleep ?? abortableSleep;
   store.db.exec(`CREATE TABLE IF NOT EXISTS narrations(record_id TEXT PRIMARY KEY, status TEXT NOT NULL, job_hash TEXT NOT NULL,
       requested_by TEXT NOT NULL, requested_at TEXT NOT NULL, updated_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, error TEXT,
@@ -466,9 +502,13 @@ export function createNarration(options: NarrationOptions) {
     updated_at TEXT NOT NULL)`);
   store.db.exec(`CREATE TABLE IF NOT EXISTS narration_settings(id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL CHECK(json_valid(data)),
     updated_at TEXT NOT NULL)`);
-  let chain: Promise<void> = Promise.resolve();
-  /** The job being run, with its own controller: a cancel aborts only this run, never a later request for the same id. */
-  let running: { id: string; controller: AbortController; waitUntil: number | null; stepAt: number | null; scriptTry: number | null } | null = null;
+  /** Record ids waiting for a slot, in request order. */
+  const pending: string[] = [];
+  /** The jobs being run by record id, each with its own controller: a cancel aborts only that run, never a later request for the same id. */
+  const running = new Map<string, Job>();
+  /** The job whose step is running now, so its waits, steps and script tries show on its own record. */
+  const jobContext = new AsyncLocalStorage<Job>();
+  const tasks = new Set<Promise<void>>();
   const now = () => new Date(store.now()).toISOString();
   const available = async () => provider !== null && await provider.available();
 
@@ -489,12 +529,12 @@ export function createNarration(options: NarrationOptions) {
       bytes: current.audio_bytes ?? 0, durationMs: current.audio_ms ?? 0, model: current.audio_model ?? "", voice: current.audio_voice ?? "",
       style: current.audio_style, createdAt: current.audio_at,
     } : null;
-    const live = running?.id === current.record_id && ACTIVE.has(current.status) ? running : null;
+    const live = ACTIVE.has(current.status) ? running.get(current.record_id) ?? null : null;
     const stepAt = live?.stepAt != null ? new Date(live.stepAt).toISOString() : current.status === "queued" ? current.requested_at : null;
     return {
       recordId: current.record_id, status: current.status, style: current.style, stale: audio !== null && current.audio_hash !== sourceHash(record), stepAt,
       progress: current.progress_total === null ? null : { done: current.progress_done ?? 0, total: current.progress_total },
-      waitUntil: running?.id === current.record_id && running.waitUntil !== null && ACTIVE.has(current.status) ? new Date(running.waitUntil).toISOString() : null,
+      waitUntil: live && live.waitUntil !== null ? new Date(live.waitUntil).toISOString() : null,
       ...(live && current.status === "scripting" && live.scriptTry !== null && live.scriptTry > 1 ? { scriptTry: live.scriptTry } : {}),
       attempts: current.attempts, error: current.error, requestedBy: current.requested_by, requestedAt: current.requested_at,
       updatedAt: current.updated_at, audio, script: current.script,
@@ -550,7 +590,7 @@ export function createNarration(options: NarrationOptions) {
 
   /** A wait of the running job (a retry or the pace after a rate limit), shown to the owner while it lasts. */
   async function pause(ms: number, cancel: AbortSignal) {
-    const job = running;
+    const job = jobContext.getStore();
     if (job) job.waitUntil = store.now() + ms;
     try { await sleep(ms, cancel); }
     finally { if (job) job.waitUntil = null; }
@@ -604,7 +644,8 @@ export function createNarration(options: NarrationOptions) {
       const open = routes.filter(route => !closed.has(route));
       if (open.length === 0) break;
       const route = open[attempt % open.length];
-      if (running) running.scriptTry = attempt + 1;
+      const job = jobContext.getStore();
+      if (job) job.scriptTry = attempt + 1;
       if (attempt > 0) stepStarted();
       try {
         return await call(signal => source.script(system, prompt, signal, route, onText), cancel);
@@ -623,7 +664,8 @@ export function createNarration(options: NarrationOptions) {
   }
   /** The running job's next step (the script, a chunk, saving) starts now; the owner sees how long it has run. */
   function stepStarted() {
-    if (running) running.stepAt = store.now();
+    const job = jobContext.getStore();
+    if (job) job.stepAt = store.now();
   }
   /** Stores the script characters received, at most once per 2% of the expected length so a fast stream costs few writes. */
   function scriptProgress(id: string, expected: number, cancel: AbortSignal) {
@@ -640,9 +682,10 @@ export function createNarration(options: NarrationOptions) {
     const job = row(id);
     if (!job || job.status !== "queued") return;
     const controller = new AbortController();
-    running = { id, controller, waitUntil: null, stepAt: null, scriptTry: null };
-    try { await work(id, job, controller.signal); }
-    finally { if (running?.controller === controller) running = null; }
+    const live: Job = { id, controller, waitUntil: null, stepAt: null, scriptTry: null };
+    running.set(id, live);
+    try { await jobContext.run(live, () => work(id, job, controller.signal)); }
+    finally { if (running.get(id) === live) running.delete(id); }
   }
 
   async function work(id: string, job: Row, cancel: AbortSignal) {
@@ -764,10 +807,33 @@ export function createNarration(options: NarrationOptions) {
   }
 
   function enqueue(id: string) {
-    chain = chain.then(() => run(id)).catch((error: unknown) => {
+    if (!pending.includes(id)) pending.push(id);
+    pump();
+  }
+  /** Starts waiting jobs while slots are free, oldest first, passing over a record whose earlier job is still running. */
+  function pump() {
+    while (running.size < concurrency) {
+      const index = pending.findIndex(id => !running.has(id));
+      if (index < 0) return;
+      const [id] = pending.splice(index, 1);
+      if (id === undefined) return;
+      // `run` marks the job running before its first await, so the next pass already sees this slot taken.
+      const task: Promise<void> = settle(id).finally(() => { tasks.delete(task); pump(); });
+      tasks.add(task);
+    }
+  }
+  function settle(id: string) {
+    return run(id).catch((error: unknown) => {
       // Neither record content nor provider output reaches the log; only the failure class does.
       console.error(`narration ${id} failed: ${error instanceof Error ? error.name : "unknown"}`);
     }).then(() => {
+      // An automatic record job that failed with attempts left is tried again later, like a refused request.
+      const asked = autoJobs.get(id);
+      if (asked) {
+        autoJobs.delete(id);
+        const done = row(id);
+        if (done?.status === "failed" && done.error !== "cancelled" && done.attempts < NARRATION_LIMITS.attempts) deferred.set(id, asked);
+      }
       // Content that changed while this job ran is made next, after it.
       const next = followUps.get(id);
       if (next) { followUps.delete(id); auto(next.principal, id, next.style); }
@@ -791,6 +857,9 @@ export function createNarration(options: NarrationOptions) {
   }
   /** Requests that changed content while its job ran, made again once that job ends. */
   const followUps = new Map<string, { principal: Principal; style: NarrationStyle }>();
+  /** Automatic record jobs in the queue, and automatic record requests to try again (`retryDeferred`); digests are not retried. */
+  const autoJobs = new Map<string, { principal: Principal; style: NarrationStyle }>();
+  const deferred = new Map<string, { principal: Principal; style: NarrationStyle }>();
   const autoRuns = new Set<Promise<void>>();
   /**
    * Asks for `id`'s audio on its own (a digest part on arrival, a new record), in the background and through the same queue,
@@ -806,16 +875,30 @@ export function createNarration(options: NarrationOptions) {
       if (source && !record.body.trim()) return;
       try {
         const result = await request(principal, record, false, style);
+        if (result.started && !source) autoJobs.set(id, { principal, style });
         const current = row(id);
         if (!result.started && current && ACTIVE.has(current.status) && current.job_hash !== sourceHash(record)) followUps.set(id, { principal, style });
       } catch (error) {
         if (!(error instanceof ApiError)) throw error;
+        if (!source && RETRY_LATER.has(error.code)) deferred.set(id, { principal, style });
         console.log(`narration auto ${id} skipped: ${error.code}`);
       }
     })().catch((error: unknown) => { console.error(`narration auto ${id} failed: ${error instanceof Error ? error.name : "unknown"}`); });
     autoRuns.add(work);
     void work.finally(() => autoRuns.delete(work));
   }
+  /**
+   * Asks again for the records whose automatic audio was refused for a passing reason or failed with attempts left, unless the
+   * owner has since turned new-record audio off. Held in memory: a restart forgets them.
+   */
+  function retryDeferred() {
+    const entries = [...deferred];
+    deferred.clear();
+    if (autoSettings().records === "off") return;
+    for (const [id, { principal, style }] of entries) auto(principal, id, style);
+  }
+  /** The style this record's audio was last asked for, if any. */
+  const styleOf = (id: string): NarrationStyle | null => row(id)?.style ?? null;
   /** Jobs cut off by a restart start again; they were already counted against the daily limit. */
   function resume() {
     for (const value of store.db.query("SELECT record_id FROM narrations WHERE status IN ('queued','scripting','speaking') ORDER BY requested_at").all()) {
@@ -850,7 +933,7 @@ export function createNarration(options: NarrationOptions) {
       set(record.id, current.audio_file
         ? { status: "ready", style: current.audio_style, error: null, progress_done: null, progress_total: null }
         : { status: "failed", error: "cancelled", progress_done: null, progress_total: null });
-      if (running?.id === record.id) running.controller.abort();
+      running.get(record.id)?.controller.abort();
     }
     return await state(record);
   }
@@ -867,8 +950,7 @@ export function createNarration(options: NarrationOptions) {
     return { path: join(audioDir, current.audio_file), mime: current.audio_mime };
   }
   async function idle() {
-    let current: Promise<void>;
-    do { await Promise.all([...autoRuns]); current = chain; await current; } while (current !== chain || autoRuns.size > 0);
+    do { await Promise.all([...autoRuns, ...tasks]); } while (tasks.size > 0 || autoRuns.size > 0 || pending.length > 0);
   }
   /** The provider's voices and the built-in speaking styles; what narration uses until the owner saves a choice. */
   function voiceDefaults(): NarrationVoices {
@@ -935,5 +1017,5 @@ export function createNarration(options: NarrationOptions) {
     previews.set(voice, made);
     return made;
   }
-  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, voices: voiceView, saveVoices, preview, autoSettings, saveAuto, auto };
+  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, voices: voiceView, saveVoices, preview, autoSettings, saveAuto, auto, retryDeferred, styleOf };
 }
