@@ -95,7 +95,7 @@ export function registerRecords(app: Hono, runtime: TenantRuntime, publicOnly: b
       if (principal.source === "manual") (await auth.csrf(c.req.raw, origins));
       const input = createSchema.parse(await json(c.req.raw, RECORD_LIMITS.requestBytes));
       const result = (await store.create(principal, input.requestId, RecordInputSchema.parse(input.record), input.record));
-      if (!result.replayed) (await newRecord(result.record, aiFillSources.has(principal.source)));
+      if (!result.replayed) (await newRecord(result.record, aiFillSources.has(principal.source), !c.req.header("origin")));
       if (!result.replayed && principal.source !== "manual") (await notifyReview(null, result.record));
       return c.json(result, result.replayed ? 200 : 201);
     });

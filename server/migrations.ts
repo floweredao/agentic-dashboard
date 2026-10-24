@@ -56,6 +56,13 @@ export const MIGRATIONS: readonly Migration[] = [
     await sql.run("CREATE TABLE operator_alerts(kind TEXT NOT NULL, day TEXT NOT NULL, PRIMARY KEY(kind,day))");
     await sql.run("CREATE TABLE maintenance_runs(day TEXT PRIMARY KEY, leased_until INTEGER NOT NULL DEFAULT 0, leased_by TEXT, completed_at TEXT)");
   } },
+  { version: 5, async up(sql) {
+    await sql.run("ALTER TABLE users ADD COLUMN time_zone TEXT");
+    await sql.run("ALTER TABLE users ADD COLUMN agent_saved_at TEXT");
+    await sql.run("ALTER TABLE users ADD COLUMN agent_saved_record TEXT");
+    await sql.run(`ALTER TABLE users ADD COLUMN features TEXT NOT NULL DEFAULT '{"digest":true,"push":true}'`);
+    await sql.run("ALTER TABLE sessions ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
+  } },
 ];
 
 /** Each version and its ledger entry commit together, including upgrades interrupted mid-copy. */

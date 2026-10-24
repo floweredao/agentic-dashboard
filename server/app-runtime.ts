@@ -22,7 +22,9 @@ import type { AppOptions } from "./app";
 import { geminiProvider } from "./gemini";
 import { geminiRunner, AI_FILL_MODEL } from "./gemini-runner";
 import { originSettings } from "./origin";
-export async function createRuntime(options: AppOptions, store: Store) {
+import type { AudioStore } from "./audio-store";
+import { createAccount } from "./account";
+export async function createRuntime(options: AppOptions & { readonly audioStore: AudioStore }, store: Store) {
 
   const now = store.now;
 
@@ -35,6 +37,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
   const invites = new Invites(store, agents);
 
   const timeZone = options.timeZone ?? systemTimeZone();
+  const account = createAccount(store, { timeZone, audio: options.audioStore });
 
   const pushOn = options.pushEnabled !== false;
 
@@ -123,7 +126,8 @@ export async function createRuntime(options: AppOptions, store: Store) {
     await narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
   };
 
-  const newRecord = async (record: DashboardRecord, fill: boolean) => {
+  const newRecord = async (record: DashboardRecord, fill: boolean, agentProof = false) => {
+    if (agentProof && record.source !== "manual") await account.verifiedSave(record.id);
     if (fill && aiFill) { afterFill.add(record.id); await aiFill.enqueue(record.id); }
     else (await autoNarrate(record));
   };
@@ -209,7 +213,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
     allowedHosts: options.hosted ? hosts : new Set([...hosts, `127.0.0.1:${options.mcpPort ?? 4313}`, `localhost:${options.mcpPort ?? 4313}`]),
     resolveAgent: request => auth.authenticate(request, true),
-    onCreate: async id => { const record = await store.get(id); await newRecord(record, aiFillSources.has(record.source)); }, onUpdate: editedRecord });
+    onCreate: async id => { const record = await store.get(id); await newRecord(record, aiFillSources.has(record.source), true); }, onUpdate: editedRecord });
 
   await store.purgeTrash();
 
@@ -218,7 +222,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
   await narration.resume();
 
   await aiFill?.sweep();
-  return { options, store, now, demo, auth, agents, invites, timeZone, pushOn, digestOn, aiFillSources, comments, digests, aiFill, narration, port, privateOrigin, privateUrl, shares, push, pushRoute, digestRoute, trustedOwner, newRecord, editedRecord, notifyEntry, notifyReview, serveAudio, origins, hosts, limit, cookie, capturing, owner, narratable, cancelBody, rate, mcpFetch,
+  return { options, store, now, demo, auth, account, agents, invites, timeZone, pushOn, digestOn, aiFillSources, comments, digests, aiFill, narration, port, privateOrigin, privateUrl, shares, push, pushRoute, digestRoute, trustedOwner, newRecord, editedRecord, notifyEntry, notifyReview, serveAudio, origins, hosts, limit, cookie, capturing, owner, narratable, cancelBody, rate, mcpFetch,
     async purgeTrash() { const purged = await store.purgeTrash(); await narration.prune(); return purged; },
     async close() { await aiFill?.idle(); await narration.idle(); await push.idle(); }
   };

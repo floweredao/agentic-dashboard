@@ -87,7 +87,7 @@ export interface AppOptions {
   /** Test seams for Web Push; `subject` defaults to the private origin when it is HTTPS. */
   readonly push?: Partial<Omit<PushOptions, "vapidPath">>;
 }
-async function createTenantApp(options: AppOptions, store: Store) {
+async function createTenantApp(options: AppOptions & { readonly audioStore: AudioStore }, store: Store) {
   const runtime = await createRuntime(options, store);
   const privateApp = createRouter(runtime, false);
   const publicApp = createRouter(runtime, true);
@@ -112,7 +112,7 @@ export async function createApp(options: AppOptions = {}) {
   const initialAuth = new Auth(initialStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
   if (!options.hosted) await initialAuth.initialize(options.credentialsPath ?? "data/credentials.json");
   if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
-  const effective: AppOptions = { ...options,
+  const effective: AppOptions & { readonly audioStore: AudioStore } = { ...options,
     ...(options.tasks && options.privateOrigin ? { jobs: options.jobs ?? cloudJobs({
       ...options.tasks, origin: options.privateOrigin, client: cloud,
     }) } : {}),
@@ -149,7 +149,7 @@ export async function createApp(options: AppOptions = {}) {
     return scope[surface](request);
   };
   const limitAuth = authLimiter(now, trustedAuthProxy);
-  const maintenance = createMaintenance({ sql, tenant, audio: effective.audioStore ?? localAudioStore("data/audio"), cloud, now,
+  const maintenance = createMaintenance({ sql, tenant, audio: effective.audioStore, cloud, now,
     includeLocal: options.hosted === undefined,
     directory: join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "backups"),
     ...(options.audioBucket ? { bucket: options.audioBucket } : {}), ...(alerts ? { alerts } : {}),

@@ -36,6 +36,13 @@ export const CASES: Readonly<Record<string, IsolationCase>> = {
   "POST /auth/logout": { kind: "private", status: 204 },
   "ALL /mcp": { kind: "private", status: 405, agent: true },
   "POST /internal/tasks/:kind": { kind: "private", status: 401, body: () => ({}) },
+  "GET /api/v1/account": { kind: "private", status: 200, check: value => {
+    expect(z.object({ account: z.object({ id: z.string() }) }).parse(value).account.id).toBe("b");
+  } },
+  "PATCH /api/v1/account/preferences": { kind: "private", status: 200, body: () => ({ locale: "ko", timeZone: "Asia/Seoul" }) },
+  "POST /api/v1/onboarding/done": { kind: "private", status: 409, body: () => ({}) },
+  "GET /api/v1/account/export": { kind: "private", status: 200 },
+  "DELETE /api/v1/account": { kind: "private", status: 404, body: () => ({ confirm: "b@example.test" }) },
   "POST /api/v1/agents": { kind: "private", status: 201, body: () => ({ name: "new-agent" }) },
   "POST /api/v1/agents/invites": { kind: "private", status: 201, body: () => ({ name: "new-computer" }) },
   "POST /api/v1/agents/:name/rotate": { kind: "private", status: 404 },
