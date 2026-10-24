@@ -5,6 +5,7 @@ import { Agents } from "../server/agents";
 import { ensureCredentials, readCredentials } from "../server/auth";
 import { Invites } from "../server/invites";
 import { Store } from "../server/store";
+import { validTimeZone } from "../shared/time";
 import { CliError } from "./client";
 import { detectLang, t } from "./i18n";
 import { APP_ROOT, ensureHome, formatEnv, INSTALL_URL, type Paths, readEnvFile, writePrivate } from "./paths";
@@ -160,7 +161,9 @@ export function invite(p: Paths, name: string | undefined) {
   const store = new Store(settings.database, Date.now);
   try {
     const issued = new Invites(store, new Agents(store)).create(name);
-    const time = new Date(issued.expiresAt).toLocaleTimeString(detectLang() === "ko" ? "ko-KR" : "en-US", { hour: "2-digit", minute: "2-digit" });
+    const zone = process.env["TIME_ZONE"]?.trim();
+    const time = new Date(issued.expiresAt).toLocaleTimeString(detectLang() === "ko" ? "ko-KR" : "en-US",
+      { hour: "2-digit", minute: "2-digit", ...(zone && validTimeZone(zone) ? { timeZone: zone } : {}) });
     const args = `connect --url ${settings.url} --code ${issued.code}`;
     say(t("inviteIssued", { agent: issued.agent, code: issued.code, time }));
     say();
