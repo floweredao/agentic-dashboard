@@ -31,7 +31,15 @@ The dashboard supports local owner-key installations and optional Google-authent
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`): a separate loopback listener on `AGENT_PORT` that accepts only record saves and reads with an agent key. Expose this one instead of the main listener when agents live outside your network and you don't want the owner UI reachable there.
 - **MCP** (`ENABLE_MCP` in local mode): the optional loopback listener requires an agent bearer on every request. Google mode serves the same bearer protocol on the main `/mcp` endpoint instead. A configured `MCP_AGENT` never substitutes for request credentials.
 
+## Authentication request limits
+
+Direct listeners and local mode ignore `X-Forwarded-For` and rate-limit by socket address. Google mode trusts the rightmost forwarded hop only when `AUTH_TRUST_PROXY=on`, or when Cloud Run supplies `K_SERVICE` and no override is set. Enable this only behind an exclusive trusted ingress that appends the real client IP; caller-supplied leading hops never select a bucket. `AUTH_TRUST_PROXY=off` disables forwarded trust.
+
+The bounded rate map evicts oldest entries so a key flood cannot lock every fresh client out. A separate atomic database bound keeps at most 20 pending OAuth transactions per opaque client tag, including across minute windows or rate-map eviction. No raw client IP is stored in the transaction row or signed cookie.
+
 ## Trusted proxy sign-in
+
+Google mode does not expose the legacy `local` account. Old local share links, invitations, sessions and agent tokens are not accepted on the hosted origin, even when the database was upgraded from self-hosting. Anonymous hosted requests have no persisted account and cannot fall through to local authority. Local data remains available only in explicit local mode; moving it into a hosted account requires a separate operator decision.
 
 `TRUSTED_USER_HEADER` with `OWNER_LOGIN` lets an identity-aware proxy sign the owner in. Use it only when the proxy removes that header from incoming client requests and is the only path to the listener. Otherwise a client can forge the header and become the owner.
 

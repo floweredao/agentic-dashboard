@@ -10,35 +10,44 @@ const invite = z.object({ user_id: z.string(), agent: z.string() });
 
 /** Global capability resolution only. Tenant content queries belong to TenantDb, never here. */
 export class ControlDb {
-  constructor(private readonly sql: Sql) {}
+  constructor(private readonly sql: Sql, private readonly includeLocal = true) {}
+  private permitted<T extends { readonly user_id: string }>(value: T) {
+    return this.includeLocal || value.user_id !== "local" ? value : null;
+  }
   async principalByToken(hash: string) {
     const row = await this.sql.get("SELECT user_id,id,source FROM principals WHERE token_hash=? AND revoked_at IS NULL", [hash]);
-    return row ? principal.parse(row) : null;
+    return row ? this.permitted(principal.parse(row)) : null;
   }
   async sessionByHash(hash: string, now: number) {
     const row = await this.sql.get("SELECT user_id,hash,principal_id,csrf,expires_at FROM sessions WHERE hash=? AND expires_at>?", [hash, now]);
-    return row ? session.parse(row) : null;
+    return row ? this.permitted(session.parse(row)) : null;
   }
   async shareByCode(code: string) {
     const row = await this.sql.get("SELECT user_id,code,record_id,created_at FROM shares WHERE code=?", [code]);
-    return row ? share.parse(row) : null;
+    return row ? this.permitted(share.parse(row)) : null;
   }
   async inviteByHash(hash: string, now: number) {
     const row = await this.sql.get("SELECT user_id,agent FROM agent_invites WHERE code_hash=? AND expires_at>?", [hash, now]);
-    return row ? invite.parse(row) : null;
+    return row ? this.permitted(invite.parse(row)) : null;
   }
   async narrationCount(since: string) {
     return z.object({ count: z.number() }).parse(await this.sql.get("SELECT count(*) AS count FROM narration_runs WHERE started_at>=?", [since])).count;
   }
   async users() {
-    return (await this.sql.all("SELECT id FROM users WHERE deleted_at IS NULL ORDER BY id")).map(row => z.object({ id: z.string() }).parse(row).id);
+    return (await this.sql.all("SELECT id FROM users WHERE deleted_at IS NULL ORDER BY id"))
+      .map(row => z.object({ id: z.string() }).parse(row).id).filter(id => this.includeLocal || id !== "local");
   }
   async createUser(id: string, timestamp: string) {
     await this.sql.run("INSERT INTO users(id,created_at) VALUES(?,?)", [id, timestamp]);
   }
-  async startOAuth(hash: string, expires: number) {
-    await this.sql.run("DELETE FROM oauth_transactions WHERE expires_at<=?", [expires - 600000]);
-    await this.sql.run("INSERT INTO oauth_transactions(tx_hash,expires_at) VALUES(?,?)", [hash, expires]);
+  async startOAuth(hash: string, expires: number, client: string) {
+    await this.sql.tx(async sql => {
+      await sql.run("DELETE FROM oauth_transactions WHERE expires_at<=?", [expires - 600000]);
+      await sql.run(`DELETE FROM oauth_transactions WHERE tx_hash IN (
+        SELECT tx_hash FROM oauth_transactions WHERE tx_hash GLOB ?
+        ORDER BY expires_at DESC, tx_hash DESC LIMIT -1 OFFSET 19)`, [`${client}:*`]);
+      await sql.run("INSERT INTO oauth_transactions(tx_hash,expires_at) VALUES(?,?)", [`${client}:${hash}`, expires]);
+    });
   }
   async consumeOAuth(hash: string, now: number) {
     return Boolean(await this.sql.get("DELETE FROM oauth_transactions WHERE tx_hash=? AND expires_at>? RETURNING tx_hash", [hash, now]));
@@ -47,6 +56,7 @@ export class ControlDb {
     return this.sql.tx(async sql => {
       const row = await sql.get("SELECT id,onboarded_at,deleted_at FROM users WHERE google_sub=?", [input.sub]);
       const existing = row ? z.object({ id: z.string(), onboarded_at: z.string().nullable(), deleted_at: z.string().nullable() }).parse(row) : null;
+      if (existing?.id === "local" && !this.includeLocal) throw new ApiError(403, "local_account_unavailable", "The local account is unavailable in hosted mode.");
       const timestamp = new Date(input.now).toISOString();
       if (existing && !existing.deleted_at) {
         await sql.run("UPDATE users SET email=?,name=?,last_seen_at=? WHERE id=?", [input.email, input.name, timestamp, existing.id]);

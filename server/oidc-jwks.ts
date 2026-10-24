@@ -43,13 +43,15 @@ export function createJwks(url: string, now: () => number) {
     const known = key !== undefined;
     if (pending || (key && now() >= expires) || (!key && now() - forcedAt >= 30000)) {
       if (!key) forcedAt = now();
-      try { await refresh(); }
+      try {
+        await refresh();
+        key = keys.find(item => item.kid === parsed.data.kid);
+      }
       catch (error) {
         if (!(error instanceof Error)) throw error;
         if (!known) throw new ApiError(503, "oidc_unavailable", "Sign-in is temporarily unavailable.");
         // Previously trusted keys remain usable during a provider fetch outage.
       }
-      key = keys.find(item => item.kid === parsed.data.kid) ?? key;
     }
     if (!key) throw invalidOidc();
     const publicKey = await crypto.subtle.importKey("jwk", { kty: key.kty, n: key.n, e: key.e, alg: "RS256", ext: true },

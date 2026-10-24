@@ -12,6 +12,8 @@ Request credentials select a fixed tenant service graph. Background audio queues
 
 ## Principals
 
+In Google mode, unauthenticated requests use a non-persisted public service scope, not the `local` account. The local account is excluded from session, bearer, share, invitation and Google-subject capability resolution, and its service graph is not started. Existing local data and capabilities remain stored but are unavailable on the hosted origin; there is no automatic migration into a Google account. Local mode retains access to them. Hosted-account public shares continue to resolve through their explicit capability.
+
 | Principal | Source value | How it authenticates |
 |---|---|---|
 | Owner | `manual` | Signs in with the owner key from `data/credentials.json` (session cookie plus CSRF token), or through a trusted proxy header |
@@ -21,6 +23,8 @@ Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. A
 
 Browser sessions can also create an agent with `POST /api/v1/agents { name, capture? }`, rotate with `POST /api/v1/agents/:name/rotate`, or revoke with `DELETE /api/v1/agents/:name`. All require CSRF. New keys are `fd_` followed by 32 random bytes in base64url, returned once as `{ agent, key }` on create/rotate; list/get never expose keys or hashes. `capture` defaults false and is shown in agent metadata. Revocation and rotation invalidate the previous key immediately. Agent names are attribution within an account, not separate privacy boundaries.
 
+Rotation only updates an active principal. A revoked agent returns `409 agent_revoked` and cannot be reactivated or registered again under the same name; create a token under a new name. The update itself requires `revoked_at IS NULL`, so concurrent revocation cannot be undone by rotation. The UI disables rotation for revoked agents and translates the refusal.
+
 `POST /api/v1/agents/invites { name }` lets a CSRF-authenticated owner issue the existing 15-minute single-use installer invitation for a new name. The connection screen supplies the hosted URL and invitation to the connect-only installer, explains macOS/Linux prerequisites and untested Windows support, and offers a curl fallback. Its test-save action writes through the bearer and reads the returned id through the owner API before showing success.
 
 A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
@@ -29,11 +33,15 @@ Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSi
 
 ### Optional hosted Google authentication
 
+After a successful JWKS refresh, only keys in the returned set are accepted. A previously cached key may be reused only when the refresh fails.
+
 With Google authentication configured, local owner-key and trusted-header bootstrap are disabled. `GET /auth/google/start` uses PKCE S256, random state/nonce and a signed ten-minute `oidc_tx` cookie. A global `oauth_transactions` row is atomically consumed before code exchange; the same callback cannot create another session. ID tokens require RS256 using the configured provider JWKS, allowed issuer, audience/authorized party, transaction-bound nonce and issue time, expiry and a boolean verified email. Token-selected key URLs are rejected. Production endpoints are Google's; local mock endpoints are an application-construction test seam, not a public request option.
 
 Users are identified only by Google subject, never merged by email. A deleted identity receives a new tenant id. Signups are limited to `MAX_USERS` active hosted accounts (default 50; the local owner is excluded); existing users can still sign in. Capacity returns a 403 explanation with a self-hosting alternative.
 
-Hosted sessions last 30 days and rotate the browser's previous session and CSRF token at sign-in. Cookies are HttpOnly, SameSite=Lax, Path=/, with no Domain: `__Host-session` for configured HTTPS origins, `session` for local HTTP testing. Forwarded headers never decide Secure. The hosted origin is the only allowed browser origin/host. `POST /auth/logout` requires session and CSRF and removes that session. `/auth/*` is limited to 20 requests per IP per minute (first forwarded hop, otherwise socket address). New users return to `/welcome`, existing onboarded users to `/`.
+Hosted sessions last 30 days and rotate the browser's previous session and CSRF token at sign-in. Cookies are HttpOnly, SameSite=Lax, Path=/, with no Domain: `__Host-session` for configured HTTPS origins, `session` for local HTTP testing. Forwarded headers never decide Secure. The hosted origin is the only allowed browser origin/host. `POST /auth/logout` requires session and CSRF and removes that session. `/auth/*` is limited to 20 requests per IP per minute (last forwarded hop only on trusted hosted ingress; socket address otherwise). New users return to `/welcome`, existing onboarded users to `/`.
+
+`AUTH_TRUST_PROXY=on` enables last-hop forwarding trust only in Google mode. Cloud Run (`K_SERVICE` present) enables it by default; `AUTH_TRUST_PROXY=off` overrides that default. Local mode always uses the socket address. A full 10,000-key rate map evicts its oldest entry instead of denying every new client. Each client key can hold at most 20 live OAuth transactions across rate windows; insertion and eviction are atomic. Transaction keys use an HMAC client tag in the existing `tx_hash` field, not a stored IP address. The signed cookie retains that tag so a callback can survive a network change.
 
 The browser config adds `authMode: "local" | "google"`. Google mode displays Google-only access and limited signup capacity before authorization; local owner login and demo behavior remain available when Google is not configured.
 
@@ -246,9 +254,10 @@ In Google mode capture instead requires an agent bearer with `capture` enabled a
 ## Other listeners
 
 Address buckets allow 20 sign-in/session requests and 60 public share requests per
-minute, independently. The first forwarded IP hop (the hosting proxy's client
-address), or the direct socket address, selects the bucket. Deploy behind a proxy
-that sanitizes forwarded identity headers. Authenticated API session buckets are
+minute, independently. They all reuse `authClientKey`: with a trusted proxy,
+only the last, proxy-appended valid IP selects the bucket; direct listeners ignore
+forwarded values and use the socket address. Full maps evict the oldest bucket
+instead of rejecting new clients. Authenticated API session buckets are
 keyed by account; one account cannot exhaust another account's allowance. Every
 rate rejection includes `Retry-After`. The request body caps are unchanged.
 
@@ -266,6 +275,8 @@ leave queued state recoverable on restart; Tasks retries failures. Push delivery
 awaited before the task response.
 
 `POST /internal/tasks/maintenance` uses the same service-account authentication.
+Its durable lease is global operator state, not a local-account row; hosted
+maintenance skips the legacy local account using the same boundary as requests.
 It purges expired trash for all accounts, prunes narration runs older than 31 days,
 retries deleted accounts' audio-prefix removal, and writes a gzip NDJSON snapshot of
 every table as `backups/YYYY-MM-DD.ndjson.gz` in `AUDIO_BUCKET` (or the local
@@ -292,6 +303,8 @@ private; they differ from the credential-free user export.
 Google mode exposes bearer MCP at `/mcp` on the main listener and never starts the separate agent/MCP listeners. `scripts/mcp-forward.ts --listen 127.0.0.1:4313 --to https://example.test/mcp --token-file <private-path>` supports a loopback tunnel. It adds its configured bearer, strips browser credentials, rejects browser Origins and foreign Hosts, and never logs tokens. This transport proof does not claim a hosted ChatGPT OAuth connector.
 
 ## Personal Gemini credentials
+
+Model-list validation sends the credential in `x-goog-api-key`, never in the request URL.
 
 Google mode exposes owner-session `GET /api/v1/settings/gemini` returning `{ configured, last4 }`, CSRF-protected `PUT { key }`, and `DELETE` (204). PUT accepts a key only after Google's model-list endpoint returns 200; rejected keys produce `422 gemini_key_invalid` without replacing storage. Acceptance is not a speech-model or quota guarantee. The API never returns the full key.
 

@@ -28,6 +28,7 @@ const secretJson = z.string().transform((value, context): unknown => {
 const envSchema = z.object({
   HOST: text.default("127.0.0.1"), PORT: z.coerce.number().int().min(0).max(65535).default(4310),
   AUTH_MODE: z.enum(["local", "google"]).default("local"), APP_SECRETS: secretJson.prefault("{}"),
+  AUTH_TRUST_PROXY: onOff.optional(), K_SERVICE: text.optional(),
   APP_ORIGIN: z.url().refine(value => {
     const url = new URL(value);
     return ["http:", "https:"].includes(url.protocol) && url.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
@@ -83,6 +84,7 @@ export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
     return { google, sessionSigningKey, maxUsers: config.MAX_USERS };
   })();
   return { ...config, NARRATION_DAILY_LIMIT: env.NARRATION_DAILY_LIMIT === undefined && hosted ? 10 : config.NARRATION_DAILY_LIMIT, hosted,
+    trustedAuthProxy: config.AUTH_MODE === "google" && (config.AUTH_TRUST_PROXY ?? config.K_SERVICE !== undefined),
     bindings: originSettings(config.APP_ORIGIN ?? `http://127.0.0.1:${config.PORT}`, config.AUTH_MODE === "local", config.PORT),
     databaseToken: config.DATABASE_AUTH_TOKEN ?? config.APP_SECRETS.turso?.authToken,
     agentIngress: config.AUTH_MODE === "local" && config.ENABLE_AGENT_INGRESS,

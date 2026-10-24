@@ -54,6 +54,7 @@ export const MIGRATIONS: readonly Migration[] = [
     await sql.run(`CREATE TABLE IF NOT EXISTS background_jobs(user_id TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL,
       revision TEXT NOT NULL, leased_until INTEGER, leased_by TEXT, completed_at TEXT, PRIMARY KEY(user_id,kind,id,revision))`);
     await sql.run("CREATE TABLE operator_alerts(kind TEXT NOT NULL, day TEXT NOT NULL, PRIMARY KEY(kind,day))");
+    await sql.run("CREATE TABLE maintenance_runs(day TEXT PRIMARY KEY, leased_until INTEGER NOT NULL DEFAULT 0, leased_by TEXT, completed_at TEXT)");
   } },
 ];
 

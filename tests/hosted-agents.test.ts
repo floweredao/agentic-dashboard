@@ -53,6 +53,21 @@ test("token management requires CSRF and cannot touch another account", async ()
   } finally { await f.close(); }
 });
 
+test("rotating a revoked agent fails without restoring its authority", async () => {
+  const f = await hostedFixture();
+  try {
+    // Given a revoked agent credential.
+    await f.call("/api/v1/agents", { method: "POST", body: { name: "retired" } });
+    await f.call("/api/v1/agents/retired", { method: "DELETE" });
+    // When the owner attempts to rotate that revoked principal.
+    const response = await f.call("/api/v1/agents/retired/rotate", { method: "POST" });
+    // Then revocation remains permanent and the response explains the refusal.
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: "agent_revoked" } });
+    expect((await f.a.scope.agents.get("retired"))?.revokedAt).toBeString();
+  } finally { await f.close(); }
+});
+
 test("hosted capture requires an enabled agent bearer and preserves tenant attribution", async () => {
   const f = await hostedFixture();
   try {

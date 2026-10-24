@@ -38,3 +38,12 @@ test("local configuration preserves optional owner login and environment-key nar
   expect(parsed.bindings.origins.has("http://127.0.0.1:4311")).toBe(true);
   expect(appOptions(parsed).geminiKeys).toBeUndefined();
 });
+
+test("forwarded auth addresses are trusted only for hosted proxy ingress", () => {
+  const hosted = { AUTH_MODE: "google", APP_ORIGIN: "https://example.test", APP_SECRETS: secrets(), PUSH: "off" };
+  expect(appOptions(parseConfig({ ...hosted, K_SERVICE: "fixture-service" })).trustedAuthProxy).toBe(true);
+  expect(appOptions(parseConfig({ ...hosted, AUTH_TRUST_PROXY: "on" })).trustedAuthProxy).toBe(true);
+  expect(appOptions(parseConfig(hosted)).trustedAuthProxy).toBe(false);
+  expect(appOptions(parseConfig({ ...hosted, K_SERVICE: "fixture-service", AUTH_TRUST_PROXY: "off" })).trustedAuthProxy).toBe(false);
+  expect(appOptions(parseConfig({ AUTH_MODE: "local", K_SERVICE: "fixture-service", AUTH_TRUST_PROXY: "on" })).trustedAuthProxy).toBe(false);
+});

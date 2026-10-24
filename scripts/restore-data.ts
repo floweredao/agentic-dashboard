@@ -5,7 +5,7 @@ import type { Sql } from "../server/db";
 import { DataRowSchema, tenantData } from "../server/tenant-data";
 import { ApiError } from "../server/errors";
 
-const allowed = new Set(["users", "schema_migrations", "oauth_transactions", "operator_alerts", ...Object.keys(TABLES)]);
+const allowed = new Set(["users", "schema_migrations", "oauth_transactions", "operator_alerts", "maintenance_runs", ...Object.keys(TABLES)]);
 const backupRow = z.object({ table: z.string().refine(value => allowed.has(value)), row: DataRowSchema }).strict();
 const identifier = (name: string) => `"${name.replaceAll('"', '""')}"`;
 

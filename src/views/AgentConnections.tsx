@@ -30,7 +30,7 @@ export function AgentConnections() {
         <div><h3>{agent.name}</h3><p className="setting-note">{agent.revokedAt ? t.revoked : agent.lastUsedAt ? t.active : t.ready}</p>
           {agent.name === "chatgpt" && <p className="setting-note">{t.chatgpt}</p>}</div>
         <div className="account-actions">
-          <button className="btn btn-outline" disabled={pending} onClick={() => {
+          <button className="btn btn-outline" disabled={pending || agent.revokedAt !== null} onClick={() => {
             if (window.confirm(t.rotateConfirm)) void run(async () => { setIssued(await rotateAgent(agent.name, d.csrfToken)); setOpen(true); await reload(); });
           }}>{t.rotate}</button>
           <button className="btn btn-quiet" disabled={pending || agent.revokedAt !== null} onClick={() => {

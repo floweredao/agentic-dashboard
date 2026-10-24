@@ -3,7 +3,7 @@ import { join } from "node:path";
 import ky from "ky";
 import { z } from "zod";
 import type { Sql } from "./db";
-import { TenantDb } from "./tenant-db";
+import type { TenantDb } from "./tenant-db";
 import type { AudioStore } from "./audio-store";
 import type { CloudClient } from "./cloud-client";
 import type { createAlerts } from "./alerts";
@@ -20,6 +20,7 @@ export function createMaintenance(options: {
   readonly sql: Sql; readonly tenant: (id: string) => Promise<Scope>; readonly audio: AudioStore;
   readonly bucket?: string; readonly directory: string; readonly cloud: CloudClient; readonly now: () => number;
   readonly alerts?: ReturnType<typeof createAlerts>; readonly turso?: OperationsOptions["turso"];
+  readonly includeLocal?: boolean;
 }) {
   const { sql, now, cloud } = options;
   async function usage() {
@@ -43,14 +44,13 @@ export function createMaintenance(options: {
   }
   return async () => {
     const day = new Date(now()).toISOString().slice(0, 10);
-    const local = new TenantDb(sql, "local");
     const lease = crypto.randomUUID();
-    await local.run("INSERT OR IGNORE INTO background_jobs(kind,id,revision,leased_until,user_id) VALUES('maintenance',?,'1',0,?)", [day]);
-    const claim = await local.run(`UPDATE background_jobs SET leased_until=?,leased_by=?
-      WHERE kind='maintenance' AND id=? AND completed_at IS NULL AND leased_until<=? AND user_id=?`, [now() + 900000, lease, day, now()]);
+    await sql.run("INSERT OR IGNORE INTO maintenance_runs(day) VALUES(?)", [day]);
+    const claim = await sql.run(`UPDATE maintenance_runs SET leased_until=?,leased_by=?
+      WHERE day=? AND completed_at IS NULL AND leased_until<=?`, [now() + 900000, lease, day, now()]);
     if (!claim.changes) return;
     try {
-      for (const { id } of ids.parse(await sql.all("SELECT id FROM users WHERE deleted_at IS NULL"))) {
+      for (const { id } of ids.parse(await sql.all("SELECT id FROM users WHERE deleted_at IS NULL AND (? OR id<>'local')", [Number(options.includeLocal ?? true)]))) {
         const scope = await options.tenant(id);
         await scope.purgeTrash();
         await scope.retryDeferred?.();
@@ -84,12 +84,13 @@ export function createMaintenance(options: {
         }
       }
       await usage();
-      await local.run("UPDATE background_jobs SET completed_at=? WHERE kind='maintenance' AND id=? AND leased_by=? AND user_id=?", [new Date(now()).toISOString(), day, lease]);
+      await sql.run("UPDATE maintenance_runs SET completed_at=? WHERE day=? AND leased_by=?", [new Date(now()).toISOString(), day, lease]);
+      await sql.run("DELETE FROM maintenance_runs WHERE completed_at<?", [new Date(now() - 14 * 86400000).toISOString()]);
     } catch (error) {
       await options.alerts?.send("maintenance");
       throw error;
     } finally {
-      await local.run("UPDATE background_jobs SET leased_until=0 WHERE kind='maintenance' AND id=? AND leased_by=? AND user_id=?", [day, lease]);
+      await sql.run("UPDATE maintenance_runs SET leased_until=0 WHERE day=? AND leased_by=?", [day, lease]);
     }
   };
 }
