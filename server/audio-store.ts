@@ -49,7 +49,7 @@ export function signingRequest(input: { readonly bucket: string; readonly object
   const query = Object.entries({
     "X-Goog-Algorithm": "GOOG4-RSA-SHA256", "X-Goog-Credential": `${input.account}/${scope}`,
     "X-Goog-Date": date, "X-Goog-Expires": "600", "X-Goog-SignedHeaders": "host",
-  }).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${encode(key)}=${encode(value)}`).join("&");
+  }).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => `${encode(key)}=${encode(value)}`).join("&");
   const canonical = `GET\n${path}\n${query}\nhost:storage.googleapis.com\n\nhost\nUNSIGNED-PAYLOAD`;
   return { canonical, stringToSign: `GOOG4-RSA-SHA256\n${date}\n${scope}\n${sha256(canonical)}`, path, query };
 }
