@@ -13,6 +13,7 @@ import { viewTitles } from "../router";
 import { AutoSettings } from "./AutoSettings";
 import { VoiceSettings } from "./VoiceSettings";
 import { useRateLimited } from "../rate-limit";
+import { GeminiSettings } from "./GeminiSettings";
 
 type KindText = { readonly label: string; readonly note: string };
 const text = strings({
@@ -149,6 +150,7 @@ export function SettingsPane() {
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{viewTitles.settings}</h1></div>
     </header>
+    {config.authMode === "google" && <GeminiSettings />}
     <LanguageChoice />
     {config.features.narration && <VoiceSettings />}
     {config.features.narration && <AutoSettings />}

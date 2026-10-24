@@ -63,7 +63,7 @@ test("MCP save_record surfaces title_too_long as a tool error", async () => {
   const body = { jsonrpc: "2.0", id: 1, method: "tools/call",
     params: { name: "save_record", arguments: { requestId: "chat-title-1", record: { kind: "research", title: longTitle } } } };
   const response = await f.app.mcpFetch(new Request("http://127.0.0.1:4313/mcp", { method: "POST", body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18" } }));
+    headers: { ...bearer("chatgpt"), "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18" } }));
   expect(response.status).toBe(200);
   const result = z.object({ result: z.object({ isError: z.boolean(), content: z.array(z.object({ text: z.string() })) }) }).parse(await response.json()).result;
   expect(result.isError).toBe(true);

@@ -74,12 +74,13 @@ test("rolls back both data and version when a migration is interrupted", async (
   const sql = await openSql(":memory:");
   try {
     await migrate(sql);
-    const interrupted = { version: 3, async up(tx: typeof sql) {
+    const version = Math.max(...MIGRATIONS.map(migration => migration.version)) + 1;
+    const interrupted = { version, async up(tx: typeof sql) {
       await tx.run("INSERT INTO users(id,created_at) VALUES('discard',?)", [timestamp]);
       throw new Error("interrupted");
     } };
     await expect(migrate(sql, [...MIGRATIONS, interrupted])).rejects.toThrow("interrupted");
     expect(await sql.get("SELECT id FROM users WHERE id='discard'")).toBeNull();
-    expect(await sql.get("SELECT version FROM schema_migrations WHERE version=3")).toBeNull();
+    expect(await sql.get("SELECT version FROM schema_migrations WHERE version=?", [version])).toBeNull();
   } finally { await sql.close(); }
 });

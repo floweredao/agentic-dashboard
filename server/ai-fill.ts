@@ -8,6 +8,7 @@ import type { Store } from "./store";
 
 export type ModelRunner = (system: string, prompt: string, signal: AbortSignal) => Promise<string>;
 export interface AiFillOptions {
+  readonly available?: () => Promise<boolean>;
   readonly store: Store;
   readonly run: ModelRunner;
   /** Agents whose records are filled too (for example a chat assistant that saves untitled conversations); captured links always are. */
@@ -105,6 +106,7 @@ export function createAiFill(options: AiFillOptions) {
   }
 
   async function fill(id: string) {
+    if (options.available && !await options.available()) return;
     const before = (await store.get(id));
     if (!weakness(before, sources)) return;
     const attempts = (stateSchema.safeParse(before.fields.aiFill).data?.attempts ?? 0) + 1;

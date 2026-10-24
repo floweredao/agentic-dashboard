@@ -10,8 +10,22 @@ import { migrate } from "./migrations";
 import { ControlDb } from "./control-db";
 import { createRuntime } from "./app-runtime";
 import { createRouter } from "./app-router";
+import { createOidc, type HostedAuth } from "./oidc";
+import { authLimiter } from "./auth-rate";
+import { ApiError } from "./errors";
+import { createGeminiKeys, type GeminiKeys, type GeminiKeyOptions } from "./gemini-settings";
+import type { KeySource } from "./gemini";
+import type { NarrationProvider } from "./narration";
 
 export interface AppOptions {
+  readonly hosted?: HostedAuth;
+  readonly geminiKeys?: GeminiKeyOptions;
+  readonly keyStore?: GeminiKeys;
+  readonly personalProvider?: (key: KeySource) => NarrationProvider;
+  readonly narrationEnabled?: boolean;
+  readonly audioBucket?: string;
+  /** Shared protocol cache, initialized by createApp for all tenants. */
+  readonly oidc?: ReturnType<typeof createOidc>;
   readonly databasePath?: string;
   readonly databaseUrl?: string;
   readonly databaseAuthToken?: string;
@@ -73,13 +87,20 @@ export async function createApp(options: AppOptions = {}) {
   await migrate(sql);
   const now = options.now ?? Date.now;
   const localStore = new Store(new TenantDb(sql, "local"), now);
-  const localAuth = new Auth(localStore, options.demo === true);
-  await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
+  const localAuth = new Auth(localStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
+  if (!options.hosted) await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
+  if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
+  const effective: AppOptions = { ...options,
+    ...(options.geminiKeys ? { keyStore: createGeminiKeys(sql, options.geminiKeys) } : {}),
+    ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
+    hosted: options.hosted, origin: options.privateOrigin, control: localAuth.control, now,
+  }) } : {}),
+  };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
   const tenant = (userId: string) => {
     let scope = scopes.get(userId);
     if (!scope) {
-      scope = createTenantApp(options, new Store(new TenantDb(sql, userId), now)).catch((error: unknown) => {
+      scope = createTenantApp(effective, new Store(new TenantDb(sql, userId), now)).catch((error: unknown) => {
         scopes.delete(userId);
         throw error;
       });
@@ -94,8 +115,10 @@ export async function createApp(options: AppOptions = {}) {
     const scope = await tenant(await localAuth.resolveUser(request));
     return scope[surface](request);
   };
+  const limitAuth = authLimiter(now);
   return { ...local, sql, tenant,
-    fetch: (request: Request) => dispatch(request, "fetch"),
+    fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) =>
+      limitAuth(request, server?.requestIP(request)?.address) ?? dispatch(request, "fetch"),
     publicFetch: (request: Request) => dispatch(request, "publicFetch"),
     mcpFetch: (request: Request) => dispatch(request, "mcpFetch"),
     async purgeTrash() { let count = 0; for (const scope of scopes.values()) count += await (await scope).purgeTrash(); return count; },

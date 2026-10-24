@@ -72,6 +72,7 @@ export function createNarration(options: NarrationOptions) {
       if (current.style !== style) (await set(record.id, { style }));
       return false;
     }
+    await options.requireKey?.();
     if (!await available()) throw new ApiError(503, "narration_unavailable", "No TTS key is configured on the dashboard server");
     const owner = principal.source === "manual";
     const attempts = current?.job_hash === hash ? current.attempts : 0;

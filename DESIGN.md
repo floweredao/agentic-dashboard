@@ -71,6 +71,9 @@ Routes are hash based and the URL owns committed state: `#/home` (the first scre
 
 ## Components
 
+- **Hosted sign-in:** reuse the centered gate and system typography, with a single Google action, Google-only/limited-capacity disclosure before authorization, and Privacy/Terms links. Google’s multicolor G is an identity-provider mark, not an application illustration. The provider button follows Google's light-button colors (`#ffffff`, `#1f1f1f`, `#747775`) and 40px minimum height (44px touch target); these are isolated provider-brand exceptions, not new app tokens. Capacity failures use a plain reading page with a self-hosting alternative and no repeat-authorization prompt.
+- **Hosted credential settings:** follow StyleGallery `recipes/saas-settings.md`: semantic sections in a constrained vertical stack; the existing main pane owns desktop scroll and the document owns phone scroll. Agent secrets appear once in a dialog with copy acknowledgement and an actual test-save result; key settings use a password field and report “Key accepted”, never guaranteed audio availability. Chrome, spacing, focus and errors reuse existing primitives.
+
 - **Buttons:** 34px tall, radius 8. Primary is ink fill with on-ink text; ghost and quiet variants for the rest. Pressed opacity .7, disabled .45.
 - **Chips:** 28px, fully rounded, 12px text, count in muted tabular figures; selected is ink fill (`aria-pressed`). Touch targets reach 44px.
 - **Record row:** title on one line, summary clamped to two lines, a meta line with agent, kind and dates. Unread rows get a 6px accent dot and heavier title. The whole row is one link. Rows under Archived, which mix kinds, start with a 28px category tile (radius 8, `--raised`) carrying the tab bar's icon: Library or Tasks; other lists have no tile.

@@ -6,7 +6,7 @@ import type { Comment, DashboardRecord, PushPayload } from "../shared/contracts"
 import { createAiFill } from "./ai-fill";
 import { systemTimeZone } from "../shared/time";
 import { Agents } from "./agents";
-import { Auth, hash, SESSION_COOKIE } from "./auth";
+import { Auth, hash } from "./auth";
 import { Digests } from "./digests";
 import { Invites } from "./invites";
 import { createPush, replyPayload, reviewPayload } from "./push";
@@ -19,13 +19,16 @@ import { createNarration, narrationSourceChanged } from "./narration";
 import { Shares } from "./share";
 import { agentCanRead, Store } from "./store";
 import type { AppOptions } from "./app";
+import { geminiProvider } from "./gemini";
+import { geminiRunner, AI_FILL_MODEL } from "./gemini-runner";
+import { originSettings } from "./origin";
 export async function createRuntime(options: AppOptions, store: Store) {
 
   const now = store.now;
 
   const demo = options.demo === true;
 
-  const auth = new Auth(store, demo);
+  const auth = new Auth(store, demo, options.hosted ? options.privateOrigin : undefined);
 
   const agents = new Agents(store);
 
@@ -37,7 +40,13 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
   const digestOn = options.digestEnabled !== false;
 
-  const aiFillSources = new Set(options.aiFill?.sources ?? []);
+  const keys = options.keyStore;
+  const personalKey = keys ? () => keys.keyFor(store.db.userId) : null;
+  const fillOptions = personalKey ? {
+    run: geminiRunner(personalKey, options.geminiKeys?.model), model: options.geminiKeys?.model ?? AI_FILL_MODEL,
+    sources: options.aiFill?.sources ?? [], available: async () => await personalKey() !== null,
+  } : options.aiFill;
+  const aiFillSources = new Set(fillOptions?.sources ?? []);
 
   const comments = new Comments(store);
 
@@ -48,7 +57,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
   /** New records whose audio waits for their AI title fill, so it reads the filled title and summary. */
   const afterFill = new Set<string>();
 
-  const aiFill = options.aiFill ? createAiFill({ store, ...options.aiFill, onSettled: async id => {
+  const aiFill = fillOptions ? createAiFill({ store, ...fillOptions, onSettled: async id => {
     if (!afterFill.delete(id)) return;
     try { (await autoNarrate((await store.get(id)))); }
     catch (error) { if (!(error instanceof ApiError) || error.status !== 404) throw error; }
@@ -56,6 +65,11 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
 
   const narration = createNarration({ provider: null, ...options.narration, store,
+    ...(personalKey && keys && options.narrationEnabled !== false ? {
+      provider: options.personalProvider ? options.personalProvider(personalKey) : geminiProvider({ key: personalKey }),
+      requireKey: () => keys.require(store.db.userId),
+      autoDefaults: { digests: "off" as const, records: "off" as const },
+    } : {}),
     timeZone,
     audioDir: store.db.userId === "local"
       ? options.narration?.audioDir ?? join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "audio")
@@ -92,7 +106,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
   const trustedOwner = (c: Context, strictHost = false) => {
     const trusted = options.trustedIdentity;
     const host = strictHost ? c.req.header("host") : c.req.header("host") ?? new URL(c.req.url).host;
-    return store.db.userId === "local" && trusted !== undefined && trusted.login !== "" &&
+    return !options.hosted && store.db.userId === "local" && trusted !== undefined && trusted.login !== "" &&
       !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
       host === privateUrl.host && c.req.header(trusted.header) === trusted.login;
   };
@@ -153,22 +167,17 @@ export async function createRuntime(options: AppOptions, store: Store) {
   };
 
   // Loopback origins of the listener and of the Vite dev server (4311), plus the configured APP_ORIGIN.
-  const origins = new Set([
-    `http://127.0.0.1:${port}`, `http://localhost:${port}`, "http://127.0.0.1:4311", "http://localhost:4311", privateOrigin,
-  ]);
+  const { origins, hosts } = originSettings(privateOrigin, !options.hosted, port);
 
-  const hosts = new Set([...origins].map(origin => new URL(origin).host));
+  if (!options.hosted) hosts.add(`127.0.0.1:${options.agentPort ?? 4312}`);
 
-  hosts.add(`127.0.0.1:${options.agentPort ?? 4312}`);
-
-  if (options.publicApiBaseUrl) hosts.add(new URL(options.publicApiBaseUrl).host);
+  if (!options.hosted && options.publicApiBaseUrl) hosts.add(new URL(options.publicApiBaseUrl).host);
 
   const rate = { buckets: new Map<string, number>(), window: Math.floor(now() / 60000) };
 
   const limit = options.rateLimit ?? 300;
 
-  const cookie = (value: string, expiresAt: string, secure: boolean) =>
-    `${SESSION_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Expires=${new Date(expiresAt).toUTCString()}${secure ? "; Secure" : ""}`;
+  const cookie = (value: string, expiresAt: string, secure: boolean) => auth.cookie(value, expiresAt, secure);
       const owner = async (request: Request, mutation: boolean) => {
         if ((await auth.authenticate(request, false)).source !== "manual") throw new ApiError(403, "forbidden", "Owner session required");
         if (mutation) (await auth.csrf(request, origins));
@@ -188,10 +197,11 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
   const mcpDisabled = async () => Response.json({ error: { code: "feature_disabled", message: "MCP needs MCP_AGENT" } }, { status: 503 });
 
-  const mcpFetch = mcpAgent === undefined ? mcpDisabled : createMcpHandler({ store, agent: { id: mcpAgent, source: mcpAgent },
+  const mcpFetch = mcpAgent === undefined && !options.hosted ? mcpDisabled : createMcpHandler({ store,
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
-    resolveAgent: request => request.headers.has("authorization") ? auth.authenticate(request, true) : Promise.resolve({ id: mcpAgent, source: mcpAgent }),
-    onCreate: async id => (await newRecord((await store.get(id)), aiFillSources.has(mcpAgent))), onUpdate: editedRecord });
+    allowedHosts: options.hosted ? hosts : new Set([...hosts, `127.0.0.1:${options.mcpPort ?? 4313}`, `localhost:${options.mcpPort ?? 4313}`]),
+    resolveAgent: request => auth.authenticate(request, true),
+    onCreate: async id => { const record = await store.get(id); await newRecord(record, aiFillSources.has(record.source)); }, onUpdate: editedRecord });
 
   await store.purgeTrash();
 

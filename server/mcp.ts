@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AGENT_RECORD_GUIDE, RecordInputSchema, RecordPatchSchema, type DashboardRecord } from "../shared/contracts";
 import { ApiError } from "./errors";
+import { hash } from "./agents";
 import { json } from "./json-body";
 import { AGENT_READABLE_KINDS, agentCanRead, type Principal, type Store } from "./store";
 
@@ -122,20 +123,19 @@ const SAME_SAVE_WINDOW_MS = 10 * 60000;
 
 export interface McpOptions {
   readonly store: Store;
-  /** Attribution is fixed by the listener: every MCP caller is this registered agent, never the owner. */
-  readonly agent: Principal;
   readonly port: number;
   readonly rateLimit: number;
   readonly now: () => number;
   readonly onCreate?: (id: string) => void | Promise<void>;
   readonly onUpdate?: (before: DashboardRecord, after: DashboardRecord) => void | Promise<void>;
-  readonly resolveAgent?: (request: Request) => Promise<Principal>;
+  readonly resolveAgent: (request: Request) => Promise<Principal>;
+  readonly allowedHosts?: ReadonlySet<string>;
 }
 
-export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate, onUpdate, resolveAgent }: McpOptions) {
-  const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+export function createMcpHandler({ store, port, rateLimit, now, onCreate, onUpdate, resolveAgent, allowedHosts }: McpOptions) {
+  const hosts = allowedHosts ?? new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   let bucketWindow = Math.floor(now() / 60000);
-  let count = 0;
+  const buckets = new Map<string, number>();
 
   async function runTool(name: string, args: Record<string, unknown>, principal: Principal) {
     if (name === "save_record") {
@@ -206,13 +206,22 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate,
     if (url.pathname !== "/mcp") return reply({ error: { code: "not_found", message: "Route not found" } }, 404);
     if (request.method !== "POST") return reply({ error: { code: "method_not_allowed", message: "Use POST" } }, 405, { Allow: "POST" });
     if (request.headers.has("origin")) return reply({ error: { code: "origin", message: "Browser origins are not allowed" } }, 403);
+    let principal: Principal;
+    try { principal = await resolveAgent(request); }
+    catch (error) {
+      if (!(error instanceof ApiError)) throw error;
+      return reply({ error: { code: error.code, message: error.message } }, error.status);
+    }
     const headerVersion = request.headers.get("mcp-protocol-version");
     if (headerVersion !== null && !SUPPORTED_VERSIONS.includes(headerVersion)) {
       return rpcFailure(null, -32600, "Unsupported MCP-Protocol-Version", 400);
     }
     const window = Math.floor(now() / 60000);
-    if (window !== bucketWindow) { bucketWindow = window; count = 0; }
-    if (++count > rateLimit) return reply({ error: { code: "rate_limited", message: "Request limit exceeded" } }, 429, { "Retry-After": "60" });
+    if (window !== bucketWindow) { bucketWindow = window; buckets.clear(); }
+    const key = hash(request.headers.get("authorization") ?? "");
+    const count = (buckets.get(key) ?? 0) + 1;
+    buckets.set(key, count);
+    if (count > rateLimit) return reply({ error: { code: "rate_limited", message: "Request limit exceeded" } }, 429, { "Retry-After": "60" });
 
     let body: unknown;
     try { body = await json(request); }
@@ -234,7 +243,6 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate,
       if (metaVersion !== undefined && (typeof metaVersion !== "string" || !SUPPORTED_VERSIONS.includes(metaVersion))) {
         throw new RpcError(-32022, "Unsupported protocol version", { supported: SUPPORTED_VERSIONS, requested: metaVersion });
       }
-      const principal = resolveAgent ? await resolveAgent(request) : agent;
       const result = (await dispatch(method, params, principal));
       const stateless = metaVersion === STATELESS_VERSION || headerVersion === STATELESS_VERSION || method === "server/discover";
       return reply({ jsonrpc: "2.0", id, result: stateless
