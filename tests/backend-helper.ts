@@ -24,6 +24,7 @@ export async function fixture(rateLimit = 10000, now: () => number = Date.now, e
   const credentialsPath = join(dir, "credentials.json");
   writeFileSync(credentialsPath, JSON.stringify({ owner: tokens.owner }), { mode: 0o600 });
   const options = { databasePath: join(dir, "db.sqlite"), credentialsPath, rateLimit, now, timeZone: "Asia/Seoul", mcpAgent: "chatgpt", ...extra,
+    narration: { provider: null, audioDir: join(dir, "audio"), ...extra.narration },
     ...(extra.aiFill ? { aiFill: { sources: ["chatgpt"], ...extra.aiFill } } : {}) };
   let app = (await createApp(options));
   for (const agent of AGENTS) (await app.agents.add(agent, tokens[agent]));
