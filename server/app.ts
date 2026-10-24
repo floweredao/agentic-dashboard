@@ -20,6 +20,9 @@ import type { NarrationProvider } from "./narration";
 export interface AppOptions {
   readonly hosted?: HostedAuth;
   readonly trustedAuthProxy?: boolean;
+  readonly trustedProxyHops?: number;
+  readonly pendingSignInLimit?: number;
+  readonly authStartLimit?: number;
   readonly geminiKeys?: GeminiKeyOptions;
   readonly keyStore?: GeminiKeys;
   readonly personalProvider?: (key: KeySource) => NarrationProvider;
@@ -87,10 +90,10 @@ export async function createApp(options: AppOptions = {}) {
   const sql = options.sql ?? await openSql(options.databaseUrl ?? options.databasePath ?? "data/dashboard.sqlite", options.databaseAuthToken);
   await migrate(sql);
   const now = options.now ?? Date.now;
-  const trustedAuthProxy = options.hosted !== undefined && options.trustedAuthProxy === true;
+  const trustedAuthProxy = options.hosted !== undefined && options.trustedAuthProxy === true ? options.trustedProxyHops ?? 1 : 0;
   const sockets = new WeakMap<Request, string>();
   const clientKey = (request: Request) => authClientKey(request, sockets.get(request), trustedAuthProxy);
-  const control = new ControlDb(sql, options.hosted === undefined);
+  const control = new ControlDb(sql, options.hosted === undefined, options.pendingSignInLimit);
   // The hosted public service scope has no users row and can never own account data.
   const initialScopeId = options.hosted ? "" : "local";
   const initialStore = new Store(new TenantDb(sql, initialScopeId), now, control);
@@ -100,7 +103,7 @@ export async function createApp(options: AppOptions = {}) {
   const effective: AppOptions = { ...options,
     ...(options.geminiKeys ? { keyStore: createGeminiKeys(sql, options.geminiKeys) } : {}),
     ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
-    hosted: options.hosted, origin: options.privateOrigin, control: initialAuth.control, now, clientKey,
+    hosted: options.hosted, origin: options.privateOrigin, control, now, clientKey,
   }) } : {}),
   };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
@@ -125,7 +128,7 @@ export async function createApp(options: AppOptions = {}) {
     const scope = userId === null ? initial : await tenant(userId);
     return scope[surface](request);
   };
-  const limitAuth = authLimiter(now, trustedAuthProxy);
+  const limitAuth = authLimiter(now, trustedAuthProxy, options.authStartLimit);
   return { ...initial, sql, tenant,
     fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) => {
       const address = server?.requestIP(request)?.address;
