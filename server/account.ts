@@ -23,8 +23,8 @@ const exportReadme = [
 
 export function createAccount(store: Store, defaults: { readonly timeZone: string; readonly audio: AudioStore }) {
   const userId = store.db.userId;
-  async function profile() {
-    const raw = await store.db.sql.get("SELECT id,email,locale,time_zone,onboarded_at,agent_saved_at,agent_saved_record,features FROM users WHERE id=? AND deleted_at IS NULL", [userId]);
+  async function profile(sql = store.db.sql) {
+    const raw = await sql.get("SELECT id,email,locale,time_zone,onboarded_at,agent_saved_at,agent_saved_record,features FROM users WHERE id=? AND deleted_at IS NULL", [userId]);
     if (!raw) throw new ApiError(401, "unauthenticated", "Account is no longer active");
     const user = userRow.parse(raw);
     return AccountSchema.parse({ id: user.id, email: user.email, locale: user.locale ?? "system",
@@ -54,7 +54,7 @@ export function createAccount(store: Store, defaults: { readonly timeZone: strin
     export(signal?: AbortSignal) { return accountExport(store, defaults.audio, exportReadme, signal); },
     async remove(confirm: string, authenticatedAt: number) {
       await store.db.sql.tx(async sql => {
-        const account = await profile();
+        const account = await profile(sql);
         if (userId === "local" || !account.email) throw new ApiError(404, "account_deletion_unavailable", "Use the self-host administrator to remove local data");
         if (confirm !== account.email) throw new ApiError(400, "confirmation_mismatch", "Type your account email exactly");
         if (authenticatedAt <= store.now() - 600000 || authenticatedAt > store.now()) throw new ApiError(403, "reauth_required", "Sign in again to confirm account deletion");
