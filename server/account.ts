@@ -29,6 +29,7 @@ export function createAccount(store: Store, defaults: { readonly timeZone: strin
     const user = userRow.parse(raw);
     return AccountSchema.parse({ id: user.id, email: user.email, locale: user.locale ?? "system",
       timeZone: user.time_zone ?? defaults.timeZone, onboardedAt: user.onboarded_at, agentSaveVerified: user.agent_saved_at !== null,
+      timeZoneSaved: user.time_zone !== null,
       agentSaveRecordId: user.agent_saved_record,
       features: AccountFeaturesSchema.parse(JSON.parse(user.features)) });
   }
@@ -36,9 +37,9 @@ export function createAccount(store: Store, defaults: { readonly timeZone: strin
     profile,
     async preferences(input: AccountPreferences) {
       const current = await profile();
-      await store.db.sql.run("UPDATE users SET locale=?,time_zone=?,features=? WHERE id=? AND deleted_at IS NULL",
-        [input.locale ?? current.locale, input.timeZone ?? current.timeZone, JSON.stringify(input.features ?? current.features), userId]);
-      return { ...current, ...input };
+      await store.db.sql.run("UPDATE users SET locale=?,time_zone=COALESCE(?,time_zone),features=? WHERE id=? AND deleted_at IS NULL",
+        [input.locale ?? current.locale, input.timeZone ?? null, JSON.stringify(input.features ?? current.features), userId]);
+      return profile();
     },
     async verifiedSave(recordId: string) {
       await store.db.sql.run("UPDATE users SET agent_saved_at=COALESCE(agent_saved_at,?),agent_saved_record=? WHERE id=? AND deleted_at IS NULL",

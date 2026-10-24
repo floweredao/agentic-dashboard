@@ -6,7 +6,7 @@ import { AgentTokenDialog } from "./AgentTokenDialog";
 import { agentText } from "./agent-copy";
 import "../styles/accounts.css";
 
-export function AgentConnections() {
+export function AgentConnections({ saveVerified }: { readonly saveVerified?: boolean }) {
   const t = agentText();
   const d = useCredentials();
   const [agents, setAgents] = useState<readonly AccountAgent[] | null>(null);
@@ -19,7 +19,7 @@ export function AgentConnections() {
     setPending(true); setError("");
     try { await work(); } catch (cause) { setError(await errorMessage(cause)); } finally { setPending(false); }
   };
-  useEffect(() => { void run(reload); }, []);
+  useEffect(() => { void run(reload); }, [saveVerified]);
   return <section className="channel-section account-section" aria-labelledby="agent-connect-heading">
     <div className="account-actions"><h2 id="agent-connect-heading">{t.title}</h2>
       <button className="btn btn-primary" disabled={pending} onClick={() => { setIssued(null); setOpen(true); }}>{t.create}</button></div>

@@ -19,6 +19,7 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showToken, setShowToken] = useState(false);
   const [verified, setVerified] = useState<string | null>(null);
   const close = () => {
     if ((!issued && !invitation) || acknowledged || window.confirm(t.lose)) { onClose(); return true; }
@@ -28,7 +29,10 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
     setPending(true); setError("");
     try { await work(); } catch (cause) { setError(await errorMessage(cause)); } finally { setPending(false); }
   };
-  const copy = (value: string) => run(async () => { await navigator.clipboard.writeText(value); setCopied(true); });
+  const copy = (value: string) => run(async () => {
+    try { await navigator.clipboard.writeText(value); setCopied(true); }
+    catch { setShowToken(true); setError(t.clipboardBlocked); }
+  });
   const record = RecordInputSchema.parse({ kind: "note", title: t.testTitle, body: t.testBody, tags: ["test"] });
   const payload = JSON.stringify({ requestId: "connection-test-1", record });
   const origin = location.origin;
@@ -54,7 +58,8 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
       </form>}
       {issued && <>
         <p>{t.once}</p><p className="setting-note">{t.storage}</p>
-        <label className="field"><span>{t.token}</span><input type="password" value={issued.key} readOnly autoComplete="off" /></label>
+        <label className="field"><span>{t.token}</span><input type={showToken ? "text" : "password"} value={issued.key} readOnly autoComplete="off" /></label>
+        {error === t.clipboardBlocked && <p role="alert" className="form-error">{error}</p>}
         <div className="account-actions">
           <button className="btn btn-primary" disabled={pending} onClick={() => void copy(issued.key)}>{copied ? t.copied : t.copy}</button>
           <button className="btn btn-outline" disabled={pending} onClick={() => void copy(`header = "Authorization: Bearer ${issued.key}"\n`)}>{t.copyConfig}</button>
@@ -75,7 +80,7 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
         <button className="btn btn-primary" onClick={() => void copy(command)}>{copied ? t.copied : t.copyCommand}</button></>}
       {(issued || invitation) && <label className="account-check"><input type="checkbox" checked={acknowledged}
         onChange={event => setAcknowledged(event.target.checked)} />{t.acknowledged}</label>}
-      {error && <p role="alert" className="form-error">{error}</p>}
+      {error && (!issued || error !== t.clipboardBlocked) && <p role="alert" className="form-error">{error}</p>}
       <div className="dialog-actions"><button className="btn btn-quiet" onClick={close}>{t.cancel}</button>
         {(issued || invitation) && <button className="btn btn-primary" disabled={!acknowledged || pending} onClick={onClose}>{t.done}</button>}</div>
     </div>
