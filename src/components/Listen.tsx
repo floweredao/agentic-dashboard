@@ -4,6 +4,7 @@ import { ChevronUp, FileText, Headphones, Pause, Play, RefreshCw, Trash2, X } fr
 import type { DashboardRecord, Narration, NarrationState, NarrationStatus, NarrationStyle } from "../../shared/contracts";
 import { NARRATION_LIMITS } from "../../shared/contracts";
 import { cancelNarration, deleteNarration, errorCode, errorMessage, loadNarration, requestNarration } from "../api";
+import { useRateLimited } from "../rate-limit";
 import type { NarrationCollection } from "../api";
 import { config } from "../config";
 import { strings } from "../i18n";
@@ -375,6 +376,7 @@ export function useNarration({ record, collection = "records", label }: {
 }): { items: NarrationMenuItem[]; bar: ReactNode; state: NarrationState | null; renew: () => void } {
   const d = useDashboard();
   const { store: playback } = usePlayback();
+  const limited = useRateLimited();
   const id = record?.id ?? null;
   const [loaded, setLoaded] = useState<{ id: string; state: NarrationState } | null>(null);
   const [pending, setPending] = useState(false);
@@ -425,6 +427,7 @@ export function useNarration({ record, collection = "records", label }: {
   const forId = record.id;
   /** `style` comes from the choice, which already said what a remake costs; digests have no choice and confirm here. */
   const request = async (force: boolean, style?: NarrationStyle) => {
+    if (limited || pending) return;
     if (force && !style && !window.confirm(text().confirmRemake)) return;
     setPending(true);
     try { put(forId, await requestNarration(forId, force, d.csrfToken, collection, style)); }
@@ -454,7 +457,7 @@ export function useNarration({ record, collection = "records", label }: {
     finally { if (alive.current) setPending(false); }
   };
   const items = narrationItems(state, {
-    pending, cancelling, label,
+    pending: pending || limited, cancelling, label,
     onRequest: force => { void request(force); },
     // Digests are always read aloud; a record asks for its style first.
     onMake: force => { if (collection === "digests") void request(force); else setChoosing({ force }); },
@@ -465,7 +468,7 @@ export function useNarration({ record, collection = "records", label }: {
   });
   const paragraphs = state.narration?.script?.split(/\n{2,}/) ?? [];
   const bar = <>
-    <NarrationBar record={record} state={state} label={label} pending={pending} cancelling={cancelling}
+    <NarrationBar record={record} state={state} label={label} pending={pending || limited} cancelling={cancelling}
       dismissed={(dismissed !== null && dismissed === state.narration?.updatedAt) || failureDismissed(forId, state.narration)} open={open} finishing={finishing} playNonce={playNonce}
       onCancel={() => { void cancel(); }} onRetry={force => { void request(force); }}
       onDismiss={() => {
@@ -477,7 +480,7 @@ export function useNarration({ record, collection = "records", label }: {
       <div className="listen-script">{paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
     </Dialog>}
     {choosing && <Dialog title={choosing.force ? text().remakeTitle : text().makeTitle} onClose={() => setChoosing(null)}>
-      <StyleChoice initial={state.narration?.style ?? "read"} force={choosing.force} pending={pending} onClose={() => setChoosing(null)}
+      <StyleChoice initial={state.narration?.style ?? "read"} force={choosing.force} pending={pending || limited} onClose={() => setChoosing(null)}
         onSubmit={style => { setChoosing(null); void request(choosing.force, style); }} />
     </Dialog>}
   </>;

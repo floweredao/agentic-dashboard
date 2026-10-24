@@ -5,6 +5,8 @@ import { NARRATION_STYLE_TEXT_MAX } from "../../shared/contracts";
 import { errorMessage, loadVoiceSettings, saveVoiceSettings, voicePreviewUrl } from "../api";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
+import { SettingsLoadState } from "./SettingsLoadState";
+import { useRateLimited } from "../rate-limit";
 
 type Voice = NarrationVoiceSettings["voices"][number];
 type Gender = "male" | "female";
@@ -57,6 +59,7 @@ const same = (a: NarrationVoices, b: NarrationVoices) => (Object.keys(a) as (key
 export function VoiceSettings() {
   const t = text();
   const d = useDashboard();
+  const limited = useRateLimited();
   const [loaded, setLoaded] = useState<NarrationVoiceSettings | null>(null);
   const [draft, setDraft] = useState<NarrationVoices | null>(null);
   const [genders, setGenders] = useState<Record<Role, Gender>>({ readVoice: "male", hostA: "male", hostB: "female" });
@@ -64,19 +67,25 @@ export function VoiceSettings() {
   const inFlight = useRef(false);
   const audio = useRef<HTMLAudioElement | null>(null);
   const [preview, setPreview] = useState<{ voice: string; playing: boolean } | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setError("");
     loadVoiceSettings().then(value => {
       if (!alive) return;
       setLoaded(value);
       setDraft(value.settings);
       setGenders({ readVoice: genderOf(value.voices, value.settings.readVoice), hostA: genderOf(value.voices, value.settings.hostA),
         hostB: genderOf(value.voices, value.settings.hostB) });
-    }, () => { if (alive) setLoaded(null); });
+    }, async (cause: unknown) => {
+      const message = await errorMessage(cause);
+      if (alive) setError(message);
+    });
     return () => { alive = false; audio.current?.pause(); };
-  }, []);
-  if (!loaded || !draft) return null;
+  }, [attempt]);
+  if (!loaded || !draft) return <SettingsLoadState id="settings-voices" heading={t.heading} error={error} retry={() => setAttempt(value => value + 1)} />;
 
   const voices = loaded.voices;
   const name = (id: string) => voices.find(voice => voice.id === id)?.name ?? id;
@@ -102,7 +111,7 @@ export function VoiceSettings() {
     player.play().catch(() => undefined);
   };
   const save = async () => {
-    if (inFlight.current || sameHost || tooLong || empty) return;
+    if (inFlight.current || limited || sameHost || tooLong || empty) return;
     inFlight.current = true;
     setSaving(true);
     const snapshot = { ...draft, readStyle: draft.readStyle.trim(), podcastStyle: draft.podcastStyle.trim() };
@@ -168,7 +177,7 @@ export function VoiceSettings() {
     </label>
     <div className="voice-actions">
       <button type="button" className="btn btn-quiet" onClick={resetToDefaults} disabled={saving || same(draft, loaded.defaults)}>{t.defaults}</button>
-      <button type="button" className="btn btn-primary" onClick={() => { void save(); }} disabled={saving || !dirty || sameHost || tooLong || empty}>
+      <button type="button" className="btn btn-primary" onClick={() => { void save(); }} disabled={limited || saving || !dirty || sameHost || tooLong || empty}>
         {saving ? t.saving : t.save}</button>
     </div>
   </section>;
