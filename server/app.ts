@@ -17,7 +17,7 @@ import { enrichCapture, type CaptureEnrichment } from "./capture-enrichment";
 import { ApiError } from "./errors";
 import { json } from "./json-body";
 import { createMcpHandler } from "./mcp";
-import { createNarration, type NarrationOptions } from "./narration";
+import { createNarration, narrationSourceChanged, type NarrationOptions } from "./narration";
 import { projectRecord, renderMarkdown, Shares } from "./share";
 import { agentCanRead, agentView, Store } from "./store";
 // Bundled at build time (bun build --compile, the Docker image and vite all read package.json), so it is the one version source.
@@ -89,7 +89,13 @@ export function createApp(options: AppOptions = {}) {
   const comments = new Comments(store);
   const digests = new Digests(store, timeZone);
   const capturing = new Map<string, Promise<CaptureEnrichment>>();
-  const aiFill = options.aiFill ? createAiFill({ store, ...options.aiFill }) : null;
+  /** New records whose audio waits for their AI title fill, so it reads the filled title and summary. */
+  const afterFill = new Set<string>();
+  const aiFill = options.aiFill ? createAiFill({ store, ...options.aiFill, onSettled: id => {
+    if (!afterFill.delete(id)) return;
+    try { autoNarrate(store.get(id)); }
+    catch (error) { if (!(error instanceof ApiError) || error.status !== 404) throw error; }
+  } }) : null;
   aiFill?.sweep();
   const narration = createNarration({ provider: null, ...options.narration, store,
     timeZone,
@@ -123,10 +129,19 @@ export function createApp(options: AppOptions = {}) {
     return trusted !== undefined && trusted.login !== "" && !c.req.raw.headers.has("authorization") && privateUrl.protocol === "https:" &&
       host === privateUrl.host && c.req.header(trusted.header) === trusted.login;
   };
-  /** Automatic audio for new records: a new research or work report gets its audio in the chosen style, in the background. */
-  const autoNarrate = (record: DashboardRecord) => {
-    const style = narration.autoSettings().records;
-    if (style !== "off" && AUTO_NARRATED_KINDS.some(kind => kind === record.kind)) narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
+  /** New and edited narratable records share the owner's automatic audio setting. */
+  const autoNarrate = (record: DashboardRecord, edited = false) => {
+    const setting = narration.autoSettings().records;
+    if (setting === "off" || !AUTO_NARRATED_KINDS.some(kind => kind === record.kind)) return;
+    const style = (edited ? narration.styleOf(record.id) : null) ?? setting;
+    narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
+  };
+  const newRecord = (record: DashboardRecord, fill: boolean) => {
+    if (fill && aiFill) { afterFill.add(record.id); aiFill.enqueue(record.id); }
+    else autoNarrate(record);
+  };
+  const editedRecord = (before: DashboardRecord, after: DashboardRecord) => {
+    if (narrationSourceChanged(before, after)) autoNarrate(after, true);
   };
   /** An agent's timeline entry: a reply to an owner comment notifies `reply`, moving its item to review notifies `review`. */
   const notifyEntry = (comment: Comment, updated: DashboardRecord | null) => {
@@ -209,7 +224,8 @@ export function createApp(options: AppOptions = {}) {
       await next();
     });
     app.onError((error, c) => {
-      if (error instanceof ApiError) return c.json({ error: { code: error.code, message: error.message } }, error.status);
+      if (error instanceof ApiError) return c.json({ error: { code: error.code, message: error.message,
+        ...(error.details ? { details: error.details } : {}) } }, error.status);
       if (error instanceof z.ZodError) return c.json({ error: { code: "invalid_input", message: "Input validation failed", details: error.issues } }, 400);
       // Never log request bodies, cookies or credentials at this boundary.
       return c.json({ error: { code: "internal_error", message: "Internal server error" } }, 500);
@@ -240,7 +256,7 @@ export function createApp(options: AppOptions = {}) {
           links: [{ label: "Source", url: url.href }],
         });
         const result = store.create({ id: "owner", source: "manual" }, requestId, record, { url: url.href }, "pending");
-        if (!result.replayed) aiFill?.enqueue(result.record.id);
+        if (!result.replayed) newRecord(result.record, true);
         return c.json(result, result.replayed ? 200 : 201);
       });
       app.get("/api/health", c => c.json({ status: "ok" }));
@@ -297,9 +313,14 @@ export function createApp(options: AppOptions = {}) {
         const principal = auth.authenticate(c.req.raw, false);
         if (principal.source === "manual") auth.csrf(c.req.raw, origins);
         const patch = RecordPatchSchema.parse(await json(c.req.raw, RECORD_LIMITS.requestBytes));
-        if (principal.source === "manual") return c.json({ record: store.patch(c.req.param("id"), patch) });
         const before = store.get(c.req.param("id"));
+        if (principal.source === "manual") {
+          const record = store.patch(c.req.param("id"), patch);
+          editedRecord(before, record);
+          return c.json({ record });
+        }
         const record = store.agentPatch(principal, c.req.param("id"), patch);
+        editedRecord(before, record);
         notifyReview(before, record);
         return c.json({ record });
       });
@@ -489,7 +510,7 @@ export function createApp(options: AppOptions = {}) {
         shares.revoke(store.get(c.req.param("id")).id);
         return c.body(null, 204);
       });
-      // Possession of the code inside the tailnet is the capability; the private listener is never public.
+      // Possession of the code grants read access to anyone who can reach this listener.
       app.get("/api/v1/shared/:code", c => {
         const found = shares.find(c.req.param("code"));
         if (!found) throw new ApiError(404, "not_found", "Share not found");
@@ -499,7 +520,7 @@ export function createApp(options: AppOptions = {}) {
         const found = shares.find(c.req.param("code"));
         c.header("Content-Type", "text/plain; charset=utf-8");
         c.header("X-Robots-Tag", "noindex");
-        return found ? c.body(renderMarkdown(found.record, found.share, shares.titleOf, timeZone), 200) : c.body("Share link not found.", 404);
+        return found ? c.body(renderMarkdown(found.record, found.share, shares.titleOf, timeZone, options.locale ?? "en"), 200) : c.body("Share link not found.", 404);
       });
     }
     app.post("/api/v1/records", async c => {
@@ -507,9 +528,8 @@ export function createApp(options: AppOptions = {}) {
       if (principal.source === "manual") auth.csrf(c.req.raw, origins);
       const input = createSchema.parse(await json(c.req.raw, RECORD_LIMITS.requestBytes));
       const result = store.create(principal, input.requestId, RecordInputSchema.parse(input.record), input.record);
-      if (!result.replayed && aiFillSources.has(principal.source)) aiFill?.enqueue(result.record.id);
+      if (!result.replayed) newRecord(result.record, aiFillSources.has(principal.source));
       if (!result.replayed && principal.source !== "manual") notifyReview(null, result.record);
-      if (!result.replayed) autoNarrate(result.record);
       return c.json(result, result.replayed ? 200 : 201);
     });
     app.get("/api/v1/records/:id", c => {
@@ -523,7 +543,10 @@ export function createApp(options: AppOptions = {}) {
     });
     app.all("/api/*", c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
     if (!publicOnly) {
-      app.use("*", serveStatic({ root: options.staticRoot ?? "./dist" }));
+      app.use("*", serveStatic({ root: options.staticRoot ?? "./dist", onFound: (_path, c) => {
+        if (/^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|jpe?g|svg|webp|avif)$/.test(new URL(c.req.url).pathname))
+          c.header("Cache-Control", "public, max-age=31536000, immutable");
+      } }));
       app.get("*", serveStatic({ root: options.staticRoot ?? "./dist", path: "index.html" }));
     }
     app.notFound(c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
@@ -535,7 +558,7 @@ export function createApp(options: AppOptions = {}) {
   const mcpDisabled = async () => Response.json({ error: { code: "feature_disabled", message: "MCP needs MCP_AGENT" } }, { status: 503 });
   const mcpFetch = mcpAgent === undefined ? mcpDisabled : createMcpHandler({ store, agent: { id: mcpAgent, source: mcpAgent },
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
-    onCreate: id => { if (aiFillSources.has(mcpAgent)) aiFill?.enqueue(id); autoNarrate(store.get(id)); } });
+    onCreate: id => newRecord(store.get(id), aiFillSources.has(mcpAgent)), onUpdate: editedRecord });
   return { fetch: (request: Request) => privateApp.fetch(request), publicFetch: (request: Request) => publicApp.fetch(request),
     mcpFetch, aiFill, narration, push, agents, invites, timeZone, purgeTrash: () => { const purged = store.purgeTrash(); narration.prune(); return purged; },
     close: () => store.close() };

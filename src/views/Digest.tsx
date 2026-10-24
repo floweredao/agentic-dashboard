@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { ArrowRight, CalendarDays, ChevronRight, CircleCheck, CircleDot, Clock3, ExternalLink, Eye, Headphones, Layers, List, Mail, Moon, Newspaper, Sun, ThumbsDown, ThumbsUp } from "lucide-react";
+import { CalendarDays, ChevronRight, CircleCheck, CircleDot, Clock3, ExternalLink, Eye, Headphones, Layers, List, Mail, Maximize2, Moon, Newspaper, Sun, ThumbsDown, ThumbsUp } from "lucide-react";
 import { ARTICLE_REACTIONS, DigestSectionKeySchema, digestPartId, MESSAGE_IMPORTANCE } from "../../shared/contracts";
 import type { ArticleReaction, DigestReactions, Digest, DigestArticle, DigestHit, DigestMessage, DigestNarration, DigestPart, DigestSummary, MessageImportance } from "../../shared/contracts";
 import { errorMessage, loadDigest, loadDigests, reactToArticle, searchDigests } from "../api";
+import { FullscreenReader } from "../components/FullscreenReader";
 import { useNarration } from "../components/Listen";
 import { Menu } from "../components/Menu";
 import type { MenuItem } from "../components/Menu";
@@ -18,6 +19,7 @@ import { useDashboard } from "../state";
 
 const text = strings({
   en: {
+    fullscreen: "Full screen", fullscreenTitle: "Read in full screen", exitFullscreen: "Close", loadingList: "Loading digests",
     parts: { articles: "Articles", messages: "Messages" }, social: "Social",
     importance: { urgent: "Act now", todo: "To do", check: "Review", info: "FYI" },
     all: "All", today: "Today", yesterday: "Yesterday", morning: "Morning", evening: "Evening",
@@ -42,6 +44,7 @@ const text = strings({
     reaction: { like: "Like", dislike: "Not for me", seen: "Seen it" }, reactTo: (title: string) => `Your take on: ${title}`,
   },
   ko: {
+    fullscreen: "전체화면", fullscreenTitle: "전체화면으로 보기", exitFullscreen: "닫기", loadingList: "다이제스트 불러오는 중",
     parts: { articles: "기사", messages: "메시지" }, social: "소셜",
     importance: { urgent: "즉시 조치", todo: "할 일", check: "확인", info: "참고" },
     all: "전체", today: "오늘", yesterday: "어제", morning: "아침", evening: "저녁",
@@ -162,7 +165,7 @@ export function splitLede(summary: string): readonly [lede: string, rest: string
 
 /** The scroll owner of the open digest: the reader pane on split layouts, the document on phones. */
 function scrollerOf(element: Element): Element {
-  const pane = element.closest(".pane");
+  const pane = element.closest(".reader-fullscreen, .pane");
   return pane && getComputedStyle(pane).overflowY !== "visible" && pane.scrollHeight > pane.clientHeight ? pane : document.scrollingElement ?? document.documentElement;
 }
 /** Where the section bar's bottom edge sits once it is stuck: the line a section has to reach to be the current one. */
@@ -338,7 +341,6 @@ function MessageCard({ item, section, focused, titles }: { readonly item: Digest
     </span>
     <span className="digest-card-title">{subject.updated && <span className="digest-update">{t.updateTag}</span>}{subject.text}</span>
     {!titles && item.summary && <Summary text={item.summary} />}
-    {item.action && <span className="message-action"><ArrowRight size={15} aria-hidden="true" />{item.action}</span>}
   </>;
   return <li id={`item-${section}-${item.key}`} className={focused ? "focused" : undefined}>
     {item.url ? <a className="digest-card message-card" href={item.url} target="_blank" rel="noopener noreferrer">{body}</a>
@@ -364,25 +366,16 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
   const t = text();
   const sections = digest.sections.filter(section => inFilter(part, section.kind));
   const titles = density === "titles";
-  const current = useCurrentSection(sections.map(section => section.key), `${[...collapsed].join()}|${density}`);
-  const strip = useTabStrip(current, sections.map(section => section.key).join());
+  const [focused, setFocused] = useState<string | null>(null);
+  const fullscreen = focused === digest.id;
+  const current = useCurrentSection(sections.map(section => section.key), `${[...collapsed].join()}|${density}|${fullscreen}`);
+  const strip = useTabStrip(current, `${sections.map(section => section.key).join()}|${fullscreen}`);
   const shown = sections.reduce((sum, section) => sum + section.items.length, 0);
   const present = filterParts(part).filter(each => digest.sections.some(section => section.kind === each));
   const totals = part === "all" ? present.map(each => t.countedIn(partLabel(each), digestPartItems(digest, each))).join(" · ") || t.count(0)
     : t.countedIn(partLabel(part), digestPartItems(digest, part));
   const updated = digest.updatedAt !== digest.createdAt;
-  return <article className={`reader digest${titles ? " titles" : ""}`} aria-labelledby="digest-title">
-    <div className="reader-inner">
-      <BackButton place="reader" />
-      <header className="digest-head">
-        <div className="digest-head-text">
-          <p className="digest-kicker"><SlotMark slot={digest.slot} />{slotTitle(digest.slot)} · {clockOf(digest.scheduledAt)}</p>
-          <h2 id="digest-title" tabIndex={-1} className="reader-title">{dayTitle(digest.date)}</h2>
-          <p className="reader-dates">{totals}{updated && <> · {t.updated} {clockOf(digest.updatedAt)}</>}</p>
-        </div>
-        {actions && <div className="digest-head-actions">{actions}</div>}
-      </header>
-      {listen}
+  const content = <>
       {sections.length === 0 && <p className="digest-empty-section digest-part-empty">{t.emptyPart[part]}</p>}
       {sections.length > 0 && <div className="digest-bar">
         {sections.length > 1 && <nav ref={strip} className="digest-jump" aria-label={t.jumpTo}>
@@ -427,6 +420,24 @@ export function DigestView({ digest, part, focus, actions, listen, collapsed = N
         </section>;
       })}
       {sections.length > 0 && <p className="digest-end">{t.end(shown)}</p>}
+  </>;
+  return <article className={`reader digest${titles ? " titles" : ""}`} aria-labelledby="digest-title">
+    <div className="reader-inner">
+      <BackButton place="reader" />
+      <header className="digest-head">
+        <div className="digest-head-text">
+          <p className="digest-kicker"><SlotMark slot={digest.slot} />{slotTitle(digest.slot)} · {clockOf(digest.scheduledAt)}</p>
+          <h2 id="digest-title" tabIndex={-1} className="reader-title">{dayTitle(digest.date)}</h2>
+          <p className="reader-dates">{totals}{updated && <> · {t.updated} {clockOf(digest.updatedAt)}</>}</p>
+        </div>
+        <div className="digest-head-actions">{actions}
+          <button type="button" className="btn btn-outline reader-corner-button reader-fullscreen-button" onClick={() => setFocused(digest.id)}
+            aria-label={t.fullscreen} title={t.fullscreenTitle}><Maximize2 size={16} aria-hidden="true" /></button>
+        </div>
+      </header>
+      {listen}
+      {fullscreen ? <FullscreenReader title={`${dayTitle(digest.date)} · ${slotTitle(digest.slot)}`} closeLabel={t.exitFullscreen}
+        onClose={() => setFocused(null)} wide={false}>{content}</FullscreenReader> : content}
     </div>
   </article>;
 }
@@ -592,6 +603,15 @@ const groupByDate = (items: readonly DigestSummary[]) => {
  * Digest list: an all/articles/messages switch (`part`, none = all), then the digests with that part from the last two weeks by
  * day (or one chosen day), newest first; a search lists the matching articles and/or messages.
  */
+function ListSkeleton({ label }: { readonly label: string }) {
+  return <div className="record-groups" role="status">
+    <p className="day-label">{label}</p>
+    <ul className="digest-list" aria-hidden="true">{[0, 1].map(index => <li key={index} className="digest-row skeleton-row">
+      <span className="digest-mark" /><span className="digest-row-main"><span className="skeleton-line short" /><span className="skeleton-line" /><span className="skeleton-line" /><span className="skeleton-line tiny" /></span>
+    </li>)}</ul>
+  </div>;
+}
+
 export function DigestPane() {
   const t = text();
   const d = useDashboard();
@@ -704,7 +724,7 @@ export function DigestPane() {
             </a>
           </li>;
         })}</ul>
-      : loading ? <div role="status" className="empty">{t.loading}</div>
+      : loading ? <ListSkeleton label={t.loadingList} />
         : items.length === 0 ? date
           ? <Empty icon={<Newspaper size={20} aria-hidden="true" />} action={<button type="button" className="btn btn-outline" onClick={() => pickDate("")}>{t.showLast2Weeks}</button>}>{t.noneOnDate[part]}</Empty>
           : <Empty icon={<Newspaper size={20} aria-hidden="true" />}>{t.noneYet[part]}</Empty>

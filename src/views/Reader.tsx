@@ -245,6 +245,8 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
             aria-pressed={starred} aria-label={text().star} title={starred ? text().unstarTitle : text().starTitle}>
             <Star size={16} aria-hidden="true" fill={starred ? "currentColor" : "none"} />
           </button>
+          {!due && <button type="button" className="btn btn-outline icon-toggle snooze-button" onClick={() => { void d.snooze(record); }} disabled={d.busy}
+            aria-label={text().snooze} title={text().snooze}><Clock size={16} aria-hidden="true" /></button>}
           {editButton}
         </>}
         {record.kind === "task" && <>
