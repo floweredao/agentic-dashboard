@@ -1,0 +1,6 @@
+.google-signin { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 44px; padding: 8px 16px; border: 1px solid #747775; border-radius: 8px; background: #fff; color: #1f1f1f; font: 500 0.875rem/1.5 system-ui, sans-serif; text-decoration: none; }
+.google-signin:hover { background: #f2f2f2; }
+.google-signin svg { flex: none; }
+.account-legal { display: flex; justify-content: center; flex-wrap: wrap; gap: 24px; }
+.account-legal a { color: var(--muted); text-underline-offset: 4px; padding-block: 8px; }
+.account-signin { max-width: 42rem; margin-inline: auto; }

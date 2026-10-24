@@ -11,6 +11,8 @@ import { ControlDb } from "./control-db";
 import { createRuntime } from "./app-runtime";
 import { createRouter } from "./app-router";
 import { createOidc, type HostedAuth } from "./oidc";
+import { authLimiter } from "./auth-rate";
+import { ApiError } from "./errors";
 
 export interface AppOptions {
   readonly hosted?: HostedAuth;
@@ -79,7 +81,7 @@ export async function createApp(options: AppOptions = {}) {
   const localStore = new Store(new TenantDb(sql, "local"), now);
   const localAuth = new Auth(localStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
   if (!options.hosted) await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
-  if (options.hosted && !options.privateOrigin) throw new Error("Hosted mode requires privateOrigin");
+  if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
   const effective = options.hosted && options.privateOrigin ? { ...options, oidc: createOidc({
     hosted: options.hosted, origin: options.privateOrigin, control: localAuth.control, now,
   }) } : options;
@@ -102,8 +104,10 @@ export async function createApp(options: AppOptions = {}) {
     const scope = await tenant(await localAuth.resolveUser(request));
     return scope[surface](request);
   };
+  const limitAuth = authLimiter(now);
   return { ...local, sql, tenant,
-    fetch: (request: Request) => dispatch(request, "fetch"),
+    fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) =>
+      limitAuth(request, server?.requestIP(request)?.address) ?? dispatch(request, "fetch"),
     publicFetch: (request: Request) => dispatch(request, "publicFetch"),
     mcpFetch: (request: Request) => dispatch(request, "mcpFetch"),
     async purgeTrash() { let count = 0; for (const scope of scopes.values()) count += await (await scope).purgeTrash(); return count; },

@@ -12,6 +12,7 @@ import type { Channel } from "../model";
 import { formatRoute, viewTitles } from "../router";
 import { useDashboard } from "../state";
 import { useRateLimited } from "../rate-limit";
+import { SignIn } from "./SignIn";
 
 const text = strings({
   en: {
@@ -99,7 +100,7 @@ export function ChannelsView() {
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen /><h1>{viewTitles.channels}</h1></div>
     </header>
-    {agents.length === 0 && <p className="channel-note">{t.noAgents} <code>bun run agents add &lt;name&gt;</code> {t.noAgentsAfter}</p>}
+    {config.authMode === "local" && agents.length === 0 && <p className="channel-note">{t.noAgents} <code>bun run agents add &lt;name&gt;</code> {t.noAgentsAfter}</p>}
     <div className="channel-grid">
       {channelKeys.map(channel => {
         const items = live.filter(record => channelOf(record) === channel);
@@ -160,6 +161,7 @@ export function ChannelsView() {
 /** Shown while signed out: the owner signs in with the owner key; with trusted login on, the proxy did not identify them. */
 export function OwnerGate({ onToken }: { readonly onToken: () => void }) {
   const t = text();
+  if (config.authMode === "google") return <SignIn />;
   return <div className="gate">
     <img src="/brand-mark.png" alt="" width={56} height={56} />
     <h1>{config.appName}</h1>

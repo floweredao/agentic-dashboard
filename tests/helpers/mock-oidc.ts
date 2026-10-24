@@ -14,7 +14,8 @@ export async function mockOidc(now: () => number = Date.now) {
   let kid = crypto.randomUUID();
   let jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
   const codes = new Map<string, z.infer<typeof authorization>>();
-  const state = { claims: {} as Readonly<Record<string, unknown>>, badSignature: false, jwksStatus: 200, jwksCalls: 0 };
+  const state: { claims: Readonly<Record<string, unknown>>; header: Readonly<Record<string, unknown>>; badSignature: boolean; jwksStatus: number; jwksCalls: number } =
+    { claims: {}, header: {}, badSignature: false, jwksStatus: 200, jwksCalls: 0 };
   const server = Bun.serve({
     hostname: "127.0.0.1", port: 0,
     async fetch(request) {
@@ -45,7 +46,7 @@ export async function mockOidc(now: () => number = Date.now) {
           form.get("redirect_uri") !== input.redirect_uri || form.get("client_id") !== input.client_id ||
           form.get("grant_type") !== "authorization_code") return Response.json({ error: "invalid_grant" }, { status: 400 });
         const seconds = Math.floor(now() / 1000);
-        const body = `${encode({ alg: "RS256", kid })}.${encode({
+        const body = `${encode({ alg: "RS256", kid, ...state.header })}.${encode({
           iss: url.origin, aud: input.client_id, sub: "mock-subject", email: "reader@example.test",
           email_verified: true, name: "Example Reader", exp: seconds + 300, iat: seconds, nonce: input.nonce, ...state.claims,
         })}`;

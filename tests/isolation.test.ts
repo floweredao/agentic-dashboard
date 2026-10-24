@@ -5,6 +5,7 @@ import { CASES } from "./isolation-cases";
 import { isolationFixture, noteInput, subscription, type IsolationFixture } from "./isolation-fixture";
 
 const PUBLIC_ROUTES = new Set([
+  "GET /auth/google/start", "GET /auth/google/callback", "GET /auth/capacity",
   "ALL /*", "ALL /api/*", "GET /*", "GET /api/health", "GET /api/v1/health", "GET /api/v1/schema",
   "GET /api/v1/config", "GET /api/v1/shared/:code", "GET /s/:code", "POST /api/v1/agents/connect",
 ]);
