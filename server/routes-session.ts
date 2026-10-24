@@ -54,7 +54,8 @@ export function registerSession(app: Hono, runtime: TenantRuntime) {
       /** What the UI needs before sign-in: name, version, calendar zone, default language and which optional features are on. */
       app.get("/api/v1/config", async c => c.json({
         appName: options.appName ?? "Agentic Dashboard", version: packageJson.version, timeZone, locale: options.locale ?? "en",
-        features: { narration: await narration.available(), push: pushOn, digest: digestOn, trustedLogin: options.trustedIdentity !== undefined, demo },
+        authMode: options.hosted ? "google" : "local",
+        features: { narration: options.hosted ? options.narration !== undefined : await narration.available(), push: pushOn, digest: digestOn, trustedLogin: !options.hosted && options.trustedIdentity !== undefined, demo },
       }));
 
       app.get("/api/v1/agents", async c => {
