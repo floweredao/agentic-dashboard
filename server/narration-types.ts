@@ -56,6 +56,7 @@ export interface NarrationOptions {
   readonly audioDir: string;
   readonly encode?: Encoder;
   readonly dailyLimit?: number;
+  readonly strictDailyLimit?: boolean;
   /** The zone whose calendar day the daily limit counts in; defaults to UTC. */
   readonly timeZone?: string;
   readonly timeoutMs?: number;

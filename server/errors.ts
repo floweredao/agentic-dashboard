@@ -7,6 +7,14 @@ export class ApiError extends Error {
   }
 }
 
+export class RetryError extends ApiError {
+  readonly retryAt: string;
+  constructor(input: { readonly code: string; readonly message: string; readonly retryAt: string }) {
+    super(429, input.code, input.message);
+    this.retryAt = input.retryAt;
+  }
+}
+
 /** Agent format rules contain field paths and fixed guidance, never record values. */
 export class RecordFormatError extends ApiError {
   override readonly details: readonly { readonly path: readonly string[]; readonly message: string }[];

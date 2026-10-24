@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import { hash } from "./auth";
-import { ApiError } from "./errors";
+import { ApiError, RetryError } from "./errors";
 
 import type { TenantRuntime } from "./app-runtime";
 import { registerSession } from "./routes-session";
@@ -43,7 +43,7 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
       if (authorization?.startsWith("Bearer ")) {
         const credentialHash = hash(authorization.slice(7));
         if (await auth.control.principalByToken(credentialHash)) rateKey = credentialHash;
-      } else if (c.req.header("cookie")) rateKey = "browser";
+      } else if (await auth.findSession(c.req.raw)) rateKey = `user:${runtime.store.db.userId}`;
       const count = (rate.buckets.get(rateKey) ?? 0) + 1;
       rate.buckets.set(rateKey, count);
       if (count > limit) { c.header("Retry-After", "60"); throw new ApiError(429, "rate_limited", "Request limit exceeded"); }
@@ -52,6 +52,10 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
     });
 
     app.onError((error, c) => {
+      if (error instanceof RetryError) {
+        c.header("Retry-After", String(Math.max(1, Math.ceil((Date.parse(error.retryAt) - now()) / 1000))));
+        return c.json({ error: { code: error.code, message: error.message, retryAt: error.retryAt } }, 429);
+      }
       if (error instanceof ApiError) return c.json({ error: { code: error.code, message: error.message,
         ...(error.details ? { details: error.details } : {}) } }, error.status);
       if (error instanceof z.ZodError) return c.json({ error: { code: "invalid_input", message: "Input validation failed", details: error.issues } }, 400);

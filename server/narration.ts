@@ -1,11 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import { NARRATABLE_KINDS, NARRATION_LIMITS } from "../shared/contracts";
-import { startOfZonedDay } from "../shared/time";
 import type { DashboardRecord, NarrationState, NarrationStatus, NarrationStyle } from "../shared/contracts";
 import { ApiError } from "./errors";
 import type { Principal } from "./store";
-import { ControlDb } from "./control-db";
 import { type NarrationOptions, type Job } from "./narration-types";
 import { sourceHash } from "./narration-text";
 import { createNarrationState } from "./narration-state";
@@ -14,6 +12,7 @@ import { createNarrationWork } from "./narration-work";
 import { narrationFiles } from "./narration-files";
 import { accountActive } from "./work-guard";
 import type { JobPayload } from "./jobs";
+import { narrationAllowance } from "./narration-allowance";
 
 
 const ACTIVE: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
@@ -24,10 +23,6 @@ export type Narrator = ReturnType<typeof createNarration>;
 export function createNarration(options: NarrationOptions) {
 
   const { store } = options;
-
-  const dailyLimit = options.dailyLimit ?? NARRATION_LIMITS.dailyRuns;
-
-  const timeZone = options.timeZone ?? "UTC";
 
   const concurrency = Math.max(1, options.concurrency ?? 1);
 
@@ -47,6 +42,7 @@ export function createNarration(options: NarrationOptions) {
   const { now, available, row, set, state } = rows;
   const settings = createNarrationSettings(options);
   const { autoSettings } = settings;
+  const { allowance, assertAllowance } = narrationAllowance(options, settings);
   const work = createNarrationWork(options, { rows, settings, jobs: jobContext });
 
   const { removeFile, prune, audioFile } = narrationFiles(options, rows);
@@ -76,13 +72,7 @@ export function createNarration(options: NarrationOptions) {
     if (attempts >= NARRATION_LIMITS.attempts && !(owner && force)) {
       throw new ApiError(409, "narration_attempts_exhausted", `Narration failed ${attempts} times for this content; change the record, or the owner can force another attempt`);
     }
-    const dayStart = new Date(startOfZonedDay(store.now(), timeZone)).toISOString();
-    const started = z.object({ count: z.number() }).parse((await store.db.get("SELECT count(*) AS count FROM narration_runs WHERE (started_at>=?) AND user_id=?", [dayStart]))).count;
-    const limit = settings.records === "off" ? dailyLimit : Math.max(dailyLimit, NARRATION_LIMITS.autoDailyRuns);
-    if (started >= limit) throw new ApiError(429, "narration_daily_limit", `Daily narration limit of ${limit} reached; try again tomorrow (${timeZone})`);
-    if (await new ControlDb(store.db.sql).narrationCount(dayStart) >= (options.globalDailyLimit ?? 60)) {
-      throw new ApiError(429, "narration_global_daily_limit", "The service daily narration limit has been reached");
-    }
+    await assertAllowance();
     const waiting = z.object({ count: z.number() }).parse((await store.db.get("SELECT count(*) AS count FROM narrations WHERE (status='queued') AND user_id=?", []))).count;
     if (waiting >= NARRATION_LIMITS.queue) throw new ApiError(429, "narration_queue_full", "Too many narrations are waiting; try again later");
     const timestamp = new Date(Math.max(store.now(), current ? Date.parse(current.requested_at) + 1 : 0)).toISOString();
@@ -254,7 +244,7 @@ export function createNarration(options: NarrationOptions) {
     do { await Promise.all([...autoRuns, ...tasks]); } while (tasks.size > 0 || autoRuns.size > 0 || pending.length > 0);
   }
 
-  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, deliver, ...settings, auto, retryDeferred, styleOf };
+  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, deliver, allowance, ...settings, auto, retryDeferred, styleOf };
 }
 export * from "./narration-types";
 export * from "./narration-prompts";

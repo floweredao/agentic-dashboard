@@ -7,6 +7,7 @@ import type { TenantRuntime } from "./app-runtime";
 
 export function registerNarration(app: Hono, runtime: TenantRuntime) {
   const { auth, narration, serveAudio, origins, owner, narratable, cancelBody } = runtime;
+      app.get("/api/v1/narration/allowance", async c => { await owner(c.req.raw, false); return c.json(await narration.allowance()); });
 
       /** Settings › Narration voices: the owner reads and saves the voices and speaking styles of the next narrations, and hears a voice first. */
       /** Settings › Automatic audio: the owner reads and saves which audio is made without asking and what a record's audio reads. */

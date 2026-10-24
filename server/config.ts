@@ -54,6 +54,10 @@ const envSchema = z.object({
   DEMO: onOff.default(false), MAX_USERS: z.coerce.number().int().min(0).default(50),
   OWNER_ALERT_EMAIL: z.email().optional(), CONTACT_EMAIL: z.email().optional(), AUDIO_BUCKET: text.optional(),
   TASKS_QUEUE: text.optional(), TASKS_SERVICE_ACCOUNT: text.optional(),
+  OWNER_USER_LIMITS: z.string().transform((value, context): unknown => {
+    try { return JSON.parse(value); }
+    catch (error) { if (!(error instanceof SyntaxError)) throw error; context.addIssue({ code: "custom", message: "Expected JSON account limits" }); return z.NEVER; }
+  }).pipe(z.record(z.string().min(1), z.number().int().min(0).max(200))).prefault("{}"),
 });
 export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
   const parsed = envSchema.safeParse(env);
@@ -78,7 +82,7 @@ export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
     if (config.TRUSTED_USER_HEADER || config.AI_FILL_COMMAND) fail("Trusted-header login and command AI fill are local-only.");
     return { google, sessionSigningKey, maxUsers: config.MAX_USERS };
   })();
-  return { ...config, hosted,
+  return { ...config, NARRATION_DAILY_LIMIT: env.NARRATION_DAILY_LIMIT === undefined && hosted ? 10 : config.NARRATION_DAILY_LIMIT, hosted,
     bindings: originSettings(config.APP_ORIGIN ?? `http://127.0.0.1:${config.PORT}`, config.AUTH_MODE === "local", config.PORT),
     databaseToken: config.DATABASE_AUTH_TOKEN ?? config.APP_SECRETS.turso?.authToken,
     agentIngress: config.AUTH_MODE === "local" && config.ENABLE_AGENT_INGRESS,
