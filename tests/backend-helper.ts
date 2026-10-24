@@ -19,19 +19,19 @@ export const AGENTS = ["chatgpt", "codex", "omo"] as const;
  * An app on a temporary database with the owner key and three registered agents (chatgpt, codex, omo) holding fixed keys.
  * The tests were written for an Asia/Seoul calendar and an MCP connector saving as chatgpt, so those are the defaults here.
  */
-export function fixture(rateLimit = 10000, now: () => number = Date.now, extra: Partial<AppOptions> = {}) {
+export async function fixture(rateLimit = 10000, now: () => number = Date.now, extra: Partial<AppOptions> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agentic-backend-"));
   const credentialsPath = join(dir, "credentials.json");
   writeFileSync(credentialsPath, JSON.stringify({ owner: tokens.owner }), { mode: 0o600 });
   const options = { databasePath: join(dir, "db.sqlite"), credentialsPath, rateLimit, now, timeZone: "Asia/Seoul", mcpAgent: "chatgpt", ...extra,
     ...(extra.aiFill ? { aiFill: { sources: ["chatgpt"], ...extra.aiFill } } : {}) };
-  let app = createApp(options);
-  for (const agent of AGENTS) app.agents.add(agent, tokens[agent]);
+  let app = (await createApp(options));
+  for (const agent of AGENTS) (await app.agents.add(agent, tokens[agent]));
   return {
     dir, options,
     get app() { return app; },
-    restart() { app.close(); app = createApp(options); },
-    close() { app.close(); rmSync(dir, { recursive: true, force: true }); },
+    async restart() { (await app.close()); app = (await createApp(options)); },
+    async close() { (await app.close()); rmSync(dir, { recursive: true, force: true }); },
     async call(path: string, method = "GET", body?: unknown, headers: HeadersInit = {}, publicOnly = false) {
       const h = new Headers(headers);
       if (body !== undefined) h.set("Content-Type", "application/json");

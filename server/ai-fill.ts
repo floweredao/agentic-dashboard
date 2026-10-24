@@ -16,7 +16,7 @@ export interface AiFillOptions {
   readonly model?: string;
   readonly timeoutMs?: number;
   /** Called once a queued record's fill has ended, whether it filled, changed nothing or failed. */
-  readonly onSettled?: (id: string) => void;
+  readonly onSettled?: (id: string) => void | Promise<void>;
 }
 export type AiFill = ReturnType<typeof createAiFill>;
 type Candidate = Pick<DashboardRecord, "kind" | "source" | "title" | "body"> & {
@@ -105,7 +105,7 @@ export function createAiFill(options: AiFillOptions) {
   }
 
   async function fill(id: string) {
-    const before = store.get(id);
+    const before = (await store.get(id));
     if (!weakness(before, sources)) return;
     const attempts = (stateSchema.safeParse(before.fields.aiFill).data?.attempts ?? 0) + 1;
     const signal = AbortSignal.timeout(options.timeoutMs ?? 60000);
@@ -122,7 +122,7 @@ export function createAiFill(options: AiFillOptions) {
       reason = signal.aborted ? "timeout" : "model";
     }
     // Re-read after the model call: an owner edit made meanwhile is no longer weak and wins.
-    const latest = store.get(id);
+    const latest = (await store.get(id));
     const weak = weakness(latest, sources);
     if (!weak) return;
     const state = { model, at: new Date(store.now()).toISOString(), attempts };
@@ -132,30 +132,30 @@ export function createAiFill(options: AiFillOptions) {
     const aiFill = !output ? { status: "failed", ...state, reason }
       : filled.length ? { status: "filled", ...state, filled, original: { title: latest.title, summary: summaryOf(latest) } }
         : { status: "unchanged", ...state };
-    store.patch(id, { expectedVersion: latest.version, changes: {
+    (await store.patch(id, { expectedVersion: latest.version, changes: {
       ...(title === null ? {} : { title }),
       fields: { ...latest.fields, ...(summary === null ? {} : { summary }), aiFill },
-    } });
+    } }));
   }
 
   function enqueue(id: string) {
     if (queued.has(id)) return;
     queued.add(id);
-    chain = chain.then(() => fill(id)).catch((error: unknown) => {
+    chain = chain.then(async () => (await fill(id))).catch((error: unknown) => {
       // The owner deleted the record before or during the fill: nothing is left to fill.
       if (error instanceof ApiError && error.status === 404) return;
       // Record content and model output never reach logs; only the failure class does.
       console.error(`ai-fill ${id} failed: ${error instanceof Error ? error.name : "unknown"}`);
-    }).finally(() => { queued.delete(id); options.onSettled?.(id); });
+    }).finally(async () => { queued.delete(id); await options.onSettled?.(id); });
   }
-  function sweep() {
+  async function sweep() {
     const listed = [...sources];
-    const rows = store.db.query(`SELECT id FROM records WHERE json_extract(data,'$.kind')='social'
-      OR json_extract(data,'$.source') IN (${listed.length ? listed.map(() => "?").join(",") : "NULL"})
-      ORDER BY json_extract(data,'$.createdAt')`).all(...listed);
+    const rows = (await store.db.all(`SELECT id FROM records WHERE (json_extract(data,'$.kind')='social'
+      OR json_extract(data,'$.source') IN (${listed.length ? listed.map(() => "?").join(",") : "NULL"})) AND user_id=?
+      ORDER BY json_extract(data,'$.createdAt')`, [...listed]));
     for (const row of rows) {
       const { id } = z.object({ id: z.string() }).parse(row);
-      if (weakness(store.get(id), sources)) enqueue(id);
+      if (weakness((await store.get(id)), sources)) enqueue(id);
     }
   }
   async function idle() {

@@ -15,6 +15,8 @@ const parsed = z.object({
   APP_ORIGIN: z.url().optional(),
   APP_NAME: z.string().trim().min(1).max(60).default("Agentic Dashboard"),
   DATA_DIR: z.string().trim().min(1).default("data"),
+  DATABASE_URL: z.string().trim().min(1).optional(),
+  DATABASE_AUTH_TOKEN: z.string().trim().min(1).optional(),
   DATABASE_PATH: z.string().trim().min(1).optional(),
   CREDENTIALS_PATH: z.string().trim().min(1).optional(),
   STATIC_DIR: z.string().trim().min(1).default("dist"),
@@ -45,6 +47,7 @@ const parsed = z.object({
   NARRATION_VERTEX_LOCATION: z.string().trim().min(1).default(VERTEX_LOCATION),
   /** Automatic digest audio until the owner chooses in Settings: each changed part, one audio for the whole digest, or off. */
   NARRATION_DIGEST_AUTO: z.enum(["off", "parts", "all"]).default("off"),
+  NARRATION_GLOBAL_DAILY_LIMIT: z.coerce.number().int().min(0).default(60),
   NARRATION_DAILY_LIMIT: z.coerce.number().int().min(0).max(200).default(NARRATION_LIMITS.dailyRuns),
   AUDIO_DIR: z.string().trim().min(1).optional(),
   AI_FILL_COMMAND: z.string().trim().min(1).optional(),
@@ -73,7 +76,9 @@ if (config.ENABLE_MCP && !config.MCP_AGENT) {
   process.exit(1);
 }
 
-const app = createApp({
+const app = (await createApp({
+  ...(config.DATABASE_URL ? { databaseUrl: config.DATABASE_URL } : {}),
+  ...(config.DATABASE_AUTH_TOKEN ? { databaseAuthToken: config.DATABASE_AUTH_TOKEN } : {}),
   databasePath: config.DATABASE_PATH ?? join(config.DATA_DIR, "dashboard.sqlite"),
   credentialsPath: config.CREDENTIALS_PATH ?? join(config.DATA_DIR, "credentials.json"),
   staticRoot: config.STATIC_DIR,
@@ -96,14 +101,14 @@ const app = createApp({
       ...(config.NARRATION_TTS_PROVIDER === "vertex" && config.NARRATION_VERTEX_PROJECT ? { vertex: {
         project: config.NARRATION_VERTEX_PROJECT, location: config.NARRATION_VERTEX_LOCATION, credentials: adcCredentials(),
       } } : {}) }),
-    concurrency: config.NARRATION_CONCURRENCY, dailyLimit: config.NARRATION_DAILY_LIMIT, autoDefaults: { digests: config.NARRATION_DIGEST_AUTO, records: config.NARRATION_RECORD_AUTO }, ...(config.AUDIO_DIR ? { audioDir: config.AUDIO_DIR } : {}),
+    globalDailyLimit: config.NARRATION_GLOBAL_DAILY_LIMIT, concurrency: config.NARRATION_CONCURRENCY, dailyLimit: config.NARRATION_DAILY_LIMIT, autoDefaults: { digests: config.NARRATION_DIGEST_AUTO, records: config.NARRATION_RECORD_AUTO }, ...(config.AUDIO_DIR ? { audioDir: config.AUDIO_DIR } : {}),
   } } : {}),
-});
+}));
 if (config.ENABLE_MCP && config.MCP_AGENT) {
-  const agent = app.agents.get(config.MCP_AGENT);
+  const agent = (await app.agents.get(config.MCP_AGENT));
   if (!agent || agent.revokedAt !== null) {
     console.error(`Invalid configuration: MCP_AGENT ${config.MCP_AGENT} is not an active registered agent; run bun run agents add ${config.MCP_AGENT}.`);
-    app.close();
+    (await app.close());
     process.exit(1);
   }
 }
@@ -120,15 +125,15 @@ console.log([
   `push ${config.PUSH && !config.DEMO ? "on" : "off"}`, `digest ${config.DIGEST ? "on" : "off"}`,
   `narration ${narrationOn ? `on (speech ${config.NARRATION_TTS_PROVIDER})` : "off"}`, `ai fill ${config.AI_FILL_COMMAND ? "on" : "off"}`, `time zone ${config.TIME_ZONE}`,
 ].join("; "));
-const narrationRetryTimer = setInterval(() => app.narration.retryDeferred(), 30 * 60 * 1000);
+const narrationRetryTimer = setInterval(() => app.retryDeferred(), 30 * 60 * 1000);
 const purgeTimer = setInterval(() => app.purgeTrash(), 60 * 60 * 1000);
-function stop() {
+async function stop() {
   clearInterval(purgeTimer);
   clearInterval(narrationRetryTimer);
   privateServer.stop(true);
   publicServer?.stop(true);
   mcpServer?.stop(true);
-  app.close();
+  (await app.close());
   process.exit(0);
 }
 process.once("SIGTERM", stop);

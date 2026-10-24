@@ -4,9 +4,9 @@ import { fixture, origin, tokens } from "./backend-helper";
 
 test("HTTPS deployment retains usable local HTTP login without weakening remote cookies", async () => {
   // Given: production is configured for a private HTTPS origin.
-  const f = fixture();
+  const f = (await fixture());
   const remoteOrigin = "https://dashboard.example.test:9443";
-  const app = createApp({ ...f.options, privateOrigin: remoteOrigin });
+  const app = (await createApp({ ...f.options, privateOrigin: remoteOrigin }));
   try {
     for (const requestOrigin of [origin, remoteOrigin]) {
       // When: an explicitly allowed local or remote browser signs in.
@@ -20,7 +20,7 @@ test("HTTPS deployment retains usable local HTTP login without weakening remote 
       expect(response.headers.get("set-cookie")?.includes("; Secure")).toBe(requestOrigin.startsWith("https:"));
     }
   } finally {
-    app.close();
-    f.close();
+    (await app.close());
+    (await f.close());
   }
 });
