@@ -18,11 +18,12 @@ export function registerAccount(app: Hono, runtime: TenantRuntime) {
   });
   app.get("/api/v1/account/export", async c => {
     await owner(c.req.raw, false);
-    const archive = await account.export();
-    c.header("Content-Type", "application/gzip");
-    c.header("Content-Disposition", 'attachment; filename="floweredao-export.tar.gz"');
-    c.header("Cache-Control", "private, no-store");
-    return c.body(await archive.bytes());
+    c.header("X-RateLimit-Scope", "export");
+    try { return await account.export(c.req.raw.signal); }
+    catch (error) {
+      if (error instanceof ApiError && error.status === 429) c.header("Retry-After", "60");
+      throw error;
+    }
   });
   app.delete("/api/v1/account", async c => {
     await owner(c.req.raw, true);

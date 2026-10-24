@@ -137,7 +137,7 @@ test("full export preserves every seeded tenant table and its actual audio bytes
   try {
     const before = await tenantData(f.app.sql, "a");
     // When: exporting that account.
-    const files = await (await f.a.account.export()).files();
+    const files = await new Bun.Archive(await (await f.a.account.export()).arrayBuffer()).files();
     const exported = z.object({ tables: z.record(z.string(), z.array(z.record(z.string(), z.unknown()))) })
       .parse(JSON.parse(await files.get("data.json")?.text() ?? "{}"));
     // Then: every seeded row is present, and audio is the stored file rather than a URL.

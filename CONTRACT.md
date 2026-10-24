@@ -169,6 +169,15 @@ HTML documents, trash, comments, digests/reactions, scripts, referenced `audio/`
 files, agents, shares and settings. Token/session/invitation hashes, CSRF secrets,
 Gemini ciphertext/KEK version and push encryption credentials are excluded.
 There is no user-facing bulk import; this export is not the operator backup format.
+Export generation and download are streamed through private temporary files. The
+uncompressed tar and compressed download each have a hard 64 MiB cap
+(`413 account_export_too_large`); failures answer `503 account_export_unavailable`.
+There is one export per account across instances and one export per instance
+because Cloud Run temporary storage also consumes memory. Busy requests answer
+`429 account_export_busy`, `Retry-After: 60` and `X-RateLimit-Scope: export` without
+blocking unrelated UI actions. Temporary files and the export lease are removed
+on completion, cancellation or failure; a crashed instance's lease expires after
+15 minutes. The same deadline bounds an active export.
 
 `DELETE /api/v1/account` is hosted-only and requires CSRF, exact email confirmation
 `{ confirm }`, and a session created less than ten minutes ago. Wrong confirmation

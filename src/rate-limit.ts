@@ -19,7 +19,8 @@ export function clearRateLimit() { clearTimeout(timer); until = 0; changed(); }
 /** One browser credential shares the server's rate bucket, so its buttons share the deadline. */
 export function rememberRateLimit(error: unknown) {
   if (!(error instanceof HTTPError) || error.response.status !== 429) return;
-  if (error.response.headers.get("X-RateLimit-Scope") === "narration") return;
+  const scope = error.response.headers.get("X-RateLimit-Scope");
+  if (scope === "narration" || scope === "export") return;
   const delay = retryAfterMs(error.response.headers.get("Retry-After"));
   if (!delay) return;
   until = Math.max(until, Date.now() + delay);

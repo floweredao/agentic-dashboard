@@ -3,7 +3,7 @@ import type { Sql } from "./db";
 import { TABLES } from "./schema";
 
 /** Explicit inventory keeps backup/export coverage exhaustive without computed tenant SQL. */
-const queries = {
+export const tenantQueries = {
   record_sync: "SELECT * FROM record_sync WHERE user_id=?",
   record_changes: "SELECT * FROM record_changes WHERE user_id=?",
   principals: "SELECT * FROM principals WHERE user_id=?",
@@ -29,7 +29,7 @@ export const DataRowSchema = z.record(z.string(), z.union([z.string(), z.number(
 export type DataRow = z.infer<typeof DataRowSchema>;
 export async function tenantData(sql: Sql, userId: string) {
   const result: Record<string, DataRow[]> = {};
-  for (const [table, query] of Object.entries(queries)) result[table] = (await sql.all(query, [userId])).map(row => DataRowSchema.parse(row));
+  for (const [table, query] of Object.entries(tenantQueries)) result[table] = (await sql.all(query, [userId])).map(row => DataRowSchema.parse(row));
   return result;
 }
 
