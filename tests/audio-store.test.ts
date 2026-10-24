@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { generateKeyPairSync, sign, verify } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,6 +46,19 @@ test("V4 signing uses the fixed canonical request and a verifiable RSA signature
     expect(verify("RSA-SHA256", Buffer.from(vector.stringToSign), publicKey,
       Buffer.from(url.searchParams.get("X-Goog-Signature") ?? "", "hex"))).toBe(true);
   } finally { issuer.stop(true); }
+});
+
+test("V4 canonical query order is independent of locale collation", () => {
+  const collation = spyOn(String.prototype, "localeCompare").mockImplementation(function (this: string, other: string) {
+    return this < other ? 1 : this > other ? -1 : 0;
+  });
+  try {
+    const vector = signingRequest({ bucket: "test-bucket", object: "u/a/one.wav",
+      account: "signer@example.test", now: Date.parse("2026-01-02T03:04:05.000Z") });
+    expect(vector.query.split("&").map(field => field.split("=")[0])).toEqual([
+      "X-Goog-Algorithm", "X-Goog-Credential", "X-Goog-Date", "X-Goog-Expires", "X-Goog-SignedHeaders",
+    ]);
+  } finally { collation.mockRestore(); }
 });
 
 test("audio authenticates before redirecting to private short lived storage", async () => {
