@@ -30,7 +30,8 @@ const envSchema = z.object({
   AUTH_MODE: z.enum(["local", "google"]).default("local"), APP_SECRETS: secretJson.prefault("{}"),
   AUTH_TRUST_PROXY: onOff.optional(), K_SERVICE: text.optional(),
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
-  PENDING_SIGN_IN_LIMIT: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(2000),
+  PENDING_SIGN_IN_LIMIT: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(10000),
+  AUTH_START_LIMIT: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(300),
   APP_ORIGIN: z.url().refine(value => {
     const url = new URL(value);
     return ["http:", "https:"].includes(url.protocol) && url.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
