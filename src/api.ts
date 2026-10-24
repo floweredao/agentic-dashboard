@@ -282,7 +282,7 @@ type ErrorText = {
   readonly conflict: string; readonly forbidden: string; readonly validation: string;
   readonly codes: Readonly<Record<string, string>>;
   readonly signIn: string; readonly failedStatus: (status: number) => string; readonly badShape: (issues: string) => string;
-  readonly offline: string; readonly failed: string;
+  readonly offline: string; readonly failed: string; readonly badData: string; readonly fieldNames: Readonly<Record<string, string>>;
 };
 const errorCodes = (conflict: string, forbidden: string, validation: string, own: Readonly<Record<string, string>>) => ({
   version_conflict: conflict, conflict, idempotency_conflict: conflict,
@@ -315,7 +315,9 @@ const errorText = strings<ErrorText>({
       }),
       signIn: "Sign-in is required or the session expired. Sign in again with the owner key.",
       failedStatus: status => `The request couldn't be completed (${status}).`,
-      badShape: issues => `The input or the server's data isn't in the expected format: ${issues}`,
+      badShape: fields => `Some values aren't valid: ${fields}. Fix them and save again.`,
+      badData: "Couldn't read the data from the server. Refresh and try again.",
+      fieldNames: { title: "Title", body: "Content", status: "Status", projectId: "Project", taskId: "Task", dueDate: "Due date", tags: "Tags", links: "Links", kind: "Type", summary: "Summary", conclusion: "Conclusion", nextActions: "Next steps", nextAction: "Next step", revisitDate: "Revisit date" },
       offline: "Couldn't reach the server. Check your network connection and try again.",
       failed: "The request couldn't be completed. Try again.",
     };
@@ -342,7 +344,9 @@ const errorText = strings<ErrorText>({
       }),
       signIn: "로그인이 필요하거나 세션이 만료됐어요. 소유자 토큰으로 다시 연결해 주세요.",
       failedStatus: status => `요청을 처리하지 못했어요 (${status}).`,
-      badShape: issues => `입력값이나 서버 데이터의 형식이 맞지 않아요: ${issues}`,
+      badShape: fields => `형식이 맞지 않는 값이 있어요: ${fields}. 고쳐서 다시 저장해 주세요.`,
+      badData: "서버에서 받은 데이터를 읽지 못했어요. 새로고침한 뒤 다시 시도해 주세요.",
+      fieldNames: { title: "제목", body: "내용", status: "상태", projectId: "프로젝트", taskId: "할 일", dueDate: "마감일", tags: "태그", links: "링크", kind: "종류", summary: "요약", conclusion: "결론", nextActions: "다음 할 일", nextAction: "다음 할 일", revisitDate: "다시 볼 날짜" },
       offline: "서버에 연결하지 못했어요. 네트워크 연결을 확인하고 다시 시도해 주세요.",
       failed: "요청을 처리하지 못했어요. 다시 시도해 주세요.",
     };
@@ -367,7 +371,11 @@ export async function errorMessage(error: unknown): Promise<string> {
     if (status === 429) return text.codes.rate_limited ?? "";
     return text.failedStatus(status);
   }
-  if (error instanceof z.ZodError) return text.badShape(error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`).join(", "));
+  if (error instanceof z.ZodError) {
+    const labels = error.issues.map(issue => text.fieldNames[String(issue.path[0] === "fields" ? issue.path[1] : issue.path[0])]);
+    if (labels.some(label => label === undefined)) return text.badData;
+    return text.badShape([...new Set(labels)].join(", "));
+  }
   if (error instanceof Error) return text.offline;
   return text.failed;
 }

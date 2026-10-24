@@ -4,15 +4,16 @@
   border-radius: 10px; background: var(--selected);
 }
 .segmented button {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px;
-  border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 13.5px; font-weight: 600;
+  display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 6px; min-width: 0; min-height: 32px; padding: 0 8px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 0.84375rem; font-weight: 600;
+  overflow-wrap: anywhere; word-break: normal; white-space: normal;
   transition: background-color 120ms var(--ease), color 120ms var(--ease);
 }
 .segmented button:hover { color: var(--ink); }
 .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px #0000001a, 0 0 0 0.5px var(--line-strong); }
 .segment-count {
-  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
-  background: var(--accent); color: var(--on-ink); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  display: inline-grid; place-items: center; min-width: 1.125rem; min-height: 1.125rem; padding: 0 5px; border-radius: 999px;
+  background: var(--accent); color: var(--on-ink); font-size: 0.6875rem; font-weight: 700; font-variant-numeric: tabular-nums;
 }
 .digest-part-empty { margin-top: 24px; }
 
@@ -33,19 +34,25 @@
 .digest-mark.slot-evening { color: var(--accent); }
 .digest-row-main { flex: 1; display: grid; gap: 3px; min-width: 0; }
 .digest-row-top { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.digest-row-title { flex: 1; min-width: 0; color: var(--ink); font-size: 14.5px; font-weight: 600; letter-spacing: -0.1px; }
+.digest-row-title { flex: 1; min-width: 0; color: var(--ink); font-size: 0.90625rem; font-weight: 600; letter-spacing: -0.1px; }
 .digest-row.unread .digest-row-title { font-weight: 700; }
-.digest-row-time { flex-shrink: 0; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.digest-row-time { flex-shrink: 0; color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .digest-row-headline, .digest-hit-title, .digest-hit-summary {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.digest-row-headline { color: var(--text); font-size: 13.5px; line-height: 1.45; }
-.digest-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
-.digest-hit-meta { color: var(--faint); font-size: 12px; font-weight: 500; }
-.digest-hit-title { color: var(--ink); font-size: 14.5px; font-weight: 600; line-height: 1.4; }
-.digest-hit-summary { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.digest-row-headline { color: var(--text); font-size: 0.84375rem; line-height: 1.45; }
+.digest-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 2px; color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.digest-hit-meta { color: var(--faint); font-size: 0.75rem; font-weight: 500; }
+.digest-hit-title { color: var(--ink); font-size: 0.90625rem; font-weight: 600; line-height: 1.4; }
+.digest-hit-summary { color: var(--muted); font-size: 0.8125rem; line-height: 1.5; }
+/* Loading placeholders: each line takes the height of the text it stands for. */
+.skeleton-row .digest-row-main { gap: 0; }
+.skeleton-line { display: block; height: 0.8125rem; margin: 0.25rem 0; border-radius: 4px; background: var(--selected); animation: skeleton-pulse 1.4s var(--ease) infinite alternate; }
+.skeleton-line.short { width: 55%; height: 0.90625rem; margin-bottom: 0.4rem; }
+.skeleton-line.tiny { width: 30%; height: 0.75rem; margin-top: 0.4rem; }
+@keyframes skeleton-pulse { to { opacity: .5; } }
 .digest-more { display: flex; justify-content: center; padding: 12px 16px 24px; }
-.pane-error { margin: 12px 16px 0; color: var(--danger); font-size: 13px; }
+.pane-error { margin: 12px 16px 0; color: var(--danger); font-size: 0.8125rem; }
 
 /* The calendar chip: a native date input laid over the chip, so iOS opens its own picker. */
 .date-chip { position: relative; gap: 5px; cursor: pointer; }
@@ -54,8 +61,8 @@
 
 /* Mail importance: a small tinted pill; 즉시 조치 is the only red. */
 .importance {
-  display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px;
-  background: var(--wash); color: var(--muted); font-size: 11.5px; font-weight: 650; white-space: nowrap;
+  display: inline-flex; align-items: center; min-height: 1.25rem; padding: 0 7px; border-radius: 999px;
+  background: var(--wash); color: var(--muted); font-size: 0.71875rem; font-weight: 650; white-space: nowrap;
 }
 .importance.urgent { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
 .importance.todo { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
@@ -63,17 +70,17 @@
 
 /* One digest: kicker, date title, the stuck section bar, then each section as a list (no boxes: the items are alike, so
    space and hairlines group them, NN/g cards-component). */
-.digest-kicker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.digest-kicker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .digest-kicker .digest-mark { width: 26px; height: 26px; border-radius: 8px; }
 .digest .reader-title { margin-top: 10px; }
 /* Head: kicker, date and counts on the left, the ⋯ More (mark read, audio) at the trailing edge beside the date title. */
 .digest-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; }
 .digest-head-text { min-width: 0; }
-.digest-head-actions { margin-right: -4px; }
+.digest-head-actions { display: flex; align-items: center; gap: 8px; }
 /* Make audio's choice: an audio that cannot be made now stays listed, dimmed, with its reason in words. */
 .listen-style.is-disabled { cursor: default; opacity: .6; }
 .listen-style.is-disabled:hover { background: transparent; }
-.listen-style-text .listen-style-note { color: var(--faint); font-size: 12.5px; }
+.listen-style-text .listen-style-note { color: var(--faint); font-size: 0.78125rem; }
 /* Section bar: jump chips and titles only, stuck to the top of the reader pane (under the app bar on phones). */
 /* Section bar, stuck to the top of the reader pane (under the app bar on phones), one row at every width: section tabs
    that scroll sideways when they do not fit (the edge hiding more fades), the current one underlined on the bar's hairline,
@@ -91,15 +98,15 @@
 .digest-jump[data-more="both"] { mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 .digest-tab {
   display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px;
-  border-block: 2px solid transparent; border-radius: 6px 6px 0 0; color: var(--muted); font-size: 14px; font-weight: 600;
+  border-block: 2px solid transparent; border-radius: 6px 6px 0 0; color: var(--muted); font-size: 0.875rem; font-weight: 600;
   white-space: nowrap; user-select: none; -webkit-user-select: none; transition: color 120ms var(--ease), border-color 120ms var(--ease);
 }
 .digest-tab:focus-visible { outline-offset: -2px; }
 @media (hover: hover) { .digest-tab:hover { color: var(--ink); } }
 .digest-tab[aria-current="location"] { border-bottom-color: var(--ink); color: var(--ink); font-weight: 650; }
 .digest-tab-count {
-  display: inline-grid; place-items: center; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px;
-  background: var(--selected); color: var(--muted); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  display: inline-grid; place-items: center; min-width: 1.25rem; min-height: 1.125rem; padding: 0 6px; border-radius: 999px;
+  background: var(--selected); color: var(--muted); font-size: 0.71875rem; font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .digest-tab[aria-current="location"] .digest-tab-count { color: var(--ink); }
 .digest-density { flex: none; margin-left: auto; }
@@ -118,10 +125,10 @@
 .digest-chevron { flex: none; color: var(--faint); transition: transform 120ms var(--ease); }
 .digest-section-toggle[aria-expanded="true"] .digest-chevron { transform: rotate(90deg); }
 .digest-section-icon { display: grid; place-items: center; flex: none; width: 18px; height: 18px; color: var(--muted); }
-.digest-section-label { font-size: 19px; font-weight: 700; line-height: 1.3; letter-spacing: -0.3px; }
-.digest-section-head .count { color: var(--faint); font-size: 14px; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
-.digest-section-note { margin-left: auto; color: var(--muted); font-size: 12.5px; }
-.digest-shortfall, .digest-empty-section { margin-bottom: 10px; color: var(--faint); font-size: 13px; }
+.digest-section-label { font-size: 1.1875rem; font-weight: 700; line-height: 1.3; letter-spacing: -0.3px; }
+.digest-section-head .count { color: var(--faint); font-size: 0.875rem; font-weight: 600; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.digest-section-note { margin-left: auto; color: var(--muted); font-size: 0.78125rem; }
+.digest-shortfall, .digest-empty-section { margin-bottom: 10px; color: var(--faint); font-size: 0.8125rem; }
 /* Items: hairlines between them, a wash only on hover or when a search opened the digest at one. The title reads first
    (17px ink), then the summary's first sentence in body colour and the rest muted (what is new, then context). */
 .digest-cards { display: grid; }
@@ -132,8 +139,8 @@
 }
 @media (hover: hover) { a.digest-card:hover { background: var(--wash); } }
 .focused > .digest-card { background: var(--selected); }
-.digest-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.digest-num { color: var(--faint); font-family: var(--mono); font-size: 11.5px; }
+.digest-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 0.78125rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.digest-num { color: var(--faint); font-family: var(--mono); font-size: 0.71875rem; }
 .digest-meta-end { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .digest-card-out { flex: none; color: var(--faint); }
 .message-from .digest-card-out { display: inline; margin-left: 6px; vertical-align: -1px; }
@@ -147,23 +154,21 @@
   outline: 1px solid var(--line); outline-offset: -1px;
 }
 @media (max-width: 520px) { .digest-thumb { width: 88px; height: 64px; } }
-.digest-card-title { color: var(--ink); font-size: 17px; line-height: 1.45; font-weight: 650; letter-spacing: -0.25px; word-break: keep-all; overflow-wrap: anywhere; }
+.digest-card-title { color: var(--ink); font-size: 1.0625rem; line-height: 1.45; font-weight: 650; letter-spacing: -0.25px; word-break: keep-all; overflow-wrap: anywhere; }
 .digest-update {
   display: inline-flex; align-items: center; height: 19px; margin-right: 6px; padding: 0 6px; border-radius: 6px; vertical-align: 2px;
-  background: var(--wash); color: var(--muted); font-size: 11.5px; font-weight: 650; letter-spacing: 0;
+  background: var(--wash); color: var(--muted); font-size: 0.71875rem; font-weight: 650; letter-spacing: 0;
 }
-.digest-card-summary { color: var(--text); font-size: 16px; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
+.digest-card-summary { color: var(--text); font-size: 1rem; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
 .digest-rest { color: var(--muted); }
 .message-from { color: var(--ink); font-weight: 600; }
 .message-address { color: var(--faint); font-weight: 500; overflow-wrap: anywhere; }
 /* What to do: an arrow and ink text, no inset box. */
-.message-action { display: flex; align-items: flex-start; gap: 6px; color: var(--ink); font-size: 15px; line-height: 1.55; font-weight: 600; word-break: keep-all; overflow-wrap: anywhere; }
-.message-action svg { flex: none; margin-top: 3px; color: var(--muted); }
 /* Like · Not for me · Seen it: a quiet row under the article, outside its link; the chosen one fills with ink like Titles only. */
 .digest-react { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 14px; }
 .digest-react-btn {
   display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px;
-  background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 550; line-height: 1;
+  background: transparent; color: var(--muted); font-size: 0.78125rem; font-weight: 550; line-height: 1;
   transition: background-color 120ms var(--ease), color 120ms var(--ease), border-color 120ms var(--ease);
 }
 @media (hover: hover) { .digest-react-btn:hover { background: var(--wash); color: var(--ink); } }
@@ -172,11 +177,11 @@
 @media (pointer: coarse) { .digest-react-btn { min-height: 36px; padding: 0 12px; } }
 /* Titles only: denser rows, titles and message actions only. */
 .digest.titles .digest-card { gap: 4px; padding: 12px 10px; }
-.digest-end { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; text-align: center; font-variant-numeric: tabular-nums; }
+.digest-end { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 0.78125rem; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* 알림 설정: rows like 더보기 with a switch at the end. */
-.setting-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 12px 10px 14px; color: var(--ink); font-size: 15px; font-weight: 500; }
-.setting-note { color: var(--faint); font-size: 12px; font-weight: 500; line-height: 1.4; }
+.setting-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 12px 10px 14px; color: var(--ink); font-size: 0.9375rem; font-weight: 500; }
+.setting-note { color: var(--faint); font-size: 0.75rem; font-weight: 500; line-height: 1.4; }
 .setting-row .btn { flex-shrink: 0; }
 /* Language: the three choices as radio rows, inside the page gutter like the lists. */
 .settings-languages { display: grid; gap: 8px; min-width: 0; margin: 0 16px; padding: 0; border: 0; }
@@ -190,8 +195,8 @@
 .language-option input { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--ink); }
 .language-option input:focus-visible { outline: none; }
 .language-option-text { display: grid; gap: 2px; min-width: 0; }
-.language-option-text strong { color: var(--ink); font-size: 14.5px; font-weight: 600; }
-.language-option-text span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.language-option-text strong { color: var(--ink); font-size: 0.90625rem; font-weight: 600; }
+.language-option-text span { color: var(--muted); font-size: 0.8125rem; line-height: 1.5; }
 .settings-language-note { margin: 8px 16px 0; }
 @media (prefers-reduced-motion: reduce) { .language-option { transition: none; } }
 .switch {
@@ -208,23 +213,23 @@
 .switch:disabled { opacity: .45; cursor: default; }
 .settings-notice {
   margin: 0 16px 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg);
-  background: var(--raised); color: var(--text); font-size: 13.5px; line-height: 1.55;
+  background: var(--raised); color: var(--text); font-size: 0.84375rem; line-height: 1.55;
 }
 .settings-steps {
   display: grid; gap: 8px; padding: 14px 16px 14px 34px; border: 1px solid var(--line); border-radius: var(--r-lg);
-  list-style: decimal; color: var(--text); font-size: 14px; line-height: 1.55;
+  list-style: decimal; color: var(--text); font-size: 0.875rem; line-height: 1.55;
 }
-.settings-version { margin: 24px 20px 16px; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.settings-version { margin: 24px 20px 16px; color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .appbar-compose { margin-left: auto; color: var(--ink); }
 
 @media (max-width: 767px) {
-  .segmented button { min-height: 44px; font-size: 14px; }
+  .segmented button { min-height: 44px; font-size: 0.875rem; }
   /* The native date input covers the chip's 44px touch strip too, so a tap anywhere on it opens the picker. */
   .date-chip input { inset: -6px 0; height: auto; }
   .digest-list, .digest-hits { padding: 0; gap: 0; }
   .digest-row, .digest-hit { padding: 14px 16px; border-radius: 0; border-bottom: 1px solid var(--line); }
   .digest-bar { top: calc(var(--appbar) + var(--safe-top)); margin: 14px -20px 0; padding: 0 12px 0 10px; }
-  .digest-section-label { font-size: 18px; }
+  .digest-section-label { font-size: 1.125rem; }
   .digest-section-toggle { min-height: 44px; }
   .digest-section-note { flex-basis: 100%; margin-left: 0; }
   .digest-section { scroll-margin-top: calc(var(--appbar) + var(--safe-top) + 72px); }
@@ -237,11 +242,11 @@
 .voice-settings-note { margin: 0 4px 4px; }
 .voice-role { display: grid; gap: 10px; padding: 12px 14px; }
 .voice-role-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.voice-role-head .more-label { color: var(--ink); font-size: 15px; font-weight: 500; }
+.voice-role-head .more-label { color: var(--ink); font-size: 0.9375rem; font-weight: 500; }
 .segmented.voice-gender { grid-template-columns: repeat(2, minmax(64px, 1fr)); }
 /* Automatic audio: a label and note above a full-width segmented choice, saved on tap. */
 .auto-row .more-text { display: grid; gap: 4px; }
-.auto-row .more-label { color: var(--ink); font-size: 15px; font-weight: 500; }
+.auto-row .more-label { color: var(--ink); font-size: 0.9375rem; font-weight: 500; }
 .segmented.auto-choice-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .segmented.auto-choice-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .segmented.auto-choice button { padding: 0 6px; text-align: center; }
