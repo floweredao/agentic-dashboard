@@ -2,14 +2,14 @@ import { emitKeypressEvents } from "node:readline";
 import type { Key } from "node:readline";
 import webpush from "web-push";
 import { z } from "zod";
-import { parseConfig } from "../../server/config";
+import { secretsSchema } from "../../server/config";
 import { cloud } from "./plans";
 import { DeploymentError } from "./config";
 import type { Deployment } from "./config";
 import type { Transport } from "./commands";
 import { renderPlan } from "./commands";
 
-type Secrets = ReturnType<typeof parseConfig>["APP_SECRETS"];
+type Secrets = z.infer<typeof secretsSchema>;
 export type SecretPrompt = (field: string) => Promise<string>;
 const versionsSchema = z.array(z.object({ name: z.string().regex(/\/versions\/\d+$/), state: z.string() }));
 export function retainedVersions(input: unknown) {
@@ -25,7 +25,7 @@ export async function prepareSecrets(current: Secrets, prompt: SecretPrompt, tok
   const org = await prompt("turso.org (required with platform token)") || current.turso?.org;
   const apiKey = await prompt("resend.apiKey (optional; Enter keeps existing)") || current.resend?.apiKey;
   if (platformToken && !org) throw new DeploymentError("Turso usage monitoring requires turso.org");
-  const json = JSON.stringify({
+  const value = {
     ...current,
     kek: Object.keys(current.kek).length ? current.kek : { "1": Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64") },
     sessionSigningKey: current.sessionSigningKey ?? Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url"),
@@ -33,8 +33,8 @@ export async function prepareSecrets(current: Secrets, prompt: SecretPrompt, tok
     turso: { ...current.turso, authToken: current.turso?.authToken ?? await token(),
       ...(platformToken ? { platformToken } : {}), ...(org ? { org } : {}) },
     ...(apiKey ? { resend: { apiKey } } : {}),
-  });
-  return parseConfig({ AUTH_MODE: "google", APP_ORIGIN: "https://example.invalid", APP_SECRETS: json }).APP_SECRETS;
+  };
+  return secretsSchema.parse(value);
 }
 export function secretDryRun(c: Deployment): string {
   return renderPlan([
@@ -51,10 +51,9 @@ export async function updateSecrets(c: Deployment, transport: Transport, prompt:
   const list = () => transport(cloud(c, "secrets", "versions", "list", c.SECRET, "--format=json"));
   const versions = retainedVersions(JSON.parse(await list()));
   const latest = versions.find(item => item.state === "ENABLED");
-  const current = latest ? parseConfig({
-    APP_SECRETS: await transport(cloud(c, "secrets", "versions", "access", latest.name.split("/").at(-1) ?? "",
-      `--secret=${c.SECRET}`)),
-  }).APP_SECRETS : { kek: {} };
+  const current = latest ? secretsSchema.parse(JSON.parse(await transport(
+    cloud(c, "secrets", "versions", "access", latest.name.split("/").at(-1) ?? "", `--secret=${c.SECRET}`),
+  ))) : { kek: {} };
   const secrets = await prepareSecrets(current, prompt, async () => {
     const value = (await transport({ args: ["turso", "db", "tokens", "create", c.TURSO_DB] })).trim();
     if (!value || /\s/.test(value)) throw new DeploymentError("Turso did not return a single database token");

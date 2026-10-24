@@ -18,7 +18,10 @@ test("secret creation generates server-compatible keys when no version exists", 
   // When secret preparation runs with hidden-field answers.
   const secrets = await prepareSecrets(current, prompt, async () => authToken);
   // Then the production parser accepts the secret, including Turso authentication.
-  const parsed = parseConfig({ AUTH_MODE: "google", APP_ORIGIN: "https://example.com", APP_SECRETS: JSON.stringify(secrets) });
+  const parsed = parseConfig({
+    AUTH_MODE: "google", APP_ORIGIN: "https://example.com", CONTACT_EMAIL: config().CONTACT_EMAIL,
+    APP_SECRETS: JSON.stringify(secrets),
+  });
   expect(parsed.databaseToken).toBe(authToken);
   expect(Buffer.from(secrets.kek["1"] ?? "", "base64")).toHaveLength(32);
   expect(secrets.sessionSigningKey?.length).toBeGreaterThanOrEqual(32);

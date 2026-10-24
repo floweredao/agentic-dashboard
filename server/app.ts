@@ -42,6 +42,9 @@ export interface AppOptions {
   readonly jobs?: Jobs;
   readonly operations?: OperationsOptions;
   readonly ownerUserLimits?: Readonly<Record<string, number>>;
+  readonly contactEmail?: string;
+  readonly databaseRegion?: string;
+  readonly demoHostedUrl?: string;
   /** Shared protocol cache, initialized by createApp for all tenants. */
   readonly oidc?: ReturnType<typeof createOidc>;
   readonly databasePath?: string;

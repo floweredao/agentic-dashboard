@@ -6,7 +6,11 @@ export class DeploymentError extends Error {
   constructor(readonly detail: string) { super(detail); this.name = "DeploymentError"; }
 }
 const name = z.string().regex(/^[a-z][a-z0-9-]*[a-z0-9]$/);
-const origin = z.url().refine(value => {
+const httpsUrl = z.url().refine(value => {
+  const url = new URL(value);
+  return url.protocol === "https:" && !url.username && !url.password && !value.includes("|");
+});
+const origin = httpsUrl.refine(value => {
   const url = new URL(value);
   return url.protocol === "https:" && url.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
 }).transform(value => new URL(value).origin);
@@ -31,12 +35,20 @@ const schema = z.object({
   TURSO_DB: name, TURSO_GROUP: name,
   DATABASE_URL: z.preprocess(optional, database.optional()),
   APP_ORIGIN: z.preprocess(optional, origin.optional()), OWNER_ALERT_EMAIL: z.email(), CONTACT_EMAIL: z.email(),
+  DATABASE_REGION: z.preprocess(optional, z.string().trim().min(1).regex(/^[^|\r\n]+$/).optional()),
+  DEMO_HOSTED_URL: z.preprocess(optional, httpsUrl.optional()),
+  AUTH_TRUST_PROXY: z.enum(["on", "off", "true", "false"]).default("on"),
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
+  AUTH_START_LIMIT: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(900),
+  PENDING_SIGN_IN_LIMIT: z.coerce.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(10000),
   MAX_USERS: z.coerce.number().int().min(0).default(50),
   NARRATION_DAILY_LIMIT: z.coerce.number().int().min(0).max(200).default(10),
   NARRATION_GLOBAL_DAILY_LIMIT: z.coerce.number().int().min(0).default(60),
   OWNER_USER_LIMITS: z.string().transform((value): unknown => JSON.parse(value))
     .pipe(z.record(z.string().regex(/^[A-Za-z0-9_-]+$/), z.number().int().min(0).max(200))).prefault("{}"),
-}).strict();
+}).strict().refine(value => value.PENDING_SIGN_IN_LIMIT > value.AUTH_START_LIMIT * 10, {
+  path: ["PENDING_SIGN_IN_LIMIT"], message: "Must exceed ten minutes of admitted starts",
+});
 export type Deployment = z.infer<typeof schema>;
 
 export function parseDeployment(input: unknown): Deployment {

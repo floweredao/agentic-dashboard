@@ -143,6 +143,15 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 
 ### Account and onboarding
 
+`/privacy` and `/terms` are public application pages in English and Korean.
+Public configuration includes `contactEmail`, `databaseRegion` and
+`demoHostedUrl` (nullable). Google-mode startup requires `CONTACT_EMAIL`.
+`DATABASE_REGION` is an operator declaration, not an inferred Cloud Run location.
+`DEMO_HOSTED_URL` is optional and cannot contain URL credentials. Deployment
+tooling forwards these settings and the canonical authentication budgets.
+Hashed build assets support compression; narration retry responses identify
+their scope with `X-RateLimit-Scope: narration`.
+
 `GET /api/v1/account` returns `{ account: { id, email, locale, timeZone,
 onboardedAt, features: { digest, push }, agentSaveVerified } }` to its owner session.
 Google-mode `GET /api/v1/auth/session` also includes this account projection.
