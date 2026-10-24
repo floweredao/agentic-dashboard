@@ -142,8 +142,8 @@ test("a victim can finish sign-in during a flood at the global ceiling", async (
     })).status);
     const response = await f.finish(victim);
     // Then only the remaining global allowance creates rows and the victim completes.
-    expect(statuses.filter(status => status === 302)).toHaveLength(299);
-    expect(statuses.filter(status => status === 429)).toHaveLength(2201);
+    expect(statuses.filter(status => status === 302)).toHaveLength(899);
+    expect(statuses.filter(status => status === 429)).toHaveLength(1601);
     expect(response.status).toBe(302);
   } finally { await f.close(); }
 });

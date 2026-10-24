@@ -141,7 +141,7 @@ test("IPv4 clients do not share an IPv6-style aggregate network budget", () => {
 test("global starts cannot evade the ceiling by rotating IPv6 networks", () => {
   // Given the default global allowance used by independent /48s.
   const limit = authLimiter(() => 0, 1);
-  const starts = Array.from({ length: 300 }, (_, i) => limit(request(`2001:db8:${i.toString(16)}::1`)));
+  const starts = Array.from({ length: 900 }, (_, i) => limit(request(`2001:db8:${i.toString(16)}::1`)));
   // When a fresh network attempts one more start.
   const response = limit(request("2001:db8:ffff::1"));
   // Then the global ceiling applies independently of client bucket identities.
