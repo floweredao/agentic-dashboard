@@ -112,3 +112,44 @@ test("maintenance uploads a restorable backup, expires old objects and alerts on
     expect(Bun.gunzipSync(uploaded).length).toBeGreaterThan(0);
   } finally { server.stop(true); await f.close(); }
 });
+
+test("backup survives failed tombstone cleanup and successfully purged prefixes are not retried", async () => {
+  const sql = await openSql(":memory:");
+  await migrate(sql);
+  await sql.run("INSERT INTO users(id,created_at,deleted_at) VALUES('failed','2026-01-01','2026-01-02'),('done','2026-01-01','2026-01-02')");
+  let now = Date.parse("2026-02-01T12:00Z");
+  const events: string[] = [];
+  const server = Bun.serve({ port: 0, fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/upload/")) { events.push("backup"); return Response.json({}); }
+    if (url.pathname === "/emails") { events.push("alert"); return Response.json({ error: "unavailable" }, { status: 503 }); }
+    const prefix = url.searchParams.get("prefix");
+    if (prefix === "u/failed/") { events.push("failed"); return Response.json({ error: "unavailable" }, { status: 503 }); }
+    if (prefix === "u/done/") events.push("done");
+    return Response.json({ items: [] });
+  } });
+  try {
+    const client = cloudClient({ storageOrigin: server.url.origin, accessToken: async () => "fixture" });
+    const maintenance = createMaintenance({
+      sql, now: () => now, cloud: client, bucket: "test", directory: "", includeLocal: false,
+      tenant: async () => { throw new Error("No active hosted accounts"); },
+      audio: gcsAudioStore({ bucket: "test", client }),
+      alerts: createAlerts(sql, { owner: "operator@example.test", apiKey: "fixture", endpoint: `${server.url.origin}/emails`, now: () => now }),
+    });
+    await maintenance();
+    expect(events[0]).toBe("backup");
+    expect(events).toContain("failed");
+    expect(events).toContain("done");
+    expect(events).toContain("alert");
+    expect(z.object({ audio_purged_at: z.string().nullable() }).parse(
+      await sql.get("SELECT audio_purged_at FROM users WHERE id='failed'")).audio_purged_at).toBeNull();
+    expect(z.object({ audio_purged_at: z.string().nullable() }).parse(
+      await sql.get("SELECT audio_purged_at FROM users WHERE id='done'")).audio_purged_at).toBe(new Date(now).toISOString());
+    now += 86400000;
+    await maintenance();
+    expect(events.filter(event => event === "backup")).toHaveLength(2);
+    expect(events.filter(event => event === "failed")).toHaveLength(2);
+    expect(events.filter(event => event === "done")).toHaveLength(1);
+    expect(events.filter(event => event === "alert")).toHaveLength(2);
+  } finally { server.stop(true); await sql.close(); }
+});

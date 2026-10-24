@@ -23,6 +23,10 @@ export function createMaintenance(options: {
   readonly includeLocal?: boolean;
 }) {
   const { sql, now, cloud } = options;
+  async function failureAlert() {
+    try { await options.alerts?.send("maintenance"); }
+    catch (error) { console.error("maintenance alert failed", { failure: error instanceof Error ? error.name : "unknown" }); }
+  }
   async function usage() {
     if (!options.turso) return;
     const api = ky.create({ prefixUrl: `${options.turso.origin ?? "https://api.turso.tech"}/v1/organizations/${encodeURIComponent(options.turso.org)}/`,
@@ -58,7 +62,6 @@ export function createMaintenance(options: {
         await scope.store.db.run("DELETE FROM background_jobs WHERE completed_at<? AND user_id=?", [new Date(now() - 14 * 86400000).toISOString()]);
         await scope.store.db.run("DELETE FROM record_changes WHERE version<(SELECT version-5000 FROM record_sync WHERE record_sync.user_id=record_changes.user_id) AND user_id=?", []);
       }
-      for (const { id } of ids.parse(await sql.all("SELECT id FROM users WHERE deleted_at IS NOT NULL"))) await options.audio.removeAll(id);
       const name = `${day}.ndjson.gz`;
       const bytes = await createBackup(sql);
       const cutoff = new Date(now() - 14 * 86400000).toISOString().slice(0, 10);
@@ -84,11 +87,22 @@ export function createMaintenance(options: {
           if (/^\d{4}-\d{2}-\d{2}\.ndjson\.gz$/.test(file) && file.slice(0, 10) <= cutoff) rmSync(join(options.directory, file));
         }
       }
+      let cleanupFailed = false;
+      for (const { id } of ids.parse(await sql.all("SELECT id FROM users WHERE deleted_at IS NOT NULL AND audio_purged_at IS NULL"))) {
+        try {
+          await options.audio.removeAll(id);
+          await sql.run("UPDATE users SET audio_purged_at=? WHERE id=? AND deleted_at IS NOT NULL", [new Date(now()).toISOString(), id]);
+        } catch (error) {
+          cleanupFailed = true;
+          console.error("account audio cleanup deferred", { failure: error instanceof Error ? error.name : "unknown" });
+        }
+      }
+      if (cleanupFailed) await failureAlert();
       await usage();
       await sql.run("UPDATE maintenance_runs SET completed_at=? WHERE day=? AND leased_by=?", [new Date(now()).toISOString(), day, lease]);
       await sql.run("DELETE FROM maintenance_runs WHERE completed_at<?", [new Date(now() - 14 * 86400000).toISOString()]);
     } catch (error) {
-      await options.alerts?.send("maintenance");
+      await failureAlert();
       throw error;
     } finally {
       await sql.run("UPDATE maintenance_runs SET leased_until=0 WHERE day=? AND leased_by=?", [day, lease]);

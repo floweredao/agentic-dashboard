@@ -79,6 +79,9 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 10, async up(sql) {
     await sql.run("ALTER TABLE sessions ADD COLUMN authenticated_at INTEGER NOT NULL DEFAULT 0");
   } },
+  { version: 11, async up(sql) {
+    await sql.run("ALTER TABLE users ADD COLUMN audio_purged_at TEXT");
+  } },
 ];
 
 /** Each version and its ledger entry commit together, including upgrades interrupted mid-copy. */

@@ -354,6 +354,11 @@ retries deleted accounts' audio-prefix removal, and writes a gzip NDJSON snapsho
 every table as `backups/YYYY-MM-DD.ndjson.gz` in `AUDIO_BUCKET` (or the local
 database's `backups/` directory). Backups expire after 14 days; bucket lifecycle
 configuration should enforce this independently of the daily maintenance request.
+The backup is written before deleted-account audio cleanup. Each failed prefix is
+logged and alerts the operator without aborting the other cleanups or that day's
+backup. Successful prefixes receive `users.audio_purged_at` and are not retried
+on subsequent days; failed prefixes remain pending. Alert delivery failures are
+logged without replacing the original maintenance failure.
 With Turso platform credentials, usage is compared to the current subscription's
 published quotas, not hardcoded free-tier numbers; greater than 70% alerts the operator.
 
