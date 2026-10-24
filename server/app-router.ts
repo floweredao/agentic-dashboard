@@ -30,7 +30,9 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
         throw new ApiError(404, "not_found", "Route not found");
       }
       const origin = c.req.header("origin");
-      if (origin !== undefined && !origins.has(origin)) throw new ApiError(403, "origin", "Origin is not allowed");
+      if (origin !== undefined && !origins.has(origin)) {
+        throw new ApiError(403, options.hosted && !["GET", "HEAD"].includes(c.req.method) ? "csrf" : "origin", "Origin is not allowed");
+      }
       const window = Math.floor(now() / 60000);
       if (window !== rate.window) { rate.buckets.clear(); rate.window = window; }
       // Unknown credentials share one bucket; clients cannot grow the map by rotating garbage tokens.

@@ -23,6 +23,16 @@ A one-time connection code (`agentic-dashboard invite <name>` on the host, table
 
 Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
 
+### Optional hosted Google authentication
+
+With Google authentication configured, local owner-key and trusted-header bootstrap are disabled. `GET /auth/google/start` uses PKCE S256, random state/nonce and a signed ten-minute `oidc_tx` cookie. A global `oauth_transactions` row is atomically consumed before code exchange; the same callback cannot create another session. ID tokens require RS256 using the configured provider JWKS, allowed issuer, audience/authorized party, transaction-bound nonce and issue time, expiry and a boolean verified email. Token-selected key URLs are rejected. Production endpoints are Google's; local mock endpoints are an application-construction test seam, not a public request option.
+
+Users are identified only by Google subject, never merged by email. A deleted identity receives a new tenant id. Signups are limited to `MAX_USERS` active hosted accounts (default 50; the local owner is excluded); existing users can still sign in. Capacity returns a 403 explanation with a self-hosting alternative.
+
+Hosted sessions last 30 days and rotate the browser's previous session and CSRF token at sign-in. Cookies are HttpOnly, SameSite=Lax, Path=/, with no Domain: `__Host-session` for configured HTTPS origins, `session` for local HTTP testing. Forwarded headers never decide Secure. The hosted origin is the only allowed browser origin/host. `POST /auth/logout` requires session and CSRF and removes that session. `/auth/*` is limited to 20 requests per IP per minute (first forwarded hop, otherwise socket address). New users return to `/welcome`, existing onboarded users to `/`.
+
+The browser config adds `authMode: "local" | "google"`. Google mode displays Google-only access and limited signup capacity before authorization; local owner login and demo behavior remain available when Google is not configured.
+
 ## Records
 
 Three logical collections share one table: projects (`project`), tasks (`task`) and material (`research`, `work-report`, `note`, `social`).
