@@ -210,6 +210,15 @@ not filesystem enumeration. Replacing or deleting audio removes its object.
 | `POST /api/v1/records/:id/narration/cancel` | owner | stop a running job |
 | `GET /api/v1/records/:id/narration/audio` | owner, agent in read scope | audio with byte ranges |
 | `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part (`articles`, `messages`) or the whole digest (`all`) |
+| `GET /api/v1/narration/allowance` | owner | `{ limit, used, remaining, resetsAt, timeZone, failedStartsCount: true }` |
+
+Hosted overrides to the local defaults below: Google accounts get 10 daily starts
+unless `NARRATION_DAILY_LIMIT` is set. `OWNER_USER_LIMITS` is a JSON object mapping
+account IDs to explicit limits, for example `{"operator-user-id":20}`. Automatic
+audio never raises a hosted allowance and begins off. A start is counted when
+queued, including a job that later fails; starts are not a count of provider calls
+or a spending cap. Resets follow the server's `TIME_ZONE`, not a device setting.
+Daily-limit 429 responses include `error.retryAt` and `Retry-After` seconds.
 
 Only research, work-report, note and social records can be narrated. Limits: 6000-character scripts (10,000 for a digest, whose script tells every sentence of each article summary and is written once more when a Korean one leaves out a number the summary states), 20 queued jobs per account, `NARRATION_DAILY_LIMIT` runs per account per day (default 20), a service-wide `NARRATION_GLOBAL_DAILY_LIMIT` (default 60; 429 `narration_global_daily_limit`) and 3 failed attempts per content version. `style` is `read` (one voice) or `podcast` (two hosts, records only); the state reports the style last chosen, which is the default for the next request. A busy or rate-limited provider is retried with backoff. Vertex scripts use `NARRATION_SCRIPT_MODEL` (default `gemini-4-argon`); AI Studio scripts use `NARRATION_KEY_SCRIPT_MODEL` (default `gemini-3.8-flash`). A script gets 1 + 4 tries: with Vertex configured it is streamed first from the Vertex model through `streamGenerateContent?alt=sse`, then from the key model through AI Studio, taking the two routes in turn; a try that sends nothing for 30 s or goes quiet for 90 s fails as `stalled` and, like `timeout`, is followed at once; another transient failure waits as above; a route that fails for good is not asked again. When every try fails the job fails with the last failure and nothing is spoken. Each script try logs one line naming the host and the model that wrote it, never a token. Each job reports its stage, `progress` (while scripting the script characters streamed in so far over the expected length; while speaking the chunks done and total) and `stepAt` (when the current step began), `scriptTry` (only while a script is on its second or later try: which try is running; absent otherwise, so clients built before it still parse the state); a failure names its cause. A record is scripted from its whole body: code, tables, link-only lines and source or reference sections are left out, the rest is split at its headings into parts of at most 5,000 characters, each part is scripted in order (up to 18,000 characters each, else the job fails as `script_too_long`), and a part script under 60% of its source is written once more. Scripts saved under earlier rules are rewritten. A Korean script with plain (반말) endings or written almost all in 해요체 or in 습니다체 is written once more. Korean audio reads each number before a known unit as it is spoken (5곳 다섯 곳, 6월 유월, 4.2% 사 점 이 퍼센트); the saved script keeps the digits.
 
@@ -235,6 +244,13 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 In Google mode capture instead requires an agent bearer with `capture` enabled and `X-Capture: shortcut-v1` (legacy `X-Floweredao-Capture: shortcut-v1` is accepted). The token selects the tenant and saved attribution. A session cookie or trusted header cannot substitute. Local trusted-owner capture continues to accept `X-Capture: v1`.
 
 ## Other listeners
+
+Address buckets allow 20 sign-in/session requests and 60 public share requests per
+minute, independently. The first forwarded IP hop (the hosting proxy's client
+address), or the direct socket address, selects the bucket. Deploy behind a proxy
+that sanitizes forwarded identity headers. Authenticated API session buckets are
+keyed by account; one account cannot exhaust another account's allowance. Every
+rate rejection includes `Retry-After`. The request body caps are unchanged.
 
 ### Background operations
 

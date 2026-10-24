@@ -72,6 +72,9 @@ export const CASES: Readonly<Record<string, IsolationCase>> = {
   "GET /api/v1/narration/auto": { kind: "private", status: 200, check: value => {
     expect(value).toEqual({ digests: "off", records: "off", scope: "summary" });
   } },
+  "GET /api/v1/narration/allowance": { kind: "private", status: 200, check: value => {
+    expect(z.object({ used: z.number() }).parse(value).used).toBe(0);
+  } },
   "PUT /api/v1/narration/auto": { kind: "private", status: 200, body: () => ({ digests: "parts", records: "read", scope: "summary" }) },
   "GET /api/v1/narration/voices": { kind: "private", status: 200, check: value => {
     expect(z.object({ settings: z.object({ readStyle: z.string() }) }).parse(value).settings.readStyle).not.toBe("Private A style");

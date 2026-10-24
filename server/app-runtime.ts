@@ -65,6 +65,8 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
 
   const narration = createNarration({ provider: null, ...options.narration, store,
+    ...(options.hosted ? { strictDailyLimit: true,
+      dailyLimit: options.ownerUserLimits?.[store.db.userId] ?? options.narration?.dailyLimit ?? 10 } : {}),
     ...(options.jobs ? { jobs: options.jobs } : {}),
     ...(options.audioStore ? { audioStore: options.audioStore } : {}),
     ...(personalKey && keys && options.narrationEnabled !== false ? {
