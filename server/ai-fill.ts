@@ -15,6 +15,8 @@ export interface AiFillOptions {
   readonly read?: (url: URL, signal: AbortSignal) => Promise<string>;
   readonly model?: string;
   readonly timeoutMs?: number;
+  /** Called once a queued record's fill has ended, whether it filled, changed nothing or failed. */
+  readonly onSettled?: (id: string) => void;
 }
 export type AiFill = ReturnType<typeof createAiFill>;
 type Candidate = Pick<DashboardRecord, "kind" | "source" | "title" | "body"> & {
@@ -144,7 +146,7 @@ export function createAiFill(options: AiFillOptions) {
       if (error instanceof ApiError && error.status === 404) return;
       // Record content and model output never reach logs; only the failure class does.
       console.error(`ai-fill ${id} failed: ${error instanceof Error ? error.name : "unknown"}`);
-    }).finally(() => { queued.delete(id); });
+    }).finally(() => { queued.delete(id); options.onSettled?.(id); });
   }
   function sweep() {
     const listed = [...sources];
