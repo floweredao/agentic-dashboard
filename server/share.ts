@@ -1,7 +1,9 @@
 import { z } from "zod";
 import type { DashboardRecord } from "../shared/contracts";
 import { zonedDate } from "../shared/time";
-import type { Store } from "./store";
+import { Store } from "./store";
+import { ControlDb } from "./control-db";
+import { TenantDb } from "./tenant-db";
 
 export interface Share { readonly code: string; readonly url: string; readonly createdAt: string }
 
@@ -74,44 +76,41 @@ export function renderMarkdown(record: DashboardRecord, share: Share, titleOf: (
 }
 
 export class Shares {
-  constructor(private readonly store: Store, private readonly origin: string, readonly timeZone = "UTC") {
-    store.db.run(`CREATE TABLE IF NOT EXISTS shares(code TEXT PRIMARY KEY,
-      record_id TEXT NOT NULL UNIQUE REFERENCES records(id) ON DELETE CASCADE, created_at TEXT NOT NULL)`);
-  }
+  constructor(private readonly store: Store, private readonly origin: string, readonly timeZone = "UTC") {}
   private view(value: unknown): Share {
     const entry = row.parse(value);
     return { code: entry.code, url: `${this.origin}/s/${entry.code}`, createdAt: entry.created_at };
   }
-  readonly titleOf = (recordId: string): string | null => {
-    const value = this.store.db.query("SELECT json_extract(data,'$.title') AS title FROM records WHERE id=?").get(recordId);
+  readonly titleOf = async (recordId: string): Promise<string | null> => {
+    const value = (await this.store.db.get("SELECT json_extract(data,'$.title') AS title FROM records WHERE (id=?) AND user_id=?", [recordId]));
     return value ? z.object({ title: z.string() }).parse(value).title : null;
   };
-  get(recordId: string): Share | null {
-    const value = this.store.db.query("SELECT code,record_id,created_at FROM shares WHERE record_id=?").get(recordId);
+  async get(recordId: string): Promise<Share | null> {
+    const value = (await this.store.db.get("SELECT code,record_id,created_at FROM shares WHERE (record_id=?) AND user_id=?", [recordId]));
     return value ? this.view(value) : null;
   }
-  create(recordId: string): { share: Share; created: boolean } {
-    return this.store.db.transaction(() => {
-      const existing = this.get(recordId);
+  async create(recordId: string): Promise<{ share: Share; created: boolean }> {
+    return await this.store.db.tx(async () => {
+      const existing = (await this.get(recordId));
       if (existing) return { share: existing, created: false };
       const createdAt = new Date(this.store.now()).toISOString();
       // A primary-key collision on 60 random bits is practically impossible; retry anyway rather than fail.
       for (;;) {
         const code = generateCode();
-        const result = this.store.db.query("INSERT OR IGNORE INTO shares(code,record_id,created_at) VALUES(?,?,?)").run(code, recordId, createdAt);
+        const result = (await this.store.db.run("INSERT OR IGNORE INTO shares(code,record_id,created_at,user_id) VALUES(?,?,?,?)", [code, recordId, createdAt]));
         if (result.changes === 1) return { share: { code, url: `${this.origin}/s/${code}`, createdAt }, created: true };
       }
-    }).immediate();
+    });
   }
-  revoke(recordId: string) {
-    this.store.db.query("DELETE FROM shares WHERE record_id=?").run(recordId);
+  async revoke(recordId: string) {
+    (await this.store.db.run("DELETE FROM shares WHERE (record_id=?) AND user_id=?", [recordId]));
   }
-  find(input: string): { share: Share; record: DashboardRecord } | null {
+  async find(input: string) {
     const code = normalizeCode(input);
     if (!code) return null;
-    const value = this.store.db.query("SELECT code,record_id,created_at FROM shares WHERE code=?").get(code);
+    const value = await new ControlDb(this.store.db.sql).shareByCode(code);
     if (!value) return null;
     const share = this.view(value);
-    return { share, record: this.store.get(row.parse(value).record_id) };
+    return { share, record: await new Store(new TenantDb(this.store.db.sql, value.user_id), this.store.now).get(value.record_id), userId: value.user_id };
   }
 }

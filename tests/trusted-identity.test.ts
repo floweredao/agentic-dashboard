@@ -14,9 +14,9 @@ const identity = { "Tailscale-User-Login": ownerLogin };
 
 test("bootstraps an owner session when trusted Serve identity reaches the private HTTPS host", async () => {
   // Given: the loopback backend sits behind the configured HTTPS Serve origin.
-  const f = fixture();
+  const f = (await fixture());
   const options = { ...f.options, privateOrigin, trustedIdentity: { header: "Tailscale-User-Login", login: ownerLogin } };
-  const app = createApp(options);
+  const app = (await createApp(options));
   try {
     // When: Serve forwards the owner identity without a token or cookie.
     const response = await app.fetch(new Request(`${privateOrigin}/api/v1/auth/session`, {
@@ -32,8 +32,8 @@ test("bootstraps an owner session when trusted Serve identity reaches the privat
     expect(cookie).toContain("; Secure");
     expect(response.headers.get("cache-control")).toBe("no-store");
   } finally {
-    app.close();
-    f.close();
+    (await app.close());
+    (await f.close());
   }
 });
 
@@ -68,22 +68,22 @@ const deniedCases: readonly {
 
 test.each([...deniedCases])("does not bootstrap when $name", async ({ options, headers, method, status }) => {
   // Given: one bootstrap condition is absent or explicitly disallowed.
-  const f = fixture();
-  const app = createApp({ ...f.options, publicApiBaseUrl: "https://agents.example.com", ...(options ?? enabled) });
+  const f = (await fixture());
+  const app = (await createApp({ ...f.options, publicApiBaseUrl: "https://agents.example.com", ...(options ?? enabled) }));
   try {
     // When: the private session endpoint receives that request.
     const response = await app.fetch(new Request(`${privateOrigin}/api/v1/auth/session`, { method: method ?? "GET", headers: headers ?? {} }));
     // Then: it cannot issue an owner cookie.
     expect(response.status).toBe(status);
     expect(response.headers.get("set-cookie")).toBeNull();
-  } finally { app.close(); f.close(); }
+  } finally { (await app.close()); (await f.close()); }
 });
 
 test.each([{}, identity, { "Tailscale-User-Login": "other@example.com" }])(
   "reuses a valid session without renewal regardless of identity headers %j", async headers => {
     // Given: an existing owner session created through the manual API.
-    const f = fixture();
-    const app = createApp({ ...f.options, ...enabled });
+    const f = (await fixture());
+    const app = (await createApp({ ...f.options, ...enabled }));
     try {
       const manual = await f.login();
       const before = await f.call("/api/v1/auth/session", "GET", undefined, manual);
@@ -96,14 +96,14 @@ test.each([{}, identity, { "Tailscale-User-Login": "other@example.com" }])(
       expect(response.status).toBe(200);
       expect(sessionResult.parse(await response.json())).toEqual(expected);
       expect(response.headers.get("set-cookie")).toBeNull();
-    } finally { app.close(); f.close(); }
+    } finally { (await app.close()); (await f.close()); }
   },
 );
 
 test("does not fall back to an existing cookie when Authorization is explicit", async () => {
   // Given: both an owner cookie and the correct Serve identity.
-  const f = fixture();
-  const app = createApp({ ...f.options, ...enabled });
+  const f = (await fixture());
+  const app = (await createApp({ ...f.options, ...enabled }));
   try {
     const session = await f.login();
     // When: an invalid Bearer is explicitly provided as well.
@@ -113,14 +113,14 @@ test("does not fall back to an existing cookie when Authorization is explicit", 
     // Then: neither cookie nor identity rescues that request.
     expect(response.status).toBe(401);
     expect(response.headers.get("set-cookie")).toBeNull();
-  } finally { app.close(); f.close(); }
+  } finally { (await app.close()); (await f.close()); }
 });
 
 test.each(["invalid", "expired"] as const)("replaces a %s cookie only for trusted identity", async state => {
   // Given: a cookie that cannot authenticate, with a deterministic clock.
   let now = Date.UTC(2026, 8, 21);
-  const f = fixture(10000, () => now);
-  const app = createApp({ ...f.options, ...enabled });
+  const f = (await fixture(10000, () => now));
+  const app = (await createApp({ ...f.options, ...enabled }));
   try {
     const previous = await f.login();
     now += 8 * 24 * 60 * 60 * 1000;
@@ -134,13 +134,13 @@ test.each(["invalid", "expired"] as const)("replaces a %s cookie only for truste
     expect(Date.parse(session.expiresAt)).toBe(now + 7 * 24 * 60 * 60 * 1000);
     expect(session.csrfToken === previous["X-CSRF-Token"]).toBe(false);
     expect(response.headers.has("set-cookie")).toBe(true);
-  } finally { app.close(); f.close(); }
+  } finally { (await app.close()); (await f.close()); }
 });
 
 test("real loopback HTTP preserves owner CSRF and public agent isolation after bootstrap", async () => {
   // Given: isolated databases and actual private/public loopback listeners.
-  const f = fixture();
-  const app = createApp({ ...f.options, ...enabled });
+  const f = (await fixture());
+  const app = (await createApp({ ...f.options, ...enabled }));
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.fetch });
   const ingress = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.publicFetch });
   const call = (path: string, init: RequestInit = {}, publicOnly = false) => {
@@ -195,7 +195,7 @@ test("real loopback HTTP preserves owner CSRF and public agent isolation after b
   } finally {
     await server.stop(true);
     await ingress.stop(true);
-    app.close();
-    f.close();
+    (await app.close());
+    (await f.close());
   }
 });
