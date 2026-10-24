@@ -157,15 +157,21 @@ Hashed build assets support compression; narration retry responses identify
 their scope with `X-RateLimit-Scope: narration`.
 
 `GET /api/v1/account` returns `{ account: { id, email, locale, timeZone,
-onboardedAt, features: { digest, push }, agentSaveVerified, agentSaveRecordId } }` to its owner session.
+onboardedAt, features: { digest, push }, agentSaveVerified, timeZoneSaved } }` to its owner session.
 Google-mode `GET /api/v1/auth/session` also includes this account projection.
 `PATCH /api/v1/account/preferences` (session + CSRF) persists `locale`
 (`system`, `en`, `ko`), an IANA `timeZone`, and feature choices. The calendar
 preference does not change the fixed server-zone narration reset.
+`timeZoneSaved` distinguishes an explicit calendar choice (including UTC) from
+the server default. Until a zone is saved, the preference form initially offers
+the browser's resolved time zone. Updating other preferences does not save a zone.
 `POST /api/v1/onboarding/done` requires a successful external agent record save
 and sets `users.onboarded_at`; a manual sample or same-origin browser token test
 does not count. REST bearer saves without a browser Origin and bearer MCP saves
 prove the connection. Reading and saving require no Gemini key.
+
+The account projection also includes `agentSaveRecordId`, the most recent
+externally saved record ID used for connection verification (nullable).
 
 `GET /api/v1/account/export` is an authenticated, non-cacheable `.tar.gz` download.
 It includes `README.txt`, `data.json` with the account and every tenant table,
