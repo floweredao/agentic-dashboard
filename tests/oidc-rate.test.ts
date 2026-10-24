@@ -129,3 +129,39 @@ test("new starts survive global eviction when existing expiries tie", async () =
     expect(await control.consumeOAuth("second:a", expires - 1)).toBe(true);
   } finally { await f.close(); }
 });
+
+test("a victim can finish sign-in during a flood at the global ceiling", async () => {
+  const f = await oidcFixture(50, oidcOrigin, true);
+  try {
+    // Given a victim's real mock-provider sign-in awaiting its callback.
+    const victim = await f.start({ "X-Forwarded-For": "198.51.100.1" });
+    // When an attacker rotates enough /48s to flush the old pending capacity.
+    const statuses = [];
+    for (let i = 0; i < 2500; i++) statuses.push((await f.call("/auth/google/start", {
+      "X-Forwarded-For": `2001:db8:${i.toString(16)}::1`,
+    })).status);
+    const response = await f.finish(victim);
+    // Then only the remaining global allowance creates rows and the victim completes.
+    expect(statuses.filter(status => status === 302)).toHaveLength(299);
+    expect(statuses.filter(status => status === 429)).toHaveLength(2201);
+    expect(response.status).toBe(302);
+  } finally { await f.close(); }
+});
+
+test("default pending capacity retains an older sign-in beyond two thousand newer starts", async () => {
+  const f = await oidcFixture();
+  try {
+    // Given an older pending sign-in and 2500 newer rows from prior rate windows.
+    const control = new ControlDb(f.app.sql, false);
+    const expires = Date.parse("2026-10-24T12:10:00Z");
+    await control.startOAuth("victim", expires, "original");
+    await f.app.sql.run(`WITH RECURSIVE pending(n) AS (
+      VALUES(1) UNION ALL SELECT n+1 FROM pending WHERE n<2500)
+      INSERT INTO oauth_transactions(tx_hash,expires_at)
+      SELECT 'client-' || n || ':tx', ? FROM pending`, [expires + 1]);
+    // When another client starts with default capacity.
+    await control.startOAuth("newest", expires + 2, "fresh");
+    // Then the older live sign-in is not evicted by the old two-thousand-row limit.
+    expect(await control.consumeOAuth("original:victim", expires - 1)).toBe(true);
+  } finally { await f.close(); }
+});

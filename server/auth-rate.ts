@@ -21,21 +21,32 @@ export function authClientKey(request: Request, socketAddress: string | undefine
   return [...words.slice(0, 4).map(word => word.padStart(4, "0")), "0000", "0000", "0000", "0000"].join(":") + "/64";
 }
 
-export function authLimiter(now: () => number, trustedProxy: boolean | number = false) {
+export function authLimiter(now: () => number, trustedProxy: boolean | number = false, startLimit = 300) {
   const buckets = new Map<string, number>();
+  const startNetworks = new Map<string, number>();
+  let starts = 0;
   let minute = Math.floor(now() / 60000);
   return (request: Request, socketAddress?: string) => {
-    if (!new URL(request.url).pathname.startsWith("/auth/")) return null;
+    const path = new URL(request.url).pathname;
+    if (!path.startsWith("/auth/")) return null;
     const current = Math.floor(now() / 60000);
-    if (current !== minute) { buckets.clear(); minute = current; }
+    if (current !== minute) { buckets.clear(); startNetworks.clear(); starts = 0; minute = current; }
     const ip = authClientKey(request, socketAddress, trustedProxy);
+    const starting = path === "/auth/google/start";
+    const network = starting && ip.endsWith("/64") ? ip.split(":").slice(0, 3).join(":") : undefined;
+    const networkCount = network === undefined ? 0 : startNetworks.get(network) ?? 0;
     // Evict the oldest entry instead of turning bounded storage into a global sign-in lockout.
     if (!buckets.has(ip) && buckets.size >= 10000) {
       for (const oldest of buckets.keys()) { buckets.delete(oldest); break; }
     }
     const count = (buckets.get(ip) ?? 0) + 1;
     buckets.set(ip, count);
-    return count <= 20 ? null : Response.json({ error: { code: "rate_limited", message: "Too many sign-in attempts." } },
+    if (count <= 20 && networkCount < 100 && (!starting || starts < startLimit)) {
+      if (starting) starts++;
+      if (network !== undefined) startNetworks.set(network, networkCount + 1);
+      return null;
+    }
+    return Response.json({ error: { code: "rate_limited", message: "Too many sign-in attempts." } },
       { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } });
   };
 }

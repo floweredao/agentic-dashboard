@@ -52,27 +52,29 @@ test("forwarded auth addresses are trusted only for hosted proxy ingress", () =>
 
 test("auth limits parse operator overrides independently of defaults", () => {
   // Given explicit operator settings distinct from the defaults.
-  const env = { TRUSTED_PROXY_HOPS: "2", PENDING_SIGN_IN_LIMIT: "7" };
+  const env = { TRUSTED_PROXY_HOPS: "2", PENDING_SIGN_IN_LIMIT: "7", AUTH_START_LIMIT: "3" };
   // When configuration is parsed.
   const config = parseConfig(env);
   // Then both settings survive boundary parsing.
   expect(config.TRUSTED_PROXY_HOPS).toBe(2);
   expect(config.PENDING_SIGN_IN_LIMIT).toBe(7);
+  expect(config.AUTH_START_LIMIT).toBe(3);
 });
 
-test("auth limits default to one trusted hop and two thousand pending starts", () => {
+test("auth limits default to one trusted hop and ten thousand pending starts", () => {
   // Given no overrides.
   const env = {};
   // When configuration is parsed.
   const config = parseConfig(env);
   // Then bounded defaults are available.
   expect(config.TRUSTED_PROXY_HOPS).toBe(1);
-  expect(config.PENDING_SIGN_IN_LIMIT).toBe(2000);
+  expect(config.PENDING_SIGN_IN_LIMIT).toBe(10000);
+  expect(config.AUTH_START_LIMIT).toBe(300);
 });
 
 test.each(["0", "-1", "1.5", "invalid", ""])("auth settings reject invalid positive integers: %s", value => {
   // Given an invalid operator value.
-  for (const field of ["TRUSTED_PROXY_HOPS", "PENDING_SIGN_IN_LIMIT"]) {
+  for (const field of ["TRUSTED_PROXY_HOPS", "PENDING_SIGN_IN_LIMIT", "AUTH_START_LIMIT"]) {
     // When the boundary parses it, then startup fails.
     expect(() => parseConfig({ [field]: value })).toThrow();
   }
@@ -112,5 +114,20 @@ test("configured trusted hops reach the real sign-in limiter", async () => {
     const response = await start("198.51.100.2");
     // Then the balancer does not impose a shared rate budget.
     expect(response.status).toBe(302);
+  } finally { await app.close(); }
+});
+
+test("configured global start ceiling reaches the real sign-in route", async () => {
+  // Given production configuration allowing two starts per minute.
+  const app = await configuredAuthApp({ AUTH_START_LIMIT: "2" });
+  try {
+    // When three independent IPv4 clients start.
+    const statuses = [];
+    for (let i = 1; i <= 3; i++) statuses.push((await app.fetch(new Request("https://example.test/auth/google/start", {
+      headers: { "X-Forwarded-For": `198.51.100.${i}` },
+    }))).status);
+    // Then the configured ceiling rejects the third before storing another transaction.
+    expect(statuses).toEqual([302, 302, 429]);
+    expect(z.object({ count: z.number() }).parse(await app.sql.get("SELECT count(*) AS count FROM oauth_transactions")).count).toBe(2);
   } finally { await app.close(); }
 });

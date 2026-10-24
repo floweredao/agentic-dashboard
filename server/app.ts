@@ -22,6 +22,7 @@ export interface AppOptions {
   readonly trustedAuthProxy?: boolean;
   readonly trustedProxyHops?: number;
   readonly pendingSignInLimit?: number;
+  readonly authStartLimit?: number;
   readonly geminiKeys?: GeminiKeyOptions;
   readonly keyStore?: GeminiKeys;
   readonly personalProvider?: (key: KeySource) => NarrationProvider;
@@ -127,7 +128,7 @@ export async function createApp(options: AppOptions = {}) {
     const scope = userId === null ? initial : await tenant(userId);
     return scope[surface](request);
   };
-  const limitAuth = authLimiter(now, trustedAuthProxy);
+  const limitAuth = authLimiter(now, trustedAuthProxy, options.authStartLimit);
   return { ...initial, sql, tenant,
     fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) => {
       const address = server?.requestIP(request)?.address;
