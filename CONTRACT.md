@@ -6,7 +6,7 @@ This document describes what the server promises: the data model, the HTTP API, 
 
 All data access uses the asynchronous `Sql` interface. A local path or `file:` URL uses bun:sqlite with WAL, foreign keys and a 5-second busy timeout; `libsql://` and HTTPS URLs use libSQL. `DATABASE_URL` overrides `DATABASE_PATH`; remote credentials come from `DATABASE_AUTH_TOKEN`. Each versioned migration commits its data and `schema_migrations` entry together. Existing single-owner databases upgrade in place under the implicit `local` account.
 
-Every tenant table has a non-null `user_id`: principals, sessions, records, evidence, requests, trash, comments, documents, agent_invites, digests, digest_reactions, narrations, narration_runs, narration_auto, narration_settings, push_subscriptions and shares. Principal names, idempotency keys, digest slots, comments, documents and narration state are scoped to that account. Generated record columns index kind, creation time and archive state. `users` and `schema_migrations` are global control tables.
+Every tenant table has a non-null `user_id`: principals, sessions, records, evidence, requests, trash, comments, documents, agent_invites, digests, digest_reactions, narrations, narration_runs, narration_auto, narration_settings, push_subscriptions, shares, background_jobs, record_sync and record_changes. Principal names, idempotency keys, digest slots, comments, documents and narration state are scoped to that account. Generated record columns index kind, creation time and archive state. Account, migration, OAuth transaction and operator maintenance/alert state live in global control tables.
 
 Request credentials select a fixed tenant service graph. Background audio queues, settings, AI fills and push recipients use the same account. Missing content from another account returns 404, including delete attempts; relationship validation retains its existing 400 response. A share or invitation code is an explicit capability and resolves its issuing account. Subscribing an existing push endpoint moves that device to the account that subscribed last. Trusted proxy identity grants owner authority only in the implicit `local` account; capture with a non-local account's cookie is rejected even with that header. Hosted capture and every MCP request require an agent bearer; `MCP_AGENT` never authenticates a request.
 
@@ -16,7 +16,7 @@ In Google mode, unauthenticated requests use a non-persisted public service scop
 
 | Principal | Source value | How it authenticates |
 |---|---|---|
-| Owner | `manual` | Signs in with the owner key from `data/credentials.json` (session cookie plus CSRF token), or through a trusted proxy header |
+| Owner | `manual` | Local mode: owner key from `data/credentials.json` or trusted proxy. Google mode: Google sign-in. Session cookie plus CSRF token; authority is limited to the selected account |
 | Agent | its registered name, for example `codex` | `Authorization: Bearer <agent key>` |
 
 Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key.
@@ -29,7 +29,7 @@ Rotation only updates an active principal. A revoked agent returns `409 agent_re
 
 A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
 
-Owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
+Local owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
 
 ### Optional hosted Google authentication
 
@@ -122,7 +122,7 @@ An agent may read:
 - unarchived research, work-report, note and social records from anyone;
 - the owner's unarchived tasks and projects.
 
-Everything else answers `404 not_found`. `fields.personalNotes` is removed from records the agent didn't create. An agent may PATCH only records it created; it can't delete anything. The agent-only ingress listener narrows reads further, to the agent's own records.
+These permissions apply only within the credential's account. Everything else answers `404 not_found`. `fields.personalNotes` is removed from records the agent didn't create. An agent may PATCH or move to trash only records it created; it cannot restore or permanently delete records. The agent-only ingress listener narrows reads further, to the agent's own records.
 
 ## HTTP API
 
@@ -135,7 +135,11 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | `GET /api/health`, `GET /api/v1/health` | anyone | `{ status: "ok" }` |
 | `GET /api/v1/config` | anyone | `{ appName, version, timeZone, locale, features: { narration, push, digest, trustedLogin, demo } }`; `version` is the `package.json` version the server was built from |
 | `GET /api/v1/schema` | anyone | kinds, field lists, agent format, JSON Schema of RecordInput, `timeZone` |
-| `POST /api/v1/auth/session` | owner | `{ token }` to `{ csrfToken, expiresAt }` plus cookie |
+| `GET /auth/google/start` | anyone, Google mode | 302 to the provider with a signed transaction cookie |
+| `GET /auth/google/callback` | valid OIDC transaction, Google mode | consumes the transaction; session plus 302 to `/welcome`, `/`, or `/delete-confirm` for deletion intent |
+| `GET /auth/capacity` | anyone | 403 capacity explanation |
+| `POST /auth/logout` | owner session + CSRF | revoke this session, clear cookie, 204 |
+| `POST /api/v1/auth/session` | local owner | `{ token }` to `{ csrfToken, expiresAt }` plus cookie; owner-key bootstrap disabled in Google mode |
 | `GET /api/v1/auth/session` | owner | `{ principal, csrfToken, expiresAt }` |
 | `DELETE /api/v1/auth/session` | owner | 204 |
 | `GET /api/v1/agents` | owner | `{ items }` registered agents |
@@ -165,6 +169,9 @@ the browser's resolved time zone. Updating other preferences does not save a zon
 and sets `users.onboarded_at`; a manual sample or same-origin browser token test
 does not count. REST bearer saves without a browser Origin and bearer MCP saves
 prove the connection. Reading and saving require no Gemini key.
+
+The account projection also includes `agentSaveRecordId`, the most recent
+externally saved record ID used for connection verification (nullable).
 
 `GET /api/v1/account/export` is an authenticated, non-cacheable `.tar.gz` download.
 It includes `README.txt`, `data.json` with the account and every tenant table,
@@ -326,7 +333,7 @@ record text or identifiers; other devices retain their own setting.
 
 ### Capture
 
-`POST /api/v1/capture` saves a link as a `social` record. It only works for the owner signed in through the trusted proxy, with the header `X-Capture: v1`.
+`POST /api/v1/capture` saves a link as a `social` record. In local mode it requires the owner signed in through the trusted proxy, with the header `X-Capture: v1` or `shortcut-v1`.
 
 In Google mode capture instead requires an agent bearer with `capture` enabled and `X-Capture: shortcut-v1` (legacy `X-Floweredao-Capture: shortcut-v1` is accepted). The token selects the tenant and saved attribution. A session cookie or trusted header cannot substitute. Local trusted-owner capture continues to accept `X-Capture: v1`.
 
