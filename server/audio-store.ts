@@ -9,7 +9,7 @@ export interface AudioStore {
   readonly remote: boolean;
   put(userId: string, name: string, file: Blob): Promise<void>;
   url(userId: string, name: string): Promise<string>;
-  read(userId: string, name: string): Promise<Blob>;
+  read(userId: string, name: string): Promise<ReadableStream<Uint8Array>>;
   remove(userId: string, name: string): Promise<void>;
   removeAll(userId: string): Promise<void>;
 }
@@ -29,7 +29,7 @@ export function localAudioStore(directory: string) {
       chmodSync(target, 0o600);
     },
     async url(userId: string, name: string) { return path(userId, name); },
-    async read(userId: string, name: string) { return Bun.file(path(userId, name)); },
+    async read(userId: string, name: string) { return Bun.file(path(userId, name)).stream(); },
     async remove(userId: string, name: string) { rmSync(path(userId, name), { force: true }); },
     async removeAll(userId: string) {
       // "local" shares the root with hosted account directories. Delete only its files.
@@ -78,7 +78,11 @@ export function gcsAudioStore(options: { readonly bucket: string; readonly clien
         })).json());
       return `https://storage.googleapis.com${vector.path}?${vector.query}&X-Goog-Signature=${Buffer.from(result.signedBlob, "base64").toString("hex")}`;
     },
-    async read(userId, name) { return (await client.request(`${objectUrl(object(userId, name))}?alt=media`)).blob(); },
+    async read(userId, name) {
+      const response = await client.request(`${objectUrl(object(userId, name))}?alt=media`);
+      if (!response.body) throw new ApiError(502, "audio_storage", "Audio storage returned no body");
+      return response.body;
+    },
     async remove(userId, name) {
       const response = await client.request(objectUrl(object(userId, name)), { method: "DELETE", throwHttpErrors: false });
       if (!response.ok && response.status !== 404) throw new ApiError(502, "audio_storage", "Audio storage deletion failed");

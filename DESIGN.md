@@ -144,6 +144,12 @@ Landmarks for navigation, main content, the list pane and the reader article. On
 
 ## Accessible reading and feedback
 
+Account export uses a button with a preparing state, not a raw download link.
+Show export-specific busy, size-limit and failure messages beside it in the
+selected language; they must not disable unrelated actions. State the 64 MiB cap.
+Leaving the account controls cancels an unfinished transfer and releases its
+temporary browser download URL.
+
 Text sizes use rem so text enlargement reflows. Touch pointers, including tablets, get 44px targets; list headings wrap within 320px at enlarged text sizes. Favorite changes are quiet because the pressed state supplies feedback; errors still announce. Empty Recent records offers New item. Digest loading keeps two row-shaped placeholders under a status label. Empty trash names its busy state. Reduce Motion uses fades for dialogs, toasts and the mini player. Validation errors name fields rather than schema paths.
 
 Digest detail has the same full-screen corner control as record detail. Only its section bar and content enter the modal; audio stays mounted outside. The dialog owns scrolling and its section bar sticks below the measured header. Close or Escape restores focus. Message action lines are not displayed in either reading density. Phone tabs auto-flow into equal columns, with no unused column when digests are disabled. Check keyboard focus, accessible names, 320px reflow and touch targets in both languages.

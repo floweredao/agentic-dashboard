@@ -72,6 +72,10 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 8, async up(sql) {
     await createSchema(sql);
   } },
+  { version: 9, async up(sql) {
+    await sql.run("ALTER TABLE users ADD COLUMN export_lease TEXT");
+    await sql.run("ALTER TABLE users ADD COLUMN export_until INTEGER");
+  } },
 ];
 
 /** Each version and its ledger entry commit together, including upgrades interrupted mid-copy. */

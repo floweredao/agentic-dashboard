@@ -19,7 +19,7 @@ test("local audio preserves bytes and isolates account directories", async () =>
     // When: one account removes all its audio.
     await store.removeAll("a");
     // Then: the other account's file still has its original bytes.
-    expect(await (await store.read("b", "one.wav")).text()).toBe("B");
+    expect(await new Response(await store.read("b", "one.wav")).text()).toBe("B");
     expect(await Bun.file(store.path("a", "one.wav")).exists()).toBe(false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -52,7 +52,7 @@ test("audio authenticates before redirecting to private short lived storage", as
   // Given: fake speech and a remote store with no external calls.
   const tts = fake();
   let urls = 0;
-  const audioStore = { remote: true, put: async () => undefined, read: async () => new Blob(["audio"]),
+  const audioStore = { remote: true, put: async () => undefined, read: async () => new Blob(["audio"]).stream(),
     remove: async () => undefined, removeAll: async () => undefined,
     url: async () => { urls++; return "https://storage.googleapis.com/test/file?fixture=1"; } };
   const f = await fixture(10000, Date.now, { audioStore, audioBucket: "test",

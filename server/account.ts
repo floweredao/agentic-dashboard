@@ -2,13 +2,13 @@ import { z } from "zod";
 import { AccountFeaturesSchema, AccountSchema, type AccountPreferences } from "../shared/account";
 import type { Store } from "./store";
 import { ApiError } from "./errors";
-import { DataRowSchema, eraseTenant, tenantData } from "./tenant-data";
+import { eraseTenant } from "./tenant-data";
 import type { AudioStore } from "./audio-store";
+import { accountExport } from "./account-export";
 
 const userRow = z.object({ id: z.string(), email: z.email().nullable(), locale: z.enum(["system", "en", "ko"]).nullable(),
   time_zone: z.string().nullable(), onboarded_at: z.string().nullable(), agent_saved_at: z.string().nullable(),
   features: z.string(), agent_saved_record: z.string().nullable() });
-const secretFields = new Set(["token_hash", "hash", "csrf", "code_hash", "gemini_key_ct", "gemini_key_kek", "auth", "p256dh"]);
 const exportReadme = [
   "floweredao account export / 계정 내보내기", "",
   "Open this .tar.gz archive with your operating system's archive utility.",
@@ -51,21 +51,7 @@ export function createAccount(store: Store, defaults: { readonly timeZone: strin
       await store.db.sql.run("UPDATE users SET onboarded_at=? WHERE id=? AND deleted_at IS NULL", [onboardedAt, userId]);
       return { ...account, onboardedAt };
     },
-    async export() {
-      const snapshot = await store.db.sql.tx(async sql => {
-        await profile();
-        const account = DataRowSchema.parse(await sql.get("SELECT * FROM users WHERE id=?", [userId]));
-        const data = await tenantData(sql, userId);
-        const safe = (row: z.infer<typeof DataRowSchema>) => Object.fromEntries(Object.entries(row).filter(([key]) => !secretFields.has(key)));
-        return { account: safe(account), tables: Object.fromEntries(Object.entries(data).map(([table, rows]) => [table, rows.map(safe)])) };
-      });
-      const files: Record<string, string | Uint8Array> = { "README.txt": exportReadme, "data.json": JSON.stringify(snapshot, null, 2) };
-      for (const row of snapshot.tables["narrations"] ?? []) {
-        const name = row["audio_file"];
-        if (typeof name === "string") files[`audio/${name}`] = new Uint8Array(await (await defaults.audio.read(userId, name)).arrayBuffer());
-      }
-      return new Bun.Archive(files, { compress: "gzip" });
-    },
+    export(signal?: AbortSignal) { return accountExport(store, defaults.audio, exportReadme, signal); },
     async remove(confirm: string, createdAt: number) {
       await store.db.sql.tx(async sql => {
         const account = await profile();
@@ -74,7 +60,8 @@ export function createAccount(store: Store, defaults: { readonly timeZone: strin
         if (createdAt <= store.now() - 600000 || createdAt > store.now()) throw new ApiError(403, "reauth_required", "Sign in again to confirm account deletion");
         await eraseTenant(sql, userId);
         await sql.run(`UPDATE users SET email=NULL,name=NULL,locale=NULL,time_zone=NULL,features='{"digest":false,"push":false}',
-          gemini_key_ct=NULL,gemini_key_kek=NULL,onboarded_at=NULL,agent_saved_at=NULL,agent_saved_record=NULL,last_seen_at=NULL,deleted_at=? WHERE id=?`,
+          gemini_key_ct=NULL,gemini_key_kek=NULL,onboarded_at=NULL,agent_saved_at=NULL,agent_saved_record=NULL,last_seen_at=NULL,
+          export_lease=NULL,export_until=NULL,deleted_at=? WHERE id=?`,
         [new Date(store.now()).toISOString(), userId]);
       });
       try { await defaults.audio.removeAll(userId); }

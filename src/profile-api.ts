@@ -23,3 +23,4 @@ export async function removeAccount(confirm: string, csrfToken: string) {
   await http.delete("account", { json: { confirm }, headers: { "X-CSRF-Token": csrfToken } });
 }
 export async function loadAllowance() { return AllowanceSchema.parse(await http.get("narration/allowance").json()); }
+export async function downloadAccount(signal: AbortSignal) { return http.get("account/export", { timeout: 900000, signal }).blob(); }
