@@ -7,7 +7,7 @@ const request = (forwarded: string, path = "/auth/google/start") => new Request(
 
 test("trusted proxy requests share the appended client hop despite spoofed prefixes", () => {
   // Given one actual client has exhausted its minute.
-  const limit = authLimiter(() => 0, true);
+  const limit = authLimiter(() => 0, 1);
   for (let i = 0; i < 20; i++) limit(request(`192.0.2.${i}, 198.51.100.1`), "203.0.113.1");
   // When it changes the client-supplied leading hop again.
   const response = limit(request("192.0.2.99, 198.51.100.1"), "203.0.113.1");
@@ -17,7 +17,7 @@ test("trusted proxy requests share the appended client hop despite spoofed prefi
 
 test("direct requests ignore forwarded values and use the socket address", () => {
   // Given the same socket peer has exhausted its minute.
-  const limit = authLimiter(() => 0, false);
+  const limit = authLimiter(() => 0, 0);
   for (let i = 0; i < 20; i++) limit(request(`192.0.2.${i}`), "198.51.100.1");
   // When the peer supplies a new forwarded value.
   const response = limit(request("192.0.2.99"), "198.51.100.1");
@@ -27,7 +27,7 @@ test("direct requests ignore forwarded values and use the socket address", () =>
 
 test("a full rate bucket map does not lock out a fresh client", () => {
   // Given enough distinct clients to fill the bounded map.
-  const limit = authLimiter(() => 0, true);
+  const limit = authLimiter(() => 0, 1);
   for (let i = 0; i < 10000; i++) limit(request(`2001:db8:${i.toString(16)}::1`, "/auth/google/callback"), "203.0.113.1");
   // When another real client arrives.
   const response = limit(request("2001:db8:ffff::1", "/auth/google/callback"), "203.0.113.1");
@@ -37,7 +37,7 @@ test("a full rate bucket map does not lock out a fresh client", () => {
 
 test("rotating IPv6 interface addresses cannot reset a prefix budget", () => {
   // Given twenty requests from different addresses in one /64.
-  const limit = authLimiter(() => 0, true);
+  const limit = authLimiter(() => 0, 1);
   for (let i = 0; i < 20; i++) limit(request(`2001:db8:abcd:12::${i.toString(16)}`));
   // When another interface address in that prefix starts signing in.
   const response = limit(request("2001:0DB8:ABCD:0012:ffff:ffff:ffff:ffff"));
@@ -56,14 +56,14 @@ test.each([
   // Given an IP represented by a socket or trusted proxy.
   const plain = new Request("https://example.test/auth/google/start");
   // When either ingress selects that address.
-  const keys = [authClientKey(plain, address, false), authClientKey(request(address), undefined, true)];
+  const keys = [authClientKey(plain, address, 0), authClientKey(request(address), undefined, 1)];
   // Then both produce the same canonical network key.
   expect(keys).toEqual([expected, expected]);
 });
 
 test("mapped IPv4 and native IPv4 share one budget", () => {
   // Given a native IPv4 client at its limit.
-  const limit = authLimiter(() => 0, true);
+  const limit = authLimiter(() => 0, 1);
   for (let i = 0; i < 20; i++) limit(request("192.0.2.1"));
   // When the proxy renders the same client as mapped IPv6.
   const response = limit(request("::ffff:c000:201"));
@@ -96,7 +96,7 @@ test.each(["198.51.100.1", "junk, 203.0.113.1", ", 203.0.113.1"])(
 
 test("missing forwarded metadata falls back to the socket even behind a proxy", () => {
   // Given a proxy connection without a forwarded client address.
-  const limit = authLimiter(() => 0, true);
+  const limit = authLimiter(() => 0, 1);
   const plain = new Request("https://example.test/auth/google/start");
   for (let i = 0; i < 20; i++) limit(plain, "198.51.100.1");
   // When that same socket attempts one more request.
@@ -174,4 +174,15 @@ test("rejected per-client starts do not exhaust other clients' global allowance"
   const response = limit(request("198.51.100.2"));
   // Then rejected starts have not spent its remaining global allowance.
   expect(response).toBeNull();
+});
+
+test("numeric proxy hop options select the socket or configured forwarded position", () => {
+  // Given both exported helpers expose numeric hop-count options.
+  const clientOptions: readonly Parameters<typeof authClientKey>[2][] = [0, 1, 2];
+  const limiterOptions: readonly NonNullable<Parameters<typeof authLimiter>[1]>[] = clientOptions;
+  const hops: readonly number[] = limiterOptions;
+  // When each hop count selects an ingress identity.
+  const keys = hops.map(hop => authClientKey(request("192.0.2.1, 198.51.100.1, 203.0.113.1"), "198.51.100.9", hop));
+  // Then zero means socket and positive counts select from the right.
+  expect(keys).toEqual(["198.51.100.9", "203.0.113.1", "198.51.100.1"]);
 });
