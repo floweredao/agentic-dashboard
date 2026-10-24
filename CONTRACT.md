@@ -92,7 +92,7 @@ Everything else answers `404 not_found`. `fields.personalNotes` is removed from 
 
 ## HTTP API
 
-All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`). Errors look like `{ "error": { "code": "...", "message": "..." } }`; validation errors add `details`.
+All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`). Errors look like `{ "error": { "code": "...", "message": "..." } }`; validation errors add `details`. `record_incomplete` also supplies `details: { path: string[], message: string }[]`, with rule guidance but no record values. The browser renders only bounded field-path/message pairs as text, never arbitrary diagnostic objects.
 
 ### Public and session
 
@@ -138,6 +138,8 @@ Trashed records are purged after 30 days.
 | `GET`, `POST`, `DELETE /api/v1/records/:id/share` | owner | read, create or revoke a record's share |
 | `GET /api/v1/shared/:code` | anyone with the code | `{ share, record }` |
 | `GET /s/:code` | anyone with the code | the record as plain-text Markdown |
+
+The Markdown wrapper uses the server's `LOCALE` (`en` by default, or `ko`); original record content, agent names, status values and JSON projection keys are unchanged. Anyone who has the link and can reach the server can read the shared projection without sign-in until revocation; a public host gives no private-network restriction. Revocation cannot remove recipients' saved copies.
 
 ### Record documents
 
@@ -217,7 +219,7 @@ With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](doc
 - 300 requests per minute per credential; unknown credentials share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
 - Requests must carry an allowed `Host` (else `421 invalid_host`) and, when present, an allowed `Origin` (else `403 origin`).
 - JSON bodies only (`415 unsupported_media_type`), size-capped (`413 too_large`).
-- Every response sets a strict Content-Security-Policy (scripts from the app only; images and media also from `data:` and `blob:`), `X-Frame-Options: DENY`, `nosniff` and `Cache-Control: no-store`.
+- Every response sets a strict Content-Security-Policy (scripts from the app only; images and media also from `data:` and `blob:`), `X-Frame-Options: DENY` and `nosniff`. Existing content-hashed static files under `/assets/` use `Cache-Control: public, max-age=31536000, immutable`; HTML, API data, stable filenames and missing-file fallbacks stay `no-store`.
 
 ## Time
 
