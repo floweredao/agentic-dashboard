@@ -8,6 +8,10 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
+### Added
+
+- Briefing-folder uploads in the agent CLI: `--briefing <dir>` converts `news.json`, `mail.json` and AI-edition `x.json` to public digest sections, including null AI shortfalls, input titles and English/Korean defaults. `--briefing-file` uploads a converted digest body; both support `--sections` and `--quiet`. `--briefings` and `--briefing-reactions` alias the existing digest commands, using the same connected key or `DASHBOARD_TOKEN`.
+
 ## [0.4.0] - 2026-10-24
 
 A Home tab and one Library, reactions and pictures on digest articles, audio made without asking, agents that can trash their own records, and digest audio read like a newscast. On first start the server adds the `narration_auto` and `digest_reactions` tables and two columns to `narrations`; back up the data folder before you upgrade.
