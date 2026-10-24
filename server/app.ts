@@ -11,7 +11,7 @@ import { ControlDb } from "./control-db";
 import { createRuntime } from "./app-runtime";
 import { createRouter } from "./app-router";
 import { createOidc, type HostedAuth } from "./oidc";
-import { authLimiter } from "./auth-rate";
+import { authClientKey, authLimiter } from "./auth-rate";
 import { ApiError } from "./errors";
 import { createGeminiKeys, type GeminiKeys, type GeminiKeyOptions } from "./gemini-settings";
 import type { KeySource } from "./gemini";
@@ -27,6 +27,7 @@ import { Hono } from "hono";
 
 export interface AppOptions {
   readonly hosted?: HostedAuth;
+  readonly trustedAuthProxy?: boolean;
   readonly geminiKeys?: GeminiKeyOptions;
   readonly keyStore?: GeminiKeys;
   readonly personalProvider?: (key: KeySource) => NarrationProvider;
@@ -101,9 +102,15 @@ export async function createApp(options: AppOptions = {}) {
   const now = options.now ?? Date.now;
   const alerts = options.operations?.alerts ? createAlerts(sql, { ...options.operations.alerts, now }) : undefined;
   const cloud = cloudClient();
-  const localStore = new Store(new TenantDb(sql, "local"), now);
-  const localAuth = new Auth(localStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
-  if (!options.hosted) await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
+  const trustedAuthProxy = options.hosted !== undefined && options.trustedAuthProxy === true;
+  const sockets = new WeakMap<Request, string>();
+  const clientKey = (request: Request) => authClientKey(request, sockets.get(request), trustedAuthProxy);
+  const control = new ControlDb(sql, options.hosted === undefined);
+  // The hosted public service scope has no users row and can never own account data.
+  const initialScopeId = options.hosted ? "" : "local";
+  const initialStore = new Store(new TenantDb(sql, initialScopeId), now, control);
+  const initialAuth = new Auth(initialStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
+  if (!options.hosted) await initialAuth.initialize(options.credentialsPath ?? "data/credentials.json");
   if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
   const effective: AppOptions = { ...options,
     ...(options.tasks && options.privateOrigin ? { jobs: options.jobs ?? cloudJobs({
@@ -116,14 +123,16 @@ export async function createApp(options: AppOptions = {}) {
     ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
     hosted: { ...options.hosted, onSignup: async () => { await alerts?.send("signup"); },
       onCapacity: async () => { await options.hosted?.onCapacity?.(); await alerts?.send("capacity"); } },
-    origin: options.privateOrigin, control: localAuth.control, now,
+    origin: options.privateOrigin, control: initialAuth.control, now, clientKey,
   }) } : {}),
   };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
   const tenant = (userId: string) => {
+    if (options.hosted && userId === "local") return Promise.reject(
+      new ApiError(403, "local_account_unavailable", "The local account is unavailable in hosted mode."));
     let scope = scopes.get(userId);
     if (!scope) {
-      scope = createTenantApp(effective, new Store(new TenantDb(sql, userId), now)).catch((error: unknown) => {
+      scope = createTenantApp(effective, new Store(new TenantDb(sql, userId), now, control)).catch((error: unknown) => {
         scopes.delete(userId);
         throw error;
       });
@@ -131,15 +140,17 @@ export async function createApp(options: AppOptions = {}) {
     }
     return scope;
   };
-  const local = await tenant("local");
+  const initial = await tenant(initialScopeId);
   // Resume pending audio and AI fills for every existing account, including accounts without a current browser session.
-  for (const userId of await new ControlDb(sql).users()) await tenant(userId);
+  for (const userId of await control.users()) await tenant(userId);
   const dispatch = async (request: Request, surface: "fetch" | "publicFetch" | "mcpFetch") => {
-    const scope = await tenant(await localAuth.resolveUser(request));
+    const userId = await initialAuth.resolveUser(request);
+    const scope = userId === null ? initial : await tenant(userId);
     return scope[surface](request);
   };
-  const limitAuth = authLimiter(now);
+  const limitAuth = authLimiter(now, trustedAuthProxy);
   const maintenance = createMaintenance({ sql, tenant, audio: effective.audioStore ?? localAudioStore("data/audio"), cloud, now,
+    includeLocal: options.hosted === undefined,
     directory: join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "backups"),
     ...(options.audioBucket ? { bucket: options.audioBucket } : {}), ...(alerts ? { alerts } : {}),
     ...(options.operations?.turso ? { turso: options.operations.turso } : {}) });
@@ -167,10 +178,13 @@ export async function createApp(options: AppOptions = {}) {
   };
   const internalApp = new Hono();
   internalApp.post("/internal/tasks/:kind", c => internal(c.req.raw));
-  return { ...local, sql, tenant, maintenance, routes: [...local.routes, ...internalApp.routes],
-    fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) =>
-      new URL(request.url).pathname.startsWith("/internal/tasks/") ? internalApp.fetch(request)
-        : limitAuth(request, server?.requestIP(request)?.address) ?? dispatch(request, "fetch"),
+  return { ...initial, sql, tenant, maintenance, routes: [...initial.routes, ...internalApp.routes],
+    fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) => {
+      const address = server?.requestIP(request)?.address;
+      if (address !== undefined) sockets.set(request, address);
+      return new URL(request.url).pathname.startsWith("/internal/tasks/") ? internalApp.fetch(request)
+        : limitAuth(request, address) ?? dispatch(request, "fetch");
+    },
     publicFetch: (request: Request) => dispatch(request, "publicFetch"),
     mcpFetch: (request: Request) => dispatch(request, "mcpFetch"),
     async purgeTrash() { let count = 0; for (const scope of scopes.values()) count += await (await scope).purgeTrash(); return count; },

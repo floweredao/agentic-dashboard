@@ -8,7 +8,7 @@ const usage = `Manage the agents that may write to this dashboard.
 
   bun run agents add <name>      register an agent and print its key once
   bun run agents list            list agents, when each was added and last used
-  bun run agents rotate <name>   issue a new key (the old one stops working); also reactivates a removed agent
+  bun run agents rotate <name>   replace an active agent's key; revoked agents cannot be rotated
   bun run agents remove <name>   revoke an agent's key; its records stay
 
 Names use lowercase letters, digits and dashes and start with a letter, for example codex, claude-code or research-bot.

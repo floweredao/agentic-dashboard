@@ -43,7 +43,7 @@ test("failed starts count and automatic audio cannot raise a hosted account allo
 
 test("public share requests have separate address limits with a retry deadline", async () => {
   // Given: a frozen one-minute window.
-  const f = await hostedFixture({ now: () => Date.parse("2026-01-01T00:00:10Z") });
+  const f = await hostedFixture({ now: () => Date.parse("2026-01-01T00:00:10Z"), trustedAuthProxy: true });
   try {
     for (let count = 0; count < 60; count++) await f.call("/s/missing", { headers: { "X-Forwarded-For": "192.0.2.1" } });
     // When: one address exceeds the share limit.

@@ -20,10 +20,16 @@ test("an added agent saves under its own name and is listed for the owner only",
   expect((await f.call("/api/v1/agents", "GET", undefined, auth(key))).status).toBe(403);
 });
 
-test("a removed agent's key stops working at once and rotating issues a new one", async () => {
+test("a removed agent's key stops working at once and cannot be rotated", async () => {
   const key = (await f.app.agents.add("helper"));
   (await f.app.agents.revoke("helper"));
   expect((await save(key)).status).toBe(401);
+  await expect(f.app.agents.rotate("helper")).rejects.toMatchObject({ status: 409, code: "agent_revoked" });
+  expect((await save(key)).status).toBe(401);
+});
+
+test("rotating an active agent replaces its key", async () => {
+  const key = (await f.app.agents.add("helper"));
   const rotated = (await f.app.agents.rotate("helper"));
   expect((await save(key)).status).toBe(401);
   expect((await save(rotated)).status).toBe(201);

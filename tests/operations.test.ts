@@ -79,7 +79,7 @@ test("maintenance uploads a restorable backup, expires old objects and alerts on
     const now = () => Date.parse("2026-02-01T12:00Z");
     const alerts = createAlerts(f.app.sql, { owner: "operator@example.test", apiKey: "fixture", endpoint: `${server.url.origin}/emails`, now });
     const maintenance = createMaintenance({ sql: f.app.sql, tenant: f.app.tenant, audio: gcsAudioStore({ bucket: "test", client }),
-      bucket: "test", directory: "", cloud: client, now, alerts, turso: { org: "test", token: "fixture", origin: server.url.origin } });
+      bucket: "test", directory: "", cloud: client, now, alerts, includeLocal: false, turso: { org: "test", token: "fixture", origin: server.url.origin } });
     // When: a daily job is retried after success.
     await maintenance();
     await maintenance();

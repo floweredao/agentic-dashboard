@@ -18,6 +18,7 @@ export async function createBackup(sql: Sql): Promise<Uint8Array<ArrayBuffer>> {
       ["schema_migrations", "SELECT * FROM schema_migrations"],
       ["oauth_transactions", "SELECT * FROM oauth_transactions"],
       ["operator_alerts", "SELECT * FROM operator_alerts"],
+      ["maintenance_runs", "SELECT * FROM maintenance_runs"],
     ]) {
       if (!table || !query) continue;
       for (const value of await tx.all(query)) rows.push({ table, row: DataRowSchema.parse(value) });

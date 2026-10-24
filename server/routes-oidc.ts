@@ -9,7 +9,7 @@ export function registerOidc(app: Hono, runtime: TenantRuntime) {
   const korean = (request: Request) => (request.headers.get("accept-language") ?? options.locale ?? "en").startsWith("ko");
   app.get("/auth/google/start", async c => {
     if (!options.oidc) throw new ApiError(404, "not_found", "Google sign-in is not enabled.");
-    const result = await options.oidc.start();
+    const result = await options.oidc.start(c.req.raw);
     c.header("Set-Cookie", oidcCookie(result.cookie, privateUrl.protocol === "https:"));
     return c.redirect(result.location, 302);
   });

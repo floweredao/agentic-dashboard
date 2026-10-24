@@ -7,6 +7,7 @@ import { AGENT_READABLE_KINDS, SHARED_WORK_KINDS, agentView, CONTINUABLE, type P
 import { openSql } from "./db";
 import { TenantDb } from "./tenant-db";
 import { migrate } from "./migrations";
+import { ControlDb } from "./control-db";
 export { agentCanRead, agentView, canonical, AGENT_READABLE_KINDS, SHARED_WORK_KINDS, type Principal } from "./record-policy";
 const stored = z.object({ data: z.string() });
 const querySchema = z.object({
@@ -21,6 +22,7 @@ const trashRow = z.object({ data: z.string(), deleted_at: z.string() });
 const documentRow = z.object({ html: z.string(), bytes: z.number(), updated_by: z.string(), updated_at: z.string() });
 const RETENTION_MS = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 export class Store extends RecordStore {
+  constructor(db: TenantDb, now: () => number, readonly control = new ControlDb(db.sql)) { super(db, now); }
   static async open(path: string, now: () => number = Date.now) {
     const sql = await openSql(path);
     await migrate(sql);
