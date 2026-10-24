@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add deployable hosted Google accounts alongside local self-hosting: account-scoped records and agent tokens, encrypted personal Gemini keys, first-login setup, configurable limits, data export/deletion and public privacy/terms pages.
+- Include hosted Cloud Run/Turso deployment tooling with private audio/backups, authenticated background jobs, daily maintenance and operator alerts; local dry runs do not claim a live service launch.
+- Document both hosting modes, per-account connections and security boundaries, and replace README examples with language-matched synthetic hosted screenshots in light and dark themes.
 - Port operational reading and accessibility fixes: equal phone tabs, two recent digests, full-screen digest reading, scalable text, touch targets and clearer states.
 - Narrate every new narratable record and meaningful text edit, defer temporary failures, and run independent jobs concurrently.
 - Separate Vertex and key script models, improve listening scripts, remove work logs and source lists, and add ffmpeg encoding plus portable storage documentation.
