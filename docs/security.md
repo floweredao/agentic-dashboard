@@ -39,6 +39,8 @@ The bounded rate map evicts oldest entries so a key flood cannot lock every fres
 
 ## Trusted proxy sign-in
 
+Google mode does not expose the legacy `local` account. Old local share links, invitations, sessions and agent tokens are not accepted on the hosted origin, even when the database was upgraded from self-hosting. Anonymous hosted requests have no persisted account and cannot fall through to local authority. Local data remains available only in explicit local mode; moving it into a hosted account requires a separate operator decision.
+
 `TRUSTED_USER_HEADER` with `OWNER_LOGIN` lets an identity-aware proxy sign the owner in. Use it only when the proxy removes that header from incoming client requests and is the only path to the listener. Otherwise a client can forge the header and become the owner.
 
 Trusted-header bootstrap and owner-key login are local-only. Google mode verifies PKCE, signed state, nonce and RS256 ID-token claims and consumes a database transaction exactly once before issuing a session. Accounts are keyed by subject, never email. Keep `APP_SECRETS.sessionSigningKey` independent from the encryption key.

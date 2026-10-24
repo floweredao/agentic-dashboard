@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { DashboardRecord } from "../shared/contracts";
 import { zonedDate } from "../shared/time";
 import { Store } from "./store";
-import { ControlDb } from "./control-db";
 import { TenantDb } from "./tenant-db";
 
 export interface Share { readonly code: string; readonly url: string; readonly createdAt: string }
@@ -108,9 +107,9 @@ export class Shares {
   async find(input: string) {
     const code = normalizeCode(input);
     if (!code) return null;
-    const value = await new ControlDb(this.store.db.sql).shareByCode(code);
+    const value = await this.store.control.shareByCode(code);
     if (!value) return null;
     const share = this.view(value);
-    return { share, record: await new Store(new TenantDb(this.store.db.sql, value.user_id), this.store.now).get(value.record_id), userId: value.user_id };
+    return { share, record: await new Store(new TenantDb(this.store.db.sql, value.user_id), this.store.now, this.store.control).get(value.record_id), userId: value.user_id };
   }
 }

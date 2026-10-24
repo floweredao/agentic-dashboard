@@ -2,7 +2,6 @@ import { AgentNameSchema } from "../shared/contracts";
 import { Agents, hash } from "./agents";
 import { ApiError } from "./errors";
 import { Store } from "./store";
-import { ControlDb } from "./control-db";
 import { TenantDb } from "./tenant-db";
 
 export const INVITE_TTL_MS = 15 * 60 * 1000;
@@ -43,11 +42,11 @@ export class Invites {
   async redeem(code: string): Promise<{ agent: string; key: string }> {
     return await this.store.db.tx(async () => {
       const codeHash = hash(normalize(code));
-      const row = await new ControlDb(this.store.db.sql).inviteByHash(codeHash, this.store.now());
+      const row = await this.store.control.inviteByHash(codeHash, this.store.now());
       if (!row) {
         throw new ApiError(404, "invite_invalid", "This connection code is unknown, already used or expired; issue a new one on the dashboard host");
       }
-      const store = new Store(new TenantDb(this.store.db.sql, row.user_id), this.store.now);
+      const store = new Store(new TenantDb(this.store.db.sql, row.user_id), this.store.now, this.store.control);
       await store.db.run("DELETE FROM agent_invites WHERE code_hash=? AND user_id=?", [codeHash]);
       const agents = row.user_id === this.store.db.userId ? this.agents : new Agents(store);
       return { agent: row.agent, key: await agents.add(row.agent) };

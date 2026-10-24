@@ -28,7 +28,7 @@ export class Auth {
   readonly control: ControlDb;
   /** `demo`: every browser request reads as the owner without a key or session (the app blocks every change in demo mode). */
   constructor(readonly store: Store, private readonly demo = false, readonly hostedOrigin?: string) {
-    this.control = new ControlDb(store.db.sql);
+    this.control = new ControlDb(store.db.sql, hostedOrigin === undefined);
   }
   async initialize(credentialsPath: string) {
     ensureCredentials(credentialsPath);
@@ -59,12 +59,13 @@ export class Auth {
     return `${this.cookieName}=${value}; Path=/; HttpOnly; SameSite=${this.hostedOrigin ? "Lax" : "Strict"}; Expires=${new Date(expiresAt).toUTCString()}${https ? "; Secure" : ""}`;
   }
   async resolveUser(request: Request) {
+    const anonymous = this.hostedOrigin ? null : "local";
     const authorization = request.headers.get("authorization");
     if (authorization !== null) {
-      if (!authorization.startsWith("Bearer ")) return "local";
-      return (await this.control.principalByToken(hash(authorization.slice(7))))?.user_id ?? "local";
+      if (!authorization.startsWith("Bearer ")) return anonymous;
+      return (await this.control.principalByToken(hash(authorization.slice(7))))?.user_id ?? anonymous;
     }
-    return (await this.findSession(request))?.user_id ?? "local";
+    return (await this.findSession(request))?.user_id ?? anonymous;
   }
   async session(request: Request) {
     if (this.demo) return { user_id: "local", hash: "", principal_id: "owner", csrf: "demo", expires_at: this.store.now() + 7 * 24 * 60 * 60 * 1000 };
@@ -105,7 +106,7 @@ export class Auth {
     if (previous) {
       await new TenantDb(this.store.db.sql, previous.user_id).run("DELETE FROM sessions WHERE hash=? AND user_id=?", [previous.hash]);
     }
-    return new Auth(new Store(new TenantDb(this.store.db.sql, userId), this.store.now), false, this.hostedOrigin).createOwnerSession();
+    return new Auth(new Store(new TenantDb(this.store.db.sql, userId), this.store.now, this.control), false, this.hostedOrigin).createOwnerSession();
   }
   async csrf(request: Request, origins: ReadonlySet<string>) {
     const session = await this.session(request);
