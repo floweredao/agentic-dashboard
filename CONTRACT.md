@@ -242,6 +242,14 @@ Keys are stored only as AES-256-GCM envelopes `v<version>.<iv>.<ciphertext-with-
 
 Each tenant's narration and Gemini title-fill runner resolves its personal key at call time. A new narration without one returns `409 gemini_key_required`; existing reading and saving remain available. Hosted automatic audio defaults off. Title fill uses `AI_FILL_MODEL` (default `gemini-3.5-flash-lite`) and skips users without keys. Local installs retain `GEMINI_API_KEY` and optional `AI_FILL_COMMAND`.
 
+## Configuration
+
+`server/config.ts` parses environment variables once. `AUTH_MODE=local` is the default; `google` requires `APP_ORIGIN` and `APP_SECRETS` with `google.clientId/clientSecret`, `sessionSigningKey` and `kek`. Hosted push also requires `vapid.publicKey/privateKey` in that JSON and never writes a VAPID file. Local file-backed VAPID behavior is unchanged.
+
+`APP_SECRETS` also accepts optional `turso.authToken/platformToken/org` and `resend.apiKey`; `DATABASE_AUTH_TOKEN` overrides `turso.authToken`. Configuration accepts `OWNER_ALERT_EMAIL`, `CONTACT_EMAIL`, `MAX_USERS`, `AUDIO_BUCKET`, `TASKS_QUEUE` and `TASKS_SERVICE_ACCOUNT` for the hosted operations layer. Notification click paths and manifest start/scope remain same-origin relative paths. OAuth redirects, share links, VAPID subject and allowed browser origins derive from `APP_ORIGIN`; loopback development origins are local-mode only. An `AUDIO_BUCKET` enables `https://storage.googleapis.com` in media CSP.
+
+The container listens on `0.0.0.0:8080` and includes the digest-pinned static ffmpeg 7.1 image's encoder. Encoding chooses ffmpeg first, macOS afconvert second, and preserves WAV if neither encoder is available.
+
 ## Demo mode
 
 With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](docs/demo.md)):
@@ -265,6 +273,6 @@ Calendar days (Today, digests, the daily narration limit) use `TIME_ZONE`, which
 
 The server runs `NARRATION_CONCURRENCY` jobs concurrently (1–4, default 2); the library default remains 1. A record never has two running jobs. Progress, waits and cancellation belong to each job independently. Content edits through REST or MCP regenerate automatic audio in its last requested style; tags, stars, links and status alone do not. New records with configured AI title fill wait for it to settle before narration. Refused automatic record requests (daily limit, queue full or missing key) and failed jobs with attempts remaining are retried every 30 minutes, unless record automation is off. This deferred list is in memory and does not survive restart.
 
-Digest scripts finish each section in source order before starting the next, with no cross-section top-stories segment. Message action fields remain accepted and searchable but are neither displayed nor included in narration input. Record scripts omit closing link-label lists, work-log sections, lane tags and citation/grade markers. Listening prompts preserve facts, conditions, comparisons, uncertainty and source questions without adding advice. Script rules 7 affect new scripts, not the stale status of existing audio. Encoding uses macOS afconvert, otherwise ffmpeg from PATH; without a working encoder it keeps WAV.
+Digest scripts finish each section in source order before starting the next, with no cross-section top-stories segment. Message action fields remain accepted and searchable but are neither displayed nor included in narration input. Record scripts omit closing link-label lists, work-log sections, lane tags and citation/grade markers. Listening prompts preserve facts, conditions, comparisons, uncertainty and source questions without adding advice. Script rules 7 affect new scripts, not the stale status of existing audio. Encoding uses ffmpeg from PATH, otherwise macOS afconvert; without a working encoder it keeps WAV.
 
 The generated [storage schema](docs/schema/agentic-dashboard.schema.json) exports API and briefing-folder boundaries; [storage.md](docs/storage.md) describes the runtime files and tables.
