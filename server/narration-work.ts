@@ -14,6 +14,7 @@ import type { createNarrationState } from "./narration-state";
 import type { createNarrationSettings } from "./narration-settings";
 import { createNarrationCalls } from "./narration-calls";
 import { narrationFiles } from "./narration-files";
+import { assertWorkActive } from "./work-guard";
 const BYTES_PER_MS = 48;
 export function createNarrationWork(options: NarrationOptions, runtime: {
   readonly rows: ReturnType<typeof createNarrationState>;
@@ -146,11 +147,14 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
       const name = `${id}-${crypto.randomUUID().slice(0, 8)}.${encoded.mime === "audio/wav" ? "wav" : "m4a"}`;
       const file = Bun.file(encoded.path);
       const bytes = file.size;
+      await assertWorkActive(store, runtime.jobs.getStore());
       await storage.put(userId, name, file);
       rmSync(encoded.path, { force: true });
       rmSync(part, { force: true });
-      const previous = (await row(id))?.audio_file ?? null;
-      if (!(await row(id))) { await removeFile(name); return; }
+      const current = await row(id);
+      if (!current || cancel.aborted) { await removeFile(name); return; }
+      const previous = current.audio_file;
+      await assertWorkActive(store, runtime.jobs.getStore());
       (await set(id, { status: "ready", attempts: 0, error: null, progress_done: null, progress_total: null, audio_file: name, audio_hash: hash,
         audio_mime: encoded.mime, audio_bytes: bytes, audio_ms: Math.round(body.byteLength / BYTES_PER_MS),
         audio_model: provider.ttsModel, audio_voice: podcast ? hosts.join(", ") : voices.readVoice, audio_style: style, audio_scope: job.scope, audio_at: now() }));

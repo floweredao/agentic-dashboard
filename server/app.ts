@@ -19,6 +19,11 @@ import type { NarrationProvider } from "./narration";
 import { cloudClient } from "./cloud-client";
 import { gcsAudioStore, localAudioStore, type AudioStore } from "./audio-store";
 import { dirname, join } from "node:path";
+import { cloudJobs, taskVerifier, JobKindSchema, JobPayloadSchema, type Jobs, type TasksOptions } from "./jobs";
+import { json } from "./json-body";
+import { createAlerts } from "./alerts";
+import { createMaintenance, type OperationsOptions } from "./maintenance";
+import { Hono } from "hono";
 
 export interface AppOptions {
   readonly hosted?: HostedAuth;
@@ -28,6 +33,9 @@ export interface AppOptions {
   readonly narrationEnabled?: boolean;
   readonly audioBucket?: string;
   readonly audioStore?: AudioStore;
+  readonly tasks?: TasksOptions;
+  readonly jobs?: Jobs;
+  readonly operations?: OperationsOptions;
   /** Shared protocol cache, initialized by createApp for all tenants. */
   readonly oidc?: ReturnType<typeof createOidc>;
   readonly databasePath?: string;
@@ -90,17 +98,24 @@ export async function createApp(options: AppOptions = {}) {
   const sql = options.sql ?? await openSql(options.databaseUrl ?? options.databasePath ?? "data/dashboard.sqlite", options.databaseAuthToken);
   await migrate(sql);
   const now = options.now ?? Date.now;
+  const alerts = options.operations?.alerts ? createAlerts(sql, { ...options.operations.alerts, now }) : undefined;
+  const cloud = cloudClient();
   const localStore = new Store(new TenantDb(sql, "local"), now);
   const localAuth = new Auth(localStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
   if (!options.hosted) await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
   if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
   const effective: AppOptions = { ...options,
+    ...(options.tasks && options.privateOrigin ? { jobs: options.jobs ?? cloudJobs({
+      ...options.tasks, origin: options.privateOrigin, client: cloud,
+    }) } : {}),
     audioStore: options.audioStore ?? (options.audioBucket
-      ? gcsAudioStore({ bucket: options.audioBucket, client: cloudClient(), now })
+      ? gcsAudioStore({ bucket: options.audioBucket, client: cloud, now })
       : localAudioStore(options.narration?.audioDir ?? join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "audio"))),
     ...(options.geminiKeys ? { keyStore: createGeminiKeys(sql, options.geminiKeys) } : {}),
     ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
-    hosted: options.hosted, origin: options.privateOrigin, control: localAuth.control, now,
+    hosted: { ...options.hosted, onSignup: async () => { await alerts?.send("signup"); },
+      onCapacity: async () => { await options.hosted?.onCapacity?.(); await alerts?.send("capacity"); } },
+    origin: options.privateOrigin, control: localAuth.control, now,
   }) } : {}),
   };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
@@ -123,9 +138,38 @@ export async function createApp(options: AppOptions = {}) {
     return scope[surface](request);
   };
   const limitAuth = authLimiter(now);
-  return { ...local, sql, tenant,
+  const maintenance = createMaintenance({ sql, tenant, audio: effective.audioStore ?? localAudioStore("data/audio"), cloud, now,
+    directory: join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "backups"),
+    ...(options.audioBucket ? { bucket: options.audioBucket } : {}), ...(alerts ? { alerts } : {}),
+    ...(options.operations?.turso ? { turso: options.operations.turso } : {}) });
+  const verifyTask = options.tasks && options.privateOrigin ? taskVerifier({ ...options.tasks, origin: options.privateOrigin, now }) : null;
+  const internal = async (request: Request) => {
+    try {
+      if (!verifyTask || request.method !== "POST") throw new ApiError(401, "task_unauthenticated", "Service account authentication required");
+      await verifyTask(request);
+      const name = new URL(request.url).pathname.slice("/internal/tasks/".length);
+      if (name === "maintenance") { await maintenance(); return new Response(null, { status: 204 }); }
+      const kind = JobKindSchema.parse(name);
+      const payload = JobPayloadSchema.parse(await json(request));
+      const scope = await tenant(payload.userId);
+      switch (kind) {
+        case "narration": await scope.narration.deliver(payload); break;
+        case "ai-fill": await scope.aiFill?.deliver(payload); break;
+        default: { const unreachable: never = kind; throw unreachable; }
+      }
+      await scope.push.idle();
+      return new Response(null, { status: 204 });
+    } catch (error) {
+      if (error instanceof ApiError) return Response.json({ error: { code: error.code, message: error.message } }, { status: error.status });
+      return Response.json({ error: { code: "task_failed", message: "Background work failed" } }, { status: 500 });
+    }
+  };
+  const internalApp = new Hono();
+  internalApp.post("/internal/tasks/:kind", c => internal(c.req.raw));
+  return { ...local, sql, tenant, maintenance, routes: [...local.routes, ...internalApp.routes],
     fetch: (request: Request, server?: { requestIP(request: Request): { address: string } | null }) =>
-      limitAuth(request, server?.requestIP(request)?.address) ?? dispatch(request, "fetch"),
+      new URL(request.url).pathname.startsWith("/internal/tasks/") ? internalApp.fetch(request)
+        : limitAuth(request, server?.requestIP(request)?.address) ?? dispatch(request, "fetch"),
     publicFetch: (request: Request) => dispatch(request, "publicFetch"),
     mcpFetch: (request: Request) => dispatch(request, "mcpFetch"),
     async purgeTrash() { let count = 0; for (const scope of scopes.values()) count += await (await scope).purgeTrash(); return count; },

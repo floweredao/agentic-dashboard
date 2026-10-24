@@ -19,6 +19,7 @@ export interface HostedAuth {
   readonly endpoints?: GoogleEndpoints;
   /** Delivery is wired by the hosted operations layer; receives no identity or credentials. */
   readonly onCapacity?: () => void | Promise<void>;
+  readonly onSignup?: () => void | Promise<void>;
 }
 const endpoints: GoogleEndpoints = {
   authorization: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -93,7 +94,9 @@ export function createOidc(options: { readonly hosted: HostedAuth; readonly orig
         !same(user.nonce, tx.nonce)) throw invalidOidc();
       if (!user.email_verified) throw new ApiError(403, "email_unverified", "A verified Google email is required.");
       try {
-        return await control.googleUser({ sub: user.sub, email: user.email, name: user.name ?? "", now: now(), maxUsers: hosted.maxUsers });
+        const account = await control.googleUser({ sub: user.sub, email: user.email, name: user.name ?? "", now: now(), maxUsers: hosted.maxUsers });
+        if (account.created) await hosted.onSignup?.();
+        return account;
       } catch (error) {
         if (error instanceof ApiError && error.code === "signup_capacity") await hosted.onCapacity?.();
         throw error;

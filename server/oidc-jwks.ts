@@ -41,7 +41,7 @@ export function createJwks(url: string, now: () => number) {
     if (!parsed.success) throw invalidOidc();
     let key = keys.find(item => item.kid === parsed.data.kid);
     const known = key !== undefined;
-    if ((key && now() >= expires) || (!key && now() - forcedAt >= 30000)) {
+    if (pending || (key && now() >= expires) || (!key && now() - forcedAt >= 30000)) {
       if (!key) forcedAt = now();
       try { await refresh(); }
       catch (error) {

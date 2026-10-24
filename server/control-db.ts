@@ -50,7 +50,7 @@ export class ControlDb {
       const timestamp = new Date(input.now).toISOString();
       if (existing && !existing.deleted_at) {
         await sql.run("UPDATE users SET email=?,name=?,last_seen_at=? WHERE id=?", [input.email, input.name, timestamp, existing.id]);
-        return { id: existing.id, onboarded: existing.onboarded_at !== null };
+        return { id: existing.id, onboarded: existing.onboarded_at !== null, created: false };
       }
       const count = z.object({ count: z.number() }).parse(await sql.get("SELECT count(*) AS count FROM users WHERE deleted_at IS NULL AND id<>'local'")).count;
       if (count >= input.maxUsers) throw new ApiError(403, "signup_capacity", "Sign-ups are full.");
@@ -61,7 +61,7 @@ export class ControlDb {
         [id, input.sub, input.email, input.name, timestamp, timestamp]);
       await sql.run("INSERT INTO principals(id,source,token_hash,created_at,user_id) VALUES('owner','manual',?,?,?)",
         [`google:${crypto.randomUUID()}`, timestamp, id]);
-      return { id, onboarded: false };
+      return { id, onboarded: false, created: true };
     });
   }
 }

@@ -62,6 +62,12 @@ export async function mockOidc(now: () => number = Date.now) {
   return {
     state, origin,
     endpoints: { authorization: `${origin}/authorize`, token: `${origin}/token`, jwks: `${origin}/jwks`, issuers: [origin] },
+    async serviceToken(claims: Readonly<Record<string, unknown>>) {
+      const body = `${encode({ alg: "RS256", kid })}.${encode({ iss: origin, sub: "mock-service",
+        iat: Math.floor(now() / 1000), exp: Math.floor(now() / 1000) + 300, email_verified: true, ...claims })}`;
+      const signature = await crypto.subtle.sign(algorithm, pair.privateKey, new TextEncoder().encode(body));
+      return `${body}.${Buffer.from(signature).toString("base64url")}`;
+    },
     async rotate() {
       pair = await crypto.subtle.generateKey(algorithm, true, ["sign", "verify"]);
       kid = crypto.randomUUID();

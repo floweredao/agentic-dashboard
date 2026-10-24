@@ -32,11 +32,17 @@ console.log([
   ...(config.DEMO ? ["read-only demo"] : []),
   `time zone ${config.TIME_ZONE}`,
 ].join("; "));
-const narrationRetryTimer = setInterval(() => app.retryDeferred(), 30 * 60 * 1000);
-const purgeTimer = setInterval(() => app.purgeTrash(), 60 * 60 * 1000);
+const narrationRetryTimer = config.TASKS_QUEUE ? undefined : setInterval(() => app.retryDeferred(), 30 * 60 * 1000);
+const purgeTimer = config.TASKS_QUEUE ? undefined : setInterval(() => app.purgeTrash(), 60 * 60 * 1000);
+const maintenanceTimer = config.TASKS_QUEUE ? undefined : setInterval(() => {
+  void app.maintenance().catch((error: unknown) => {
+    console.error(`maintenance failed: ${error instanceof Error ? error.name : "unknown"}`);
+  });
+}, 24 * 60 * 60 * 1000);
 async function stop() {
   clearInterval(purgeTimer);
   clearInterval(narrationRetryTimer);
+  clearInterval(maintenanceTimer);
   privateServer.stop(true);
   publicServer?.stop(true);
   mcpServer?.stop(true);
