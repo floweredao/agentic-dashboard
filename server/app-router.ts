@@ -13,6 +13,7 @@ import { registerRecords } from "./routes-records";
 import { registerOidc } from "./routes-oidc";
 import { registerAgents } from "./routes-agents";
 import { registerGemini } from "./routes-gemini";
+import { registerAccount } from "./routes-account";
 export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
   const { options, now, demo, auth, origins, hosts, limit, rate } = runtime;
 
@@ -66,6 +67,7 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
     if (!publicOnly) {
       app.all("/mcp", c => runtime.mcpFetch(c.req.raw));
       registerGemini(app, runtime); registerAgents(app, runtime); registerOidc(app, runtime); registerSession(app, runtime);
+      registerAccount(app, runtime);
       registerDigests(app, runtime); registerNarration(app, runtime); registerSharing(app, runtime);
     }
     registerRecords(app, runtime, publicOnly);

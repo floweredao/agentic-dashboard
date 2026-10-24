@@ -52,7 +52,7 @@ export function registerSession(app: Hono, runtime: TenantRuntime) {
           links: [{ label: "Source", url: url.href }],
         });
         const result = (await store.create(principal, requestId, record, { url: url.href }, "pending"));
-        if (!result.replayed) (await newRecord(result.record, true));
+        if (!result.replayed) (await newRecord(result.record, true, !c.req.header("origin")));
         return c.json(result, result.replayed ? 200 : 201);
       });
 
@@ -101,7 +101,8 @@ export function registerSession(app: Hono, runtime: TenantRuntime) {
         const principal = (await auth.authenticate(c.req.raw, false));
         if (principal.source !== "manual") throw new ApiError(403, "forbidden", "Owner session required");
         const session = (await auth.session(c.req.raw));
-        return c.json({ principal, csrfToken: session.csrf, expiresAt: new Date(session.expires_at).toISOString() });
+        return c.json({ principal, csrfToken: session.csrf, expiresAt: new Date(session.expires_at).toISOString(),
+          ...(options.hosted ? { account: await runtime.account.profile() } : {}) });
       });
 
       app.delete("/api/v1/auth/session", async c => {

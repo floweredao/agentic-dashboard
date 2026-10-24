@@ -137,6 +137,35 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | `GET /api/v1/agents` | owner | `{ items }` registered agents |
 | `POST /api/v1/agents/connect` | anyone with a connection code | `{ code }`; 201 `{ agent, key }` once (the agent is registered then); unknown, used or expired codes 404 `invite_invalid`; not on the agent ingress; 403 in demo mode |
 
+### Account and onboarding
+
+`GET /api/v1/account` returns `{ account: { id, email, locale, timeZone,
+onboardedAt, features: { digest, push }, agentSaveVerified } }` to its owner session.
+Google-mode `GET /api/v1/auth/session` also includes this account projection.
+`PATCH /api/v1/account/preferences` (session + CSRF) persists `locale`
+(`system`, `en`, `ko`), an IANA `timeZone`, and feature choices. The calendar
+preference does not change the fixed server-zone narration reset.
+`POST /api/v1/onboarding/done` requires a successful external agent record save
+and sets `users.onboarded_at`; a manual sample or same-origin browser token test
+does not count. REST bearer saves without a browser Origin and bearer MCP saves
+prove the connection. Reading and saving require no Gemini key.
+
+`GET /api/v1/account/export` is an authenticated, non-cacheable `.tar.gz` download.
+It includes `README.txt`, `data.json` with the account and every tenant table,
+HTML documents, trash, comments, digests/reactions, scripts, referenced `audio/`
+files, agents, shares and settings. Token/session/invitation hashes, CSRF secrets,
+Gemini ciphertext/KEK version and push encryption credentials are excluded.
+There is no user-facing bulk import; this export is not the operator backup format.
+
+`DELETE /api/v1/account` is hosted-only and requires CSRF, exact email confirmation
+`{ confirm }`, and a session created less than ten minutes ago. Wrong confirmation
+returns 400; stale authentication returns 403 `reauth_required`. One transaction
+removes all tenant rows and leaves a scrubbed user tombstone with Google subject
+and deletion timestamp. Sessions and agent tokens are revoked. Audio-prefix
+deletion follows; failed object removal is retried by daily maintenance. Backups
+expire after 14 days and offline restores honor target tombstones. A later Google
+sign-in creates a new empty account instead of restoring deleted data.
+
 ### Records
 
 | Route | Who | Result |

@@ -27,7 +27,7 @@ const endpoints: GoogleEndpoints = {
   issuers: ["https://accounts.google.com", "accounts.google.com"],
 };
 const transaction = z.object({ state: z.string(), nonce: z.string(), verifier: z.string(), started: z.number(),
-  client: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
+  client: z.string().regex(/^[A-Za-z0-9_-]{43}$/), destination: z.enum(["dashboard", "delete"]).default("dashboard") }).strict();
 const claims = z.object({
   iss: z.string(), aud: z.union([z.string(), z.array(z.string()).min(1)]), azp: z.string().optional(),
   sub: z.string().min(1).max(255), exp: z.number(), iat: z.number(), nonce: z.string(),
@@ -50,7 +50,8 @@ export function createOidc(options: { readonly hosted: HostedAuth; readonly orig
   return {
     async start(request: Request) {
       const tx = { state: secret(), nonce: secret(), verifier: Buffer.from(crypto.getRandomValues(new Uint8Array(64))).toString("base64url"),
-        started: now(), client: sign(`oauth-client:${options.clientKey(request)}`) };
+        started: now(), client: sign(`oauth-client:${options.clientKey(request)}`),
+        destination: new URL(request.url).searchParams.get("intent") === "delete" ? "delete" : "dashboard" };
       const body = Buffer.from(JSON.stringify(tx)).toString("base64url");
       const cookie = `${body}.${sign(body)}`;
       await control.startOAuth(hash(cookie), now() + 600000, tx.client);
@@ -99,7 +100,7 @@ export function createOidc(options: { readonly hosted: HostedAuth; readonly orig
       try {
         const account = await control.googleUser({ sub: user.sub, email: user.email, name: user.name ?? "", now: now(), maxUsers: hosted.maxUsers });
         if (account.created) await hosted.onSignup?.();
-        return account;
+        return { ...account, deletionIntent: tx.destination === "delete" };
       } catch (error) {
         if (error instanceof ApiError && error.code === "signup_capacity") await hosted.onCapacity?.();
         throw error;
