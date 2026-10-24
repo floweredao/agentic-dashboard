@@ -19,7 +19,9 @@ async function store() {
   const dir = mkdtempSync(join(tmpdir(), "agentic-ai-fill-"));
   dirs.push(dir);
   const created = await Store.open(join(dir, "db.sqlite"), () => Date.parse("2026-09-27T12:00:00Z"));
-  (await created.db.run("INSERT INTO principals(id,source,token_hash,user_id) VALUES('owner','manual','x','local'),('chatgpt','chatgpt','y',?)", []));
+  for (const [id, source, token] of [["owner", "manual", "x"], ["chatgpt", "chatgpt", "y"]] as const) {
+    await created.db.run("INSERT INTO principals(id,source,token_hash,user_id) VALUES(?,?,?,?)", [id, source, token]);
+  }
   stores.push(created);
   return created;
 }
