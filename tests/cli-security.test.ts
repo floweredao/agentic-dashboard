@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { closeSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -45,7 +45,8 @@ test("a private file is written in place of a symlink there, never through it to
 });
 
 test("install.sh writes the command with its folders as plain words, so quotes, $( ) and backticks in them never run", () => {
-  const dir = mkdtempSync(join(tmpdir(), "agentic-install-"));
+  // realpath: macOS gives /var/... while the launcher sees /private/var/...
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "agentic-install-")));
   try {
     // A stand-in release: a main.ts that reports where it runs from and the settings the command passed it.
     const release = join(dir, "release", "agentic-dashboard-main");
