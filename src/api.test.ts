@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { HTTPError } from "ky";
-import { DashboardRecordSchema } from "../shared/contracts";
+import { DashboardRecordSchema, RecordInputSchema } from "../shared/contracts";
 import { deleteRecord, errorMessage, retryAfterMs } from "./api";
 
 const httpError = (status: number, body: unknown) =>
@@ -71,6 +71,22 @@ test("an unknown code keeps a Korean server message and otherwise falls back to 
 
 test("a network failure is reported as a connection problem", async () => {
   expect(await errorMessage(new TypeError("Failed to fetch"))).toBe("서버에 연결하지 못했어요. 네트워크 연결을 확인하고 다시 시도해 주세요.");
+});
+
+test("a client-side validation failure names the field in words, never the schema path", async () => {
+  // Given: a link whose URL is not a web address and an empty title, as the editor would send them.
+  const parsed = RecordInputSchema.safeParse({ kind: "social", title: "", links: [{ label: "", url: "not a url" }] });
+  if (parsed.success) throw new Error("expected a validation failure");
+  // When: the failure is turned into the message the owner sees.
+  const message = await errorMessage(parsed.error);
+  // Then: it names 제목 and 링크 and shows no dotted path or English schema message.
+  expect(message).toBe("형식이 맞지 않는 값이 있어요: 제목, 링크. 고쳐서 다시 저장해 주세요.");
+});
+
+test("a malformed server response is reported without its internal paths", async () => {
+  const parsed = DashboardRecordSchema.safeParse({ id: 1 });
+  if (parsed.success) throw new Error("expected a validation failure");
+  expect(await errorMessage(parsed.error)).toBe("서버에서 받은 데이터를 읽지 못했어요. 새로고침한 뒤 다시 시도해 주세요.");
 });
 
 test("validation preserves safe paths but never arbitrary detail objects", async () => {

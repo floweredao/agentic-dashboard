@@ -300,13 +300,13 @@ export function App() {
   const dashboard: Dashboard = useMemo(() => {
     const byId = new Map(records.map(record => [record.id, record]));
     /** undo: the changes that put the saved record back, offered as Undo in the toast. */
-    const patch = async (record: DashboardRecord, changes: RecordPatch["changes"], message = text().saved, undo?: RecordPatch["changes"]) => {
+    const patch = async (record: DashboardRecord, changes: RecordPatch["changes"], message: string | null = text().saved, undo?: RecordPatch["changes"]) => {
       setBusy(true);
       setToast(null);
       try {
         const saved = await patchRecord(current(record), changes, latest.current.csrf);
         replace(saved);
-        setToast({ message, tone: "info", key: Date.now(), ...(undo ? { undo: () => { void patch(saved, undo, text().undone); } } : {}) });
+        if (message !== null) setToast({ message, tone: "info", key: Date.now(), ...(undo ? { undo: () => { void patch(saved, undo, text().undone); } } : {}) });
         return saved;
       } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); return null; }
       finally { setBusy(false); }
@@ -413,7 +413,7 @@ export function App() {
         for (const [key, value] of Object.entries(params)) { if (value) merged[key] = value; else delete merged[key]; }
         navigate({ view: now.view, id: now.id, params: merged }, options);
       },
-      toggleStar: async record => { await patch(record, { fields: { ...current(record).fields, starred: current(record).fields.starred !== true } }, current(record).fields.starred === true ? text().unstarred : text().starred); },
+      toggleStar: async record => { await patch(record, { fields: { ...current(record).fields, starred: current(record).fields.starred !== true } }, null); },
       markPending: async record => { await patch(record, { reviewState: "pending" }, text().markedPending, { reviewState: "approved" }); },
       markRead: async record => {
         const now = current(record);

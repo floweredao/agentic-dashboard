@@ -15,7 +15,7 @@
   --ease: cubic-bezier(0.2, 0, 0, 1);
   /* The sidebar slide: a fast start that settles softly, like an iOS sheet (no overshoot). */
   --slide: cubic-bezier(0.32, 0.72, 0, 1); --slide-ms: 300ms;
-  --sidebar: 248px; --rail: 64px; --list: 400px; --appbar: 52px; --tabbar: 60px; --mini: 56px;
+  --sidebar: 248px; --rail: 64px; --list: 400px; --appbar: 52px; --tabbar: max(49px, calc(1rem + 33px)); --mini: 56px;
   --safe-top: env(safe-area-inset-top, 0px); --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px);
 }
@@ -47,7 +47,7 @@ html { -webkit-text-size-adjust: 100%; overscroll-behavior-y: none; }
 }
 body {
   margin: 0; background: var(--canvas); color: var(--text);
-  font: 400 14px/1.5 var(--font); word-break: keep-all; overflow-wrap: break-word;
+  font: 400 0.875rem/1.5 var(--font); word-break: keep-all; overflow-wrap: break-word;
   -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none;
 }
 h1, h2, h3, h4, p, ul, ol, dl, dd, figure { margin: 0; }
@@ -68,7 +68,7 @@ img, svg { display: block; flex-shrink: 0; }
 .btn, .icon-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 34px; border: 1px solid transparent; border-radius: var(--r);
-  background: transparent; color: var(--ink); font-size: 13.5px; font-weight: 500; white-space: nowrap;
+  background: transparent; color: var(--ink); font-size: 0.84375rem; font-weight: 500; white-space: nowrap;
   transition: background-color 120ms var(--ease), opacity 120ms var(--ease);
 }
 .btn { padding: 0 12px; }
@@ -87,7 +87,7 @@ img, svg { display: block; flex-shrink: 0; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
   min-height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 999px;
-  background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 500;
+  background: var(--surface); color: var(--text); font-size: 0.78125rem; font-weight: 500;
   transition: background-color 120ms var(--ease);
 }
 .chip:hover { background: var(--wash); }
@@ -109,7 +109,7 @@ img, svg { display: block; flex-shrink: 0; }
 
 .tag {
   display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 7px;
-  border-radius: var(--r-sm); background: var(--wash); color: var(--muted); font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  border-radius: var(--r-sm); background: var(--wash); color: var(--muted); font-size: 0.71875rem; font-weight: 600; white-space: nowrap;
 }
 .tag.accent { color: var(--accent); }
 .tag.ok { color: var(--ok); }
@@ -118,18 +118,18 @@ img, svg { display: block; flex-shrink: 0; }
 .channel-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: var(--ch); flex-shrink: 0; }
 .channel-tile {
   display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-sm); flex-shrink: 0;
-  background: color-mix(in srgb, var(--ch) 16%, transparent); color: var(--ch); font-size: 11px; font-weight: 800; line-height: 1;
+  background: color-mix(in srgb, var(--ch) 16%, transparent); color: var(--ch); font-size: 0.6875rem; font-weight: 800; line-height: 1;
 }
 .ch-0 { --ch: var(--ch-0); } .ch-1 { --ch: var(--ch-1); } .ch-2 { --ch: var(--ch-2); } .ch-3 { --ch: var(--ch-3); }
 .ch-4 { --ch: var(--ch-4); } .ch-5 { --ch: var(--ch-5); } .ch-6 { --ch: var(--ch-6); } .ch-7 { --ch: var(--ch-7); }
 .ch-share { --ch: var(--ch-share); } .ch-manual { --ch: var(--ch-manual); }
 
-.empty { display: grid; justify-items: center; gap: 8px; padding: 48px 16px; color: var(--faint); text-align: center; font-size: 13px; }
+.empty { display: grid; justify-items: center; gap: 8px; padding: 48px 16px; color: var(--faint); text-align: center; font-size: 0.8125rem; }
 
-.field { display: grid; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.field { display: grid; gap: 6px; font-size: 0.78125rem; font-weight: 600; color: var(--muted); }
 .field input, .field select, .field textarea, .input {
   width: 100%; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--r);
-  background: var(--raised); color: var(--ink); font-size: 14px; font-weight: 400;
+  background: var(--raised); color: var(--ink); font-size: 0.875rem; font-weight: 400;
 }
 .field textarea { resize: none; line-height: 1.6; }
 .field select {
@@ -139,12 +139,12 @@ img, svg { display: block; flex-shrink: 0; }
 }
 .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible, .input:focus-visible { outline-offset: 0; }
 .field small { font-weight: 400; color: var(--faint); }
-.form-error { color: var(--danger); font-size: 13px; }
-.field .field-error { color: var(--danger); font-size: 12.5px; }
+.form-error { color: var(--danger); font-size: 0.8125rem; }
+.field .field-error { color: var(--danger); font-size: 0.78125rem; }
 .field textarea[aria-invalid="true"], .field input[aria-invalid="true"] { border-color: var(--danger); }
 /* iOS zooms into focused fields below 16px and stays zoomed after blur. */
 @media (pointer: coarse) {
-  .field input, .field select, .field textarea, .input { font-size: 16px; }
+  .field input, .field select, .field textarea, .input { font-size: 1rem; }
 }
 
 .dialog {
@@ -156,7 +156,7 @@ img, svg { display: block; flex-shrink: 0; }
 .dialog.wide { width: min(760px, calc(100vw - 32px)); }
 .dialog::backdrop { background: var(--scrim); }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 10px 20px; }
-.dialog-head h2 { color: var(--ink); font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+.dialog-head h2 { color: var(--ink); font-size: 1.0625rem; font-weight: 700; letter-spacing: -0.2px; }
 /* scroll-padding keeps a focused field (for example after a validation error) above the sticky save bar. */
 .dialog-body { --dialog-pad-bottom: 20px; min-height: 0; padding: 4px 20px var(--dialog-pad-bottom); overflow-y: auto; overscroll-behavior: contain; scroll-padding-bottom: calc(96px + var(--dialog-pad-bottom)); }
 .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 16px; }
@@ -169,4 +169,7 @@ img, svg { display: block; flex-shrink: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  /* Surfaces that appear still announce themselves with a short fade instead of scaling or sliding in. */
+  .dialog[open], .toast, .mini-player { animation: fade-in 120ms var(--ease) !important; }
 }
+@keyframes fade-in { from { opacity: 0; } }

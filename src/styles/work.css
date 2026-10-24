@@ -1,7 +1,7 @@
 .work-create {
   min-height: 30px;
   padding-inline: 10px;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 
 .channels-page {
@@ -15,7 +15,7 @@
 
 .channels-heading h1 {
   color: var(--ink);
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.3px;
   line-height: 1.3;
@@ -46,14 +46,14 @@
 .channel-card-head h2 {
   min-width: 0;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 650;
   letter-spacing: -0.1px;
 }
 
 .channel-description {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
@@ -73,14 +73,14 @@
 
 .channel-stats dt {
   color: var(--faint);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 600;
 }
 
 .channel-stats dd {
   overflow: hidden;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -99,7 +99,7 @@
   gap: 4px;
   min-height: 28px;
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 600;
 }
 
@@ -121,7 +121,7 @@
 
 .channel-section-head h2 {
   color: var(--ink);
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 700;
   letter-spacing: -0.2px;
 }
@@ -130,7 +130,7 @@
 .channel-note,
 .login-note {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .import-section {
@@ -146,7 +146,7 @@
   min-height: 36px;
   padding: 8px 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -164,7 +164,7 @@
 .import-form textarea {
   min-height: 180px;
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   overflow-wrap: anywhere;
 }
 

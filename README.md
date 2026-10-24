@@ -94,7 +94,7 @@ Mobile-first layout with a bottom tab bar, safe-area aware, installable as a hom
 ### Also included
 
 - **Share links:** give one record a read-only link and code that an agent can fetch as Markdown or JSON.
-- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). The script covers the whole body, part by part, leaving out code, tables and source lists. Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff and a lighter script model, and a trash button beside the player removes only that audio.
+- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). The script covers the whole body, part by part, leaving out code, tables and source lists. Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff across the configured script routes, and a trash button beside the player removes only that audio.
 - **Web push (optional):** get notified when a digest arrives or an agent asks for review. VAPID keys are generated for you.
 - **MCP endpoint (optional):** chat apps can save and search records through a loopback MCP server.
 - **English and Korean UI**, with every string in a small dictionary next to the component that uses it, and a checker (`bun scripts/i18n-check.ts`) that fails on a missing translation.
@@ -224,7 +224,7 @@ Optional features are off or keyless by default:
 |---|---|
 | Web push | `PUSH` (on by default; keys are generated) |
 | Digests | `DIGEST` (on by default) |
-| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Default voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` (the owner can pick other voices and speaking styles in Settings › Narration voices) (the script always comes from `NARRATION_SCRIPT_MODEL`; a failed try is retried with the same model, never a lighter one). To bill speech to a Google Cloud project instead of the key's quota, set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT` and sign in with Application Default Credentials (see below) |
+| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Default voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` (the owner can pick other voices and speaking styles in Settings › Narration voices) (Vertex scripts use `NARRATION_SCRIPT_MODEL`, default `gemini-4-argon`; the key route uses `NARRATION_KEY_SCRIPT_MODEL`, default `gemini-3.8-flash`). To bill speech to a Google Cloud project instead of the key's quota, set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT` and sign in with Application Default Credentials (see below) |
 | AI title fill for saved links | `AI_FILL_COMMAND`, any CLI that reads a prompt on stdin and prints JSON |
 | MCP for chat apps | `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` |
 | Agent-only listener | `ENABLE_AGENT_INGRESS=on` |
@@ -234,7 +234,7 @@ Optional features are off or keyless by default:
 
 ### Speech through Vertex AI
 
-With `NARRATION_TTS_PROVIDER=vertex` the audio (not the script) is made by Gemini TTS on Vertex AI, billed to your Google Cloud project instead of the Gemini API key's free quota. The script still needs `GEMINI_API_KEY`.
+With `NARRATION_TTS_PROVIDER=vertex` speech and the first script route use Vertex AI, billed to your Google Cloud project instead of the Gemini API key's free quota. The script still needs `GEMINI_API_KEY`.
 
 1. In your project, enable billing and the Vertex AI API (`gcloud services enable aiplatform.googleapis.com --project=<project-id>`).
 2. On the server, sign in once: `gcloud auth application-default login`. The server reads `~/.config/gcloud/application_default_credentials.json`, or the file named by `GOOGLE_APPLICATION_CREDENTIALS` (in Docker, mount that file read-only and point the variable at it). Only user logins (`authorized_user`) are supported; no API key is created or needed.
@@ -335,3 +335,7 @@ Issues and pull requests are welcome. Run `bun test`, `bun run typecheck` and `b
 ## License
 
 [MIT](LICENSE)
+
+## Portable installation and storage
+
+See [installation](docs/install.md) and [storage](docs/storage.md), including the generated [JSON schema](docs/schema/agentic-dashboard.schema.json). Automatic record audio defaults to `NARRATION_RECORD_AUTO=read`; Settings can turn it off. Text edits regenerate it; tags and stars do not. `NARRATION_CONCURRENCY=2` runs different records side by side. AAC encoding uses macOS afconvert or ffmpeg; without either, audio stays WAV.
