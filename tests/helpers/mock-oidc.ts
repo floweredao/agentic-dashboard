@@ -14,8 +14,9 @@ export async function mockOidc(now: () => number = Date.now) {
   let kid = crypto.randomUUID();
   let jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
   const codes = new Map<string, z.infer<typeof authorization>>();
-  const state: { claims: Readonly<Record<string, unknown>>; header: Readonly<Record<string, unknown>>; badSignature: boolean; jwksStatus: number; jwksCalls: number } =
-    { claims: {}, header: {}, badSignature: false, jwksStatus: 200, jwksCalls: 0 };
+  const state: { claims: Readonly<Record<string, unknown>>; header: Readonly<Record<string, unknown>>; badSignature: boolean;
+    jwksStatus: number; jwksCalls: number; signingKeyPublished: boolean } =
+    { claims: {}, header: {}, badSignature: false, jwksStatus: 200, jwksCalls: 0, signingKeyPublished: true };
   const server = Bun.serve({
     hostname: "127.0.0.1", port: 0,
     async fetch(request) {
@@ -25,7 +26,7 @@ export async function mockOidc(now: () => number = Date.now) {
       });
       if (url.pathname === "/jwks") {
         state.jwksCalls++;
-        return Response.json({ keys: [{ ...jwk, kid, alg: "RS256", use: "sig" }] },
+        return Response.json({ keys: state.signingKeyPublished ? [{ ...jwk, kid, alg: "RS256", use: "sig" }] : [] },
           { status: state.jwksStatus, headers: { "Cache-Control": "public, max-age=300", Age: "10" } });
       }
       if (url.pathname === "/authorize") {

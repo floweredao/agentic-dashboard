@@ -172,6 +172,22 @@ test("JWKS rotation refreshes an unknown key and known keys survive a provider o
   } finally { await f.close(); }
 });
 
+test("a successful JWKS refresh rejects a key removed by the issuer", async () => {
+  const f = await fixture();
+  try {
+    // Given a cached signing key that the issuer no longer publishes.
+    await f.finish(await f.start());
+    f.advance(300001);
+    f.issuer.state.signingKeyPublished = false;
+    const flow = await f.start();
+    // When an otherwise valid token still carries that removed key's signature.
+    const response = await f.finish(flow);
+    // Then successful refresh cannot fall back to the removed key.
+    expect(response.status).toBe(400);
+    expect(z.object({ count: z.number() }).parse(await f.app.sql.get("SELECT count(*) AS count FROM sessions")).count).toBe(1);
+  } finally { await f.close(); }
+});
+
 for (const header of [{ alg: "none" }, { jku: "https://evil.example/jwks" }, { x5u: "https://evil.example/cert" }, { jwk: {} }]) {
   test(`token headers cannot choose their own verification mechanism: ${Object.keys(header)[0]}`, async () => {
     const f = await fixture();
