@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { DashboardRecordSchema, DigestSummarySchema } from "../shared/contracts";
 import { applyLocale } from "./i18n";
 import { aiFilled, aiFillRevert, channelOf, confirmationChanges, digest, viewRecords, weekBounds, excerpt, groupByDay, foldContinuations, homeRouteOf, hostOf, inboxItems, inQueue, libraryStateOf, listedFor, nextInQueue, revisitDue } from "./model";
-import { dateLabel, inboxBadge } from "./model";
+import { dateLabel, inboxBadge, matchesQuery } from "./model";
 
 test("date labels read the language at the moment they are formatted", () => {
   try {
@@ -242,4 +242,15 @@ test("the inbox badge counts queued records only; unread digests count on the Di
   const records = [make("00000000-0000-4000-8000-0000000000f4", { reviewState: "pending" }), make("00000000-0000-4000-8000-0000000000f5", {})];
   // Then: the badge is the one queued record.
   expect(inboxBadge(records, "2026-09-22")).toBe(1);
+});
+
+test("search finds Korean text whether it was saved or typed composed or decomposed", () => {
+  // Given: a record titled from a macOS file name, which keeps Hangul decomposed (NFD), and one written composed (NFC).
+  const decomposed = DashboardRecordSchema.parse({ ...record, title: "회의록 정리".normalize("NFD"), fields: {} });
+  const composed = DashboardRecordSchema.parse({ ...record, title: "회의록 정리", fields: {} });
+  // When/Then: the word typed either way finds both.
+  for (const query of ["회의록", "회의록".normalize("NFD")]) {
+    expect([matchesQuery(decomposed, query), matchesQuery(composed, query)]).toEqual([true, true]);
+  }
+  expect(matchesQuery(decomposed, "정리 없음")).toBe(false);
 });

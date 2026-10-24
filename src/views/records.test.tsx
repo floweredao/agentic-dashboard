@@ -140,6 +140,24 @@ test("a task shows its timeline with each owner comment's state, and its row cou
   expect(row).toContain("답 대기 2");
 });
 
+test("a reply to a reply shows in its thread, under the owner comment it started from, in the order it came", () => {
+  // Given: an owner comment, OmO's reply, and OmO's follow-up sent as a reply to that reply (bun run agent --reply <reply-id>).
+  const task = make({ kind: "task", status: "active", source: "omo", createdBy: "omo", reviewState: "pending", title: "작업" });
+  const entry = (id: string, patch: Record<string, unknown>) => ({ id: `00000000-0000-4000-8000-0000000003${id}`, recordId: task.id,
+    author: "owner", source: "manual" as const, body: "", replyTo: null, status: null, createdAt: "2026-09-28T03:00:00Z",
+    seenAt: null, seenBy: null, doneAt: null, doneBy: null, ...patch });
+  const comments = [
+    entry("01", { body: "배포해 줘" }),
+    entry("02", { author: "omo", source: "omo", body: "준비할게요", replyTo: "00000000-0000-4000-8000-000000000301", createdAt: "2026-09-28T03:01:00Z" }),
+    entry("03", { author: "omo", source: "omo", body: "배포 끝났어요", replyTo: "00000000-0000-4000-8000-000000000302", createdAt: "2026-09-28T03:02:00Z" }),
+  ];
+  // When: its reader is rendered.
+  const reader = renderToStaticMarkup(
+    <DashboardContext.Provider value={fakeDashboard([task], { view: "work", id: task.id }, { comments })}><Reader record={task} /></DashboardContext.Provider>);
+  // Then: the follow-up is there too, after the first reply in the same thread.
+  expect(reader).toMatch(/배포해 줘[\s\S]*class="timeline-replies"[\s\S]*준비할게요[\s\S]*배포 끝났어요/);
+});
+
 test("an empty search offers to clear it", () => {
   const html = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([make({ reviewState: "approved" })], { view: "library", params: { q: "zzzz" } })}>
     <LibraryPane />
