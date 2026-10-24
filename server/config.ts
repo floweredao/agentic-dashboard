@@ -66,6 +66,8 @@ export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
   }
   if (config.NARRATION_TTS_PROVIDER === "vertex" && !config.NARRATION_VERTEX_PROJECT) fail("Vertex narration requires NARRATION_VERTEX_PROJECT.");
   if (config.AUTH_MODE === "local" && config.ENABLE_MCP && !config.MCP_AGENT) fail("Local MCP requires MCP_AGENT.");
+  if ((config.TASKS_QUEUE === undefined) !== (config.TASKS_SERVICE_ACCOUNT === undefined) ||
+    (config.TASKS_QUEUE && !config.APP_ORIGIN)) fail("Cloud Tasks requires TASKS_QUEUE, TASKS_SERVICE_ACCOUNT and APP_ORIGIN.");
   const hosted = (() => {
     if (config.AUTH_MODE === "local") return undefined;
     const { google, sessionSigningKey, kek, vapid } = config.APP_SECRETS;

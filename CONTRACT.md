@@ -236,6 +236,40 @@ In Google mode capture instead requires an agent bearer with `capture` enabled a
 
 ## Other listeners
 
+### Background operations
+
+Without `TASKS_QUEUE`, narration and title enrichment use the local in-process
+queues. With `TASKS_QUEUE` and `TASKS_SERVICE_ACCOUNT`, they enqueue account-bound
+HTTP tasks at `${APP_ORIGIN}/internal/tasks/narration` or `/ai-fill`. The queue
+request includes an OIDC token with audience `APP_ORIGIN`. Internal routes require
+a verified Google RSA signature, issuer, audience, expiry and verified service-account
+email; browser sessions and unsigned calls are not sufficient. Fifteen-minute
+database leases prevent duplicate work across instances. Narration checks account
+liveness and its lease before provider calls and writes. Failed enqueue attempts
+leave queued state recoverable on restart; Tasks retries failures. Push delivery is
+awaited before the task response.
+
+`POST /internal/tasks/maintenance` uses the same service-account authentication.
+It purges expired trash for all accounts, prunes narration runs older than 31 days,
+retries deleted accounts' audio-prefix removal, and writes a gzip NDJSON snapshot of
+every table as `backups/YYYY-MM-DD.ndjson.gz` in `AUDIO_BUCKET` (or the local
+database's `backups/` directory). Backups expire after 14 days; bucket lifecycle
+configuration should enforce this independently of the daily maintenance request.
+With Turso platform credentials, usage is compared to the current subscription's
+published quotas, not hardcoded free-tier numbers; greater than 70% alerts the operator.
+
+`OWNER_ALERT_EMAIL` and `APP_SECRETS.resend.apiKey` enable sign-up, capacity,
+maintenance-failure and usage alerts through Resend, from `onboarding@resend.dev`.
+Only the configured operator can receive them, with a durable one-per-kind/day
+claim and provider idempotency key; an uncertain send is not retried that day.
+Alerts contain no account identity, saved content or credentials. No mail goes to users.
+
+`bun scripts/restore.ts --from backup.ndjson.gz --database-url <empty database>`
+is an offline operator command, not a public API. It refuses a populated target,
+restores only installed schema tables/columns, and preserves target tombstones,
+skipping their historical tenant data. Backups contain secrets and must remain
+private; they differ from the credential-free user export.
+
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`, `127.0.0.1:AGENT_PORT`): only `POST /api/v1/records` and `GET /api/v1/records/:id` with an agent key.
 - **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`. Every call, including discovery and notifications, now requires an agent bearer; there is no `MCP_AGENT` authority fallback. Calls use the token's account/principal and a per-token rate bucket. Browser Origins are rejected.
 

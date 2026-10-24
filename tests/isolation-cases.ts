@@ -35,6 +35,7 @@ export const CASES: Readonly<Record<string, IsolationCase>> = {
   "GET /auth/capacity": { kind: "public", reason: "Public capacity explanation only" },
   "POST /auth/logout": { kind: "private", status: 204 },
   "ALL /mcp": { kind: "private", status: 405, agent: true },
+  "POST /internal/tasks/:kind": { kind: "private", status: 401, body: () => ({}) },
   "POST /api/v1/agents": { kind: "private", status: 201, body: () => ({ name: "new-agent" }) },
   "POST /api/v1/agents/invites": { kind: "private", status: 201, body: () => ({ name: "new-computer" }) },
   "POST /api/v1/agents/:name/rotate": { kind: "private", status: 404 },

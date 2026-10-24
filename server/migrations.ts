@@ -48,6 +48,13 @@ export const MIGRATIONS: readonly Migration[] = [
     await sql.run("CREATE TABLE oauth_transactions(tx_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)");
     await sql.run("ALTER TABLE principals ADD COLUMN capture INTEGER NOT NULL DEFAULT 0");
   } },
+  { version: 4, async up(sql) {
+    await sql.run("ALTER TABLE narrations ADD COLUMN leased_until INTEGER");
+    await sql.run("ALTER TABLE narrations ADD COLUMN leased_by TEXT");
+    await sql.run(`CREATE TABLE IF NOT EXISTS background_jobs(user_id TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL,
+      revision TEXT NOT NULL, leased_until INTEGER, leased_by TEXT, completed_at TEXT, PRIMARY KEY(user_id,kind,id,revision))`);
+    await sql.run("CREATE TABLE operator_alerts(kind TEXT NOT NULL, day TEXT NOT NULL, PRIMARY KEY(kind,day))");
+  } },
 ];
 
 /** Each version and its ledger entry commit together, including upgrades interrupted mid-copy. */

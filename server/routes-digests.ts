@@ -23,7 +23,7 @@ export function registerDigests(app: Hono, runtime: TenantRuntime) {
         if (mode !== "off" && result.changed.length > 0) {
           const parts = mode === "all" ? ["all" as const]
             : [...new Set(result.digest.sections.filter(section => result.changed.includes(section.key)).map(section => section.kind))];
-          for (const part of parts) narration.auto(principal, digestPartId(result.digest.id, part), "read");
+          for (const part of parts) await narration.auto(principal, digestPartId(result.digest.id, part), "read");
         }
         const notified = pushOn && input.notify && result.added.length > 0
           && (await push.notify([{ kind: "digest", payload: digestPayload(result.digest, result.added, result.created, options.locale) }])) > 0;

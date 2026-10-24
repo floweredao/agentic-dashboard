@@ -12,6 +12,8 @@ import { createNarrationState } from "./narration-state";
 import { createNarrationSettings } from "./narration-settings";
 import { createNarrationWork } from "./narration-work";
 import { narrationFiles } from "./narration-files";
+import { accountActive } from "./work-guard";
+import type { JobPayload } from "./jobs";
 
 
 const ACTIVE: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
@@ -83,7 +85,7 @@ export function createNarration(options: NarrationOptions) {
     }
     const waiting = z.object({ count: z.number() }).parse((await store.db.get("SELECT count(*) AS count FROM narrations WHERE (status='queued') AND user_id=?", []))).count;
     if (waiting >= NARRATION_LIMITS.queue) throw new ApiError(429, "narration_queue_full", "Too many narrations are waiting; try again later");
-    const timestamp = now();
+    const timestamp = new Date(Math.max(store.now(), current ? Date.parse(current.requested_at) + 1 : 0)).toISOString();
       if (!current) {
         (await store.db.run(`INSERT INTO narrations(record_id,status,job_hash,requested_by,requested_at,updated_at,attempts,style,scope,user_id)
           VALUES(?,'queued',?,?,?,?,0,?,?,?)`, [record.id, hash, principal.id, timestamp, timestamp, style, scope]));
@@ -94,16 +96,16 @@ export function createNarration(options: NarrationOptions) {
       (await store.db.run("INSERT INTO narration_runs(record_id,started_at,user_id) VALUES(?,?,?)", [record.id, timestamp]));
       return true;
     });
-    if (startedJob) enqueue(record.id);
+    if (startedJob) await enqueue(record.id);
     return { state: await state(record), started: startedJob };
   }
 
 
-  async function run(id: string) {
+  async function run(id: string, lease?: string) {
     const job = (await row(id));
     if (!job || job.status !== "queued") return;
     const controller = new AbortController();
-    const live: Job = { id, controller, waitUntil: null, stepAt: null, scriptTry: null };
+    const live: Job = { id, controller, ...(lease ? { lease } : {}), waitUntil: null, stepAt: null, scriptTry: null };
     running.set(id, live);
     starting.delete(id);
     try { await jobContext.run(live, () => work(id, job, controller.signal)); }
@@ -111,9 +113,28 @@ export function createNarration(options: NarrationOptions) {
   }
 
 
-  function enqueue(id: string) {
+  async function enqueue(id: string) {
+    if (options.jobs) {
+      const current = await row(id);
+      if (current) await options.jobs.enqueue("narration", { userId: store.db.userId, id, revision: current.requested_at });
+      return;
+    }
     if (!pending.includes(id)) pending.push(id);
     pump();
+  }
+
+  async function deliver(payload: JobPayload) {
+    if (payload.userId !== store.db.userId || !await accountActive(store)) return;
+    const lease = crypto.randomUUID();
+    const claimed = await store.db.run(`UPDATE narrations SET leased_by=?,leased_until=?,status='queued'
+      WHERE record_id=? AND requested_at=? AND status IN ('queued','scripting','speaking')
+      AND (leased_until IS NULL OR leased_until<=?) AND user_id=?`,
+    [lease, store.now() + 15 * 60 * 1000, payload.id, payload.revision, store.now()]);
+    if (!claimed.changes) return;
+    try { await run(payload.id, lease); }
+    finally {
+      await store.db.run("UPDATE narrations SET leased_by=NULL,leased_until=NULL WHERE record_id=? AND leased_by=? AND user_id=?", [payload.id, lease]);
+    }
   }
 
   /** Starts waiting jobs while slots are free, oldest first, passing over a record whose earlier job is still running. */
@@ -183,6 +204,7 @@ export function createNarration(options: NarrationOptions) {
     })().catch((error: unknown) => { console.error(`narration auto ${id} failed: ${error instanceof Error ? error.name : "unknown"}`); });
     autoRuns.add(work);
     void work.finally(() => autoRuns.delete(work));
+    return work;
   }
 
   /**
@@ -203,8 +225,8 @@ export function createNarration(options: NarrationOptions) {
   async function resume() {
     for (const value of (await store.db.all("SELECT record_id FROM narrations WHERE (status IN ('queued','scripting','speaking')) AND user_id=? ORDER BY requested_at", []))) {
       const { record_id } = z.object({ record_id: z.string() }).parse(value);
-      (await set(record_id, { status: "queued" }));
-      enqueue(record_id);
+      if (!options.jobs) await set(record_id, { status: "queued" });
+      await enqueue(record_id);
     }
   }
 
@@ -232,7 +254,7 @@ export function createNarration(options: NarrationOptions) {
     do { await Promise.all([...autoRuns, ...tasks]); } while (tasks.size > 0 || autoRuns.size > 0 || pending.length > 0);
   }
 
-  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, ...settings, auto, retryDeferred, styleOf };
+  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, deliver, ...settings, auto, retryDeferred, styleOf };
 }
 export * from "./narration-types";
 export * from "./narration-prompts";

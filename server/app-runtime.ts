@@ -57,14 +57,15 @@ export async function createRuntime(options: AppOptions, store: Store) {
   /** New records whose audio waits for their AI title fill, so it reads the filled title and summary. */
   const afterFill = new Set<string>();
 
-  const aiFill = fillOptions ? createAiFill({ store, ...fillOptions, onSettled: async id => {
-    if (!afterFill.delete(id)) return;
+  const aiFill = fillOptions ? createAiFill({ store, ...fillOptions, ...(options.jobs ? { jobs: options.jobs } : {}), onSettled: async id => {
+    if (!afterFill.delete(id) && !options.jobs) return;
     try { (await autoNarrate((await store.get(id)))); }
     catch (error) { if (!(error instanceof ApiError) || error.status !== 404) throw error; }
   } }) : null;
 
 
   const narration = createNarration({ provider: null, ...options.narration, store,
+    ...(options.jobs ? { jobs: options.jobs } : {}),
     ...(options.audioStore ? { audioStore: options.audioStore } : {}),
     ...(personalKey && keys && options.narrationEnabled !== false ? {
       provider: options.personalProvider ? options.personalProvider(personalKey) : geminiProvider({ key: personalKey }),
@@ -117,11 +118,11 @@ export async function createRuntime(options: AppOptions, store: Store) {
     const setting = (await narration.autoSettings()).records;
     if (setting === "off" || !AUTO_NARRATED_KINDS.some(kind => kind === record.kind)) return;
     const style = (edited ? (await narration.styleOf(record.id)) : null) ?? setting;
-    narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
+    await narration.auto({ id: record.createdBy, source: record.source }, record.id, style);
   };
 
   const newRecord = async (record: DashboardRecord, fill: boolean) => {
-    if (fill && aiFill) { afterFill.add(record.id); aiFill.enqueue(record.id); }
+    if (fill && aiFill) { afterFill.add(record.id); await aiFill.enqueue(record.id); }
     else (await autoNarrate(record));
   };
 
