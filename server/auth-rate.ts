@@ -1,12 +1,27 @@
 import { isIP } from "node:net";
 
-/** Only a trusted proxy can supply the appended client hop; direct listeners ignore XFF entirely. */
-export function authClientKey(request: Request, socketAddress: string | undefined, trustedProxy: boolean) {
-  const appended = trustedProxy ? request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() : undefined;
-  return appended && isIP(appended) ? appended : socketAddress ?? "unknown";
+/** Trusted ingress selects a hop from the right; direct listeners ignore XFF entirely. */
+export function authClientKey(request: Request, socketAddress: string | undefined, trustedProxy: boolean | number) {
+  const hops = typeof trustedProxy === "boolean" ? Number(trustedProxy) : trustedProxy;
+  const appended = hops > 0 ? request.headers.get("x-forwarded-for")?.split(",").at(-hops)?.trim() : undefined;
+  const address = appended && isIP(appended) ? appended : socketAddress ?? "unknown";
+  if (isIP(address) !== 6) return address;
+  // URL canonicalization also converts dotted IPv4 tails into hexadecimal words.
+  const canonical = new URL(`http://[${address.split("%")[0]}]/`).hostname.slice(1, -1);
+  const [left = "", right] = canonical.split("::");
+  const head = left ? left.split(":") : [];
+  const tail = right ? right.split(":") : [];
+  const words = right === undefined ? head : [...head, ...Array<string>(8 - head.length - tail.length).fill("0"), ...tail];
+  if (words.slice(0, 5).every(word => Number.parseInt(word, 16) === 0) && words[5] === "ffff") {
+    return words.slice(6).flatMap(word => {
+      const value = Number.parseInt(word, 16);
+      return [value >> 8, value & 255];
+    }).join(".");
+  }
+  return [...words.slice(0, 4).map(word => word.padStart(4, "0")), "0000", "0000", "0000", "0000"].join(":") + "/64";
 }
 
-export function authLimiter(now: () => number, trustedProxy = false) {
+export function authLimiter(now: () => number, trustedProxy: boolean | number = false) {
   const buckets = new Map<string, number>();
   let minute = Math.floor(now() / 60000);
   return (request: Request, socketAddress?: string) => {

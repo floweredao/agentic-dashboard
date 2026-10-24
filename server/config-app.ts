@@ -19,6 +19,7 @@ export function appOptions(config: Configuration): AppOptions {
     databasePath: config.DATABASE_PATH ?? join(config.DATA_DIR, "dashboard.sqlite"),
     credentialsPath: config.CREDENTIALS_PATH ?? join(config.DATA_DIR, "credentials.json"),
     staticRoot: config.STATIC_DIR, port: config.PORT, agentPort: config.AGENT_PORT, trustedAuthProxy: config.trustedAuthProxy,
+    trustedProxyHops: config.TRUSTED_PROXY_HOPS, pendingSignInLimit: config.PENDING_SIGN_IN_LIMIT,
     privateOrigin: config.bindings.origin, appName: config.APP_NAME, timeZone: config.TIME_ZONE, locale: config.LOCALE,
     ...(config.hosted ? { hosted: config.hosted, geminiKeys: { kek: config.APP_SECRETS.kek, model: config.AI_FILL_MODEL,
       selectedModels: { script: config.NARRATION_KEY_SCRIPT_MODEL, speech: config.NARRATION_TTS_MODEL } }, personalProvider: provider } : {}),
