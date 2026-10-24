@@ -13,6 +13,11 @@ export interface Sql {
   all<T = unknown>(sql: string, args?: readonly SqlValue[]): Promise<T[]>;
   run(sql: string, args?: readonly SqlValue[]): Promise<RunResult>;
   batch(statements: readonly Statement[]): Promise<void>;
+  /**
+   * Await every operation started in this callback. Do not launch background work here:
+   * it inherits the transaction context and SQL access fails after commit or rollback.
+   * Start background jobs only after awaiting tx() from the caller's outer context.
+   */
   tx<T>(fn: (sql: Sql) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
