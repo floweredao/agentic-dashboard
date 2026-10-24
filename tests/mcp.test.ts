@@ -1,6 +1,6 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { z } from "zod";
-import { agentRecord, fixture, payload, recordResult } from "./backend-helper";
+import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
 let f = (await fixture());
 afterEach(async () => { (await f.close()); f = (await fixture()); });
@@ -16,7 +16,7 @@ const toolResult = z.object({ isError: z.boolean().optional(), structuredContent
   content: z.array(z.object({ type: z.literal("text"), text: z.string() })) });
 
 async function post(body: unknown, headers: HeadersInit = {}) {
-  const h = new Headers({ "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...Object.fromEntries(new Headers(headers)) });
+  const h = new Headers({ "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...bearer("chatgpt"), ...Object.fromEntries(new Headers(headers)) });
   return await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: h, body: JSON.stringify(body) }));
 }
 let nextId = 1;
@@ -210,9 +210,9 @@ test("transport rejects foreign hosts, browser origins, bad versions and non-POS
   expect(get.status).toBe(405);
   expect(get.headers.get("allow")).toBe("POST");
   expect((await f.app.mcpFetch(new Request("http://127.0.0.1:4313/other", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }))).status).toBe(404);
-  const text = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" }));
+  const text = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { ...bearer("chatgpt"), "Content-Type": "text/plain" }, body: "{}" }));
   expect(text.status).toBe(415);
-  const malformed = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" }));
+  const malformed = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { ...bearer("chatgpt"), "Content-Type": "application/json" }, body: "{" }));
   expect(malformed.status).toBe(400);
   expect(rpcError.parse(await malformed.json()).error.code).toBe(-32700);
   const batch = await post([body]);
@@ -225,4 +225,10 @@ test("transport rejects foreign hosts, browser origins, bad versions and non-POS
 
 test("existing listeners never serve the MCP endpoint", async () => {
   expect((await f.call("/mcp", "POST", { jsonrpc: "2.0", id: 1, method: "tools/list" }, {}, true)).status).toBe(404);
+});
+
+test("local MCP never falls back to the configured agent without a bearer", async () => {
+  const response = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) }));
+  expect(response.status).toBe(401);
 });

@@ -44,6 +44,7 @@ export type Encoder = (wavPath: string, signal: AbortSignal) => Promise<{ path: 
 export interface NarrationSource { readonly record: DashboardRecord; readonly label: string; readonly audioBase: string }
 
 export interface NarrationOptions {
+  readonly requireKey?: () => Promise<void>;
   readonly store: Store;
   readonly lookup?: (id: string) => Promise<NarrationSource | null>;
   readonly globalDailyLimit?: number;

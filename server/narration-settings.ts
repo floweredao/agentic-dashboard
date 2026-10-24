@@ -86,6 +86,7 @@ export function createNarrationSettings(options: NarrationOptions) {
     const pending = previews.get(voice);
     if (pending) return pending;
     const made = (async () => {
+      await options.requireKey?.();
       if (!provider || !await available()) throw new ApiError(503, "narration_unavailable", "No TTS key is configured on the dashboard server");
       let pcm: Uint8Array;
       try { pcm = await provider.speak(previewText(voice), (await voiceSettings()).readStyle, AbortSignal.timeout(timeoutMs), voice); }

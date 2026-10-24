@@ -13,6 +13,7 @@ export type PushTarget = { readonly endpoint: string; readonly keys: { readonly 
 /** Sends one payload to one device and answers the push service's HTTP status, or null when it could not be reached. */
 export type Deliver = (target: PushTarget, payload: PushPayload) => Promise<number | null>;
 export interface PushOptions {
+  readonly vapid?: { readonly publicKey: string; readonly privateKey: string };
   readonly vapidPath: string;
   /** The VAPID `sub` claim: an https URL or mailto: address the push services can reach the sender at. */
   readonly subject: string;
@@ -143,7 +144,7 @@ export function createPush(store: Store, options: PushOptions) {
   const localeOf = (value: string | null): PushLocale => value === "en" || value === "ko" ? value : defaultLocale;
   const allow = options.allowEndpoint ?? pushEndpointAllowed;
   const pending = new Set<Promise<unknown>>();
-  let vapid: z.infer<typeof vapidSchema> | null = null;
+  let vapid: z.infer<typeof vapidSchema> | null = options.vapid ?? null;
 
   /** Created on first need; a malformed file is an error, never a silent rotation. */
   function keys() {

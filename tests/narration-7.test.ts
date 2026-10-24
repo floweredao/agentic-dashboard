@@ -158,7 +158,7 @@ test("MCP record creation and text edits use automatic audio", async () => {
   const { f, tts, idle } = (await setup(undefined, { autoDefaults: { records: "read" } }));
   const call = async (name: string, args: Record<string, unknown>) => {
     const response = await f.app.mcpFetch(new Request("http://127.0.0.1:4313/mcp", {
-      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18" },
+      method: "POST", headers: { ...bearer("chatgpt"), "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
     }));
     expect(response.status).toBe(200);
