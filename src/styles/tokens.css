@@ -10,6 +10,7 @@
   --shadow-float: 0 24px 64px #0000002e, 0 2px 8px #0000001a;
   --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --text-meta: 0.8125rem; --text-label: 0.8125rem;
   --r-sm: 6px; --r: 8px; --r-lg: 12px;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   /* The sidebar slide: a fast start that settles softly, like an iOS sheet (no overshoot). */

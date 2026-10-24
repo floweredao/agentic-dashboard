@@ -3,6 +3,8 @@ import type { NarrationAuto } from "../../shared/contracts";
 import { errorMessage, loadNarrationAuto, saveNarrationAuto } from "../api";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
+import { SettingsLoadState } from "./SettingsLoadState";
+import { useRateLimited } from "../rate-limit";
 
 type Key = keyof NarrationAuto;
 const CHOICES: { readonly [K in Key]: readonly NarrationAuto[K][] } = {
@@ -38,17 +40,24 @@ const text = strings({
 export function AutoSettings() {
   const t = text();
   const d = useDashboard();
+  const limited = useRateLimited();
   const [saved, setSaved] = useState<NarrationAuto | null>(null);
   const [pending, setPending] = useState<Key | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
-    loadNarrationAuto().then(value => { if (alive) setSaved(value); }, () => { if (alive) setSaved(null); });
+    setError("");
+    loadNarrationAuto().then(value => { if (alive) setSaved(value); }, async (cause: unknown) => {
+      const message = await errorMessage(cause);
+      if (alive) setError(message);
+    });
     return () => { alive = false; };
-  }, []);
-  if (!saved) return null;
+  }, [attempt]);
+  if (!saved) return <SettingsLoadState id="settings-auto" heading={t.heading} error={error} retry={() => setAttempt(value => value + 1)} />;
 
   const choose = async <K extends Key>(key: K, value: NarrationAuto[K]) => {
-    if (pending || saved[key] === value) return;
+    if (pending || limited || saved[key] === value) return;
     setPending(key);
     try { setSaved(await saveNarrationAuto({ ...saved, [key]: value }, d.csrfToken)); }
     catch (error) { d.notify(await errorMessage(error), "error"); }
@@ -65,7 +74,7 @@ export function AutoSettings() {
         </span>
         <div className={`segmented auto-choice auto-choice-${CHOICES[key].length}`} role="group" aria-labelledby={`auto-${key}`}
           aria-busy={pending === key || undefined}>
-          {CHOICES[key].map(value => <button key={value} type="button" aria-pressed={saved[key] === value} disabled={pending !== null}
+          {CHOICES[key].map(value => <button key={value} type="button" aria-pressed={saved[key] === value} disabled={limited || pending !== null}
             onClick={() => { void choose(key, value); }}>{t.options[value]}</button>)}
         </div>
       </li>)}

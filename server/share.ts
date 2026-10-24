@@ -11,6 +11,14 @@ const kindLabels: Record<DashboardRecord["kind"], string> = {
   research: "Research", "work-report": "Work report", note: "Note", social: "Link", task: "Task", project: "Project",
 };
 const sourceLabel = (source: string) => source === "manual" ? "Owner" : source;
+const labels = {
+  en: { kind: "Kind", source: "Source", owner: "Owner", saved: "Saved", continues: "Continues", status: "Status", due: "Due",
+    code: "Share code", conclusion: "Conclusion", summary: "Summary", body: "Body", next: "Next actions", links: "Links", tags: "Tags",
+    kinds: kindLabels },
+  ko: { kind: "종류", source: "출처", owner: "소유자", saved: "저장일", continues: "이전 기록", status: "상태", due: "마감일",
+    code: "공유 코드", conclusion: "결론", summary: "요약", body: "본문", next: "다음 할 일", links: "링크", tags: "태그",
+    kinds: { research: "조사", "work-report": "작업 보고", note: "메모", social: "링크", task: "할 일", project: "프로젝트" } },
+} as const;
 
 /** 12 Crockford base32 characters (60 random bits) grouped as XXXX-XXXX-XXXX. */
 export function generateCode(): string {
@@ -40,27 +48,28 @@ export function projectRecord(record: DashboardRecord) {
   };
 }
 
-export function renderMarkdown(record: DashboardRecord, share: Share, titleOf: (id: string) => string | null = () => null, timeZone = "UTC"): string {
+export function renderMarkdown(record: DashboardRecord, share: Share, titleOf: (id: string) => string | null = () => null, timeZone = "UTC", locale: "en" | "ko" = "en"): string {
+  const t = labels[locale];
   const view = projectRecord(record);
-  const meta = [`- Kind: ${kindLabels[record.kind]}`, `- Source: ${sourceLabel(record.source)}`,
-    `- Saved: ${zonedDate(new Date(record.createdAt), timeZone)}`];
+  const meta = [`- ${t.kind}: ${t.kinds[record.kind]}`, `- ${t.source}: ${record.source === "manual" ? t.owner : sourceLabel(record.source)}`,
+    `- ${t.saved}: ${zonedDate(new Date(record.createdAt), timeZone)}`];
   if (view.previousId) {
     const title = titleOf(view.previousId);
-    meta.push(`- Continues: ${title === null ? view.previousId : `${title} (${view.previousId})`}`);
+    meta.push(`- ${t.continues}: ${title === null ? view.previousId : `${title} (${view.previousId})`}`);
   }
   if (record.kind === "task") {
-    meta.push(`- Status: ${record.status}`);
-    if (record.dueDate) meta.push(`- Due: ${record.dueDate}`);
+    meta.push(`- ${t.status}: ${record.status}`);
+    if (record.dueDate) meta.push(`- ${t.due}: ${record.dueDate}`);
   }
-  meta.push(`- Share code: ${share.code}`);
+  meta.push(`- ${t.code}: ${share.code}`);
   const sections: string[] = [`# ${record.title}`, meta.join("\n")];
   const section = (heading: string, content: string) => { if (content.trim()) sections.push(`## ${heading}\n\n${content.trim()}`); };
-  section("Conclusion", view.conclusion);
-  section("Summary", view.summary);
-  section("Body", view.body);
-  section("Next actions", record.kind === "project" ? view.nextAction || view.nextActions : view.nextActions || view.nextAction);
-  section("Links", view.links.map(link => `- [${link.label.trim() || link.url}](${link.url})`).join("\n"));
-  section("Tags", view.tags.map(tag => `- #${tag}`).join("\n"));
+  section(t.conclusion, view.conclusion);
+  section(t.summary, view.summary);
+  section(t.body, view.body);
+  section(t.next, record.kind === "project" ? view.nextAction || view.nextActions : view.nextActions || view.nextAction);
+  section(t.links, view.links.map(link => `- [${link.label.trim() || link.url}](${link.url})`).join("\n"));
+  section(t.tags, view.tags.map(tag => `- #${tag}`).join("\n"));
   return `${sections.join("\n\n")}\n`;
 }
 
