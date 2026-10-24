@@ -36,18 +36,21 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
       if (origin !== undefined && !origins.has(origin)) {
         throw new ApiError(403, options.hosted && !["GET", "HEAD"].includes(c.req.method) ? "csrf" : "origin", "Origin is not allowed");
       }
-      const window = Math.floor(now() / 60000);
-      if (window !== rate.window) { rate.buckets.clear(); rate.window = window; }
-      // Unknown credentials share one bucket; clients cannot grow the map by rotating garbage tokens.
-      let rateKey = "anonymous";
-      const authorization = c.req.header("authorization");
-      if (authorization?.startsWith("Bearer ")) {
-        const credentialHash = hash(authorization.slice(7));
-        if (await auth.control.principalByToken(credentialHash)) rateKey = credentialHash;
-      } else if (await auth.findSession(c.req.raw)) rateKey = `user:${runtime.store.db.userId}`;
-      const count = (rate.buckets.get(rateKey) ?? 0) + 1;
-      rate.buckets.set(rateKey, count);
-      if (count > limit) { c.header("Retry-After", "60"); throw new ApiError(429, "rate_limited", "Request limit exceeded"); }
+      // Hosted auth has dedicated network/start budgets in createApp, not the shared anonymous API bucket.
+      if (!(options.hosted && url.pathname.startsWith("/auth/"))) {
+        const window = Math.floor(now() / 60000);
+        if (window !== rate.window) { rate.buckets.clear(); rate.window = window; }
+        // Unknown credentials share one bucket; clients cannot grow the map by rotating garbage tokens.
+        let rateKey = "anonymous";
+        const authorization = c.req.header("authorization");
+        if (authorization?.startsWith("Bearer ")) {
+          const credentialHash = hash(authorization.slice(7));
+          if (await auth.control.principalByToken(credentialHash)) rateKey = credentialHash;
+        } else if (await auth.findSession(c.req.raw)) rateKey = `user:${runtime.store.db.userId}`;
+        const count = (rate.buckets.get(rateKey) ?? 0) + 1;
+        rate.buckets.set(rateKey, count);
+        if (count > limit) { c.header("Retry-After", "60"); throw new ApiError(429, "rate_limited", "Request limit exceeded"); }
+      }
       if (demo && c.req.method !== "GET" && c.req.method !== "HEAD") throw new ApiError(403, "demo_read_only", "This is a read-only demo; changes are turned off");
       await next();
     });

@@ -39,11 +39,15 @@ With Google authentication configured, local owner-key and trusted-header bootst
 
 Users are identified only by Google subject, never merged by email. A deleted identity receives a new tenant id. Signups are limited to `MAX_USERS` active hosted accounts (default 50; the local owner is excluded); existing users can still sign in. Capacity returns a 403 explanation with a self-hosting alternative.
 
-Hosted sessions last 30 days and rotate the browser's previous session and CSRF token at sign-in. Cookies are HttpOnly, SameSite=Lax, Path=/, with no Domain: `__Host-session` for configured HTTPS origins, `session` for local HTTP testing. Forwarded headers never decide Secure. The hosted origin is the only allowed browser origin/host. `POST /auth/logout` requires session and CSRF and removes that session. `/auth/*` is limited to 20 requests per IP per minute (last forwarded hop only on trusted hosted ingress; socket address otherwise). New users return to `/welcome`, existing onboarded users to `/`.
+Hosted sessions last 30 days and rotate the browser's previous session and CSRF token at sign-in. Cookies are HttpOnly, SameSite=Lax, Path=/, with no Domain: `__Host-session` for configured HTTPS origins, `session` for local HTTP testing. Forwarded headers never decide Secure. The hosted origin is the only allowed browser origin/host. `POST /auth/logout` requires session and CSRF and removes that session. `/auth/*` is limited to 20 requests per client network per minute (configured forwarded hop on trusted hosted ingress; socket address otherwise). New users return to `/welcome`, existing onboarded users to `/`.
 
-`AUTH_TRUST_PROXY=on` enables last-hop forwarding trust only in Google mode. Cloud Run (`K_SERVICE` present) enables it by default; `AUTH_TRUST_PROXY=off` overrides that default. Local mode always uses the socket address. A full 10,000-key rate map evicts its oldest entry instead of denying every new client. Each client key can hold at most 20 live OAuth transactions across rate windows; insertion and eviction are atomic. Transaction keys use an HMAC client tag in the existing `tx_hash` field, not a stored IP address. The signed cookie retains that tag so a callback can survive a network change.
+`AUTH_TRUST_PROXY=on` enables forwarding trust only in Google mode. Cloud Run (`K_SERVICE` present) enables it by default; `AUTH_TRUST_PROXY=off` overrides that default. `TRUSTED_PROXY_HOPS` is a positive integer selecting the client entry from the right of `X-Forwarded-For` (default 1 for direct Cloud Run; use 2 behind an external HTTPS load balancer appending client and balancer addresses). A missing or invalid selected entry falls back to the socket; local mode always uses the socket address. Only enable trust when the listener is restricted to ingress with that fixed proxy topology. A full 10,000-key client rate map evicts its oldest entry instead of denying every new client. Each client key can hold at most 20 live OAuth transactions across rate windows; `PENDING_SIGN_IN_LIMIT` caps all pending rows (positive integer, default 10000). Expired rows are removed and oldest starts evicted before admitting each new start atomically. Tied expiry times use insertion order. An evicted flow must restart sign-in. Transaction keys use an HMAC client tag in the existing `tx_hash` field, not a stored IP address. The signed cookie retains that tag so a callback can survive a network change.
 
 The browser config adds `authMode: "local" | "google"`. Google mode displays Google-only access and limited signup capacity before authorization; local owner login and demo behavior remain available when Google is not configured.
+
+Rate-limit and pending-sign-in client keys use canonical expanded IPv6 /64 networks. IPv4-mapped IPv6 resolves to its IPv4 address; IPv4 budgets remain per address. Equivalent IPv6 spellings and interface-address rotation within a /64 cannot create fresh budgets.
+
+`/auth/google/start` additionally admits at most 100 starts per IPv6 /48 per minute and `AUTH_START_LIMIT` starts across all clients (positive integer, default 900/minute). These budgets count only admitted starts, survive client-map eviction, and do not apply to callbacks or logout. Rate limiting returns 429 with `Retry-After: 60`. The in-memory budgets are per application instance and reset at minute boundaries or restart; the pending cap is database-wide. Startup refuses `AUTH_START_LIMIT * 10 >= PENDING_SIGN_IN_LIMIT`. The 10000-row default trades five times the previous maximum storage for protection of in-progress sign-ins: 900 starts/minute admits 9000 in the ten-minute pending lifetime, or at most 9900 across eleven overlapping fixed-minute windows, below capacity. Custom settings still need boundary-burst headroom; multiple instances or restarts can admit more starts. Saturating the default ceiling requires about 45 IPv4 addresses or 9 IPv6 /48s and rejects new starts until the next minute. Use Cloud Armor or equivalent edge rate limiting for stronger denial-of-service protection.
 
 ## Records
 
@@ -282,11 +286,13 @@ In Google mode capture instead requires an agent bearer with `capture` enabled a
 
 ## Other listeners
 
-Address buckets allow 20 sign-in/session requests and 60 public share requests per
-minute, independently. They all reuse `authClientKey`: with a trusted proxy,
-only the last, proxy-appended valid IP selects the bucket; direct listeners ignore
-forwarded values and use the socket address. Full maps evict the oldest bucket
-instead of rejecting new clients. Authenticated API session buckets are
+OIDC uses the canonical sign-in limiter, including its per-/64, per-/48 and global
+start budgets. A separate non-OIDC limiter allows 60 public share requests and
+20 owner-key session POSTs per minute; it never handles `/auth/*` or authenticated
+session GETs. Both reuse `authClientKey`, selecting the configured trusted hop from
+the right and otherwise using the socket address, with IPv6 normalized to /64.
+Full maps evict the oldest bucket instead of rejecting new clients.
+Authenticated API session buckets are
 keyed by account; one account cannot exhaust another account's allowance. Every
 rate rejection includes `Retry-After`. The request body caps are unchanged.
 
@@ -350,6 +356,17 @@ Each tenant's narration and Gemini title-fill runner resolves its personal key a
 `APP_SECRETS` also accepts optional `turso.authToken/platformToken/org` and `resend.apiKey`; `DATABASE_AUTH_TOKEN` overrides `turso.authToken`. Configuration accepts `OWNER_ALERT_EMAIL`, `CONTACT_EMAIL`, `MAX_USERS`, `AUDIO_BUCKET`, `TASKS_QUEUE` and `TASKS_SERVICE_ACCOUNT` for the hosted operations layer. Notification click paths and manifest start/scope remain same-origin relative paths. OAuth redirects, share links, VAPID subject and allowed browser origins derive from `APP_ORIGIN`; loopback development origins are local-mode only. An `AUDIO_BUCKET` enables `https://storage.googleapis.com` in media CSP.
 
 The container listens on `0.0.0.0:8080` and includes the digest-pinned static ffmpeg 7.1 image's encoder. Encoding chooses ffmpeg first, macOS afconvert second, and preserves WAV if neither encoder is available.
+
+## Hosted deployment tools
+
+`scripts/bootstrap-gcp.sh`, `scripts/set-secret.ts` and `scripts/deploy-cloud-run.sh`
+require a private dotenv configuration via `--env-file` and refuse execution
+without `--yes`. `--dry-run` renders commands without invoking GCP/Turso or
+materializing secrets. Secret JSON travels through captured stdout and upload
+stdin, never command arguments or logs. Runtime IAM is scoped to the named
+secret, audio bucket, task queue and service account. See
+[deployment tooling](docs/deploy.md#hosted-google-sign-in-deployment-tooling)
+for prerequisites, sequencing, retention and the limits of dry-run validation.
 
 ## Demo mode
 
