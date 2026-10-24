@@ -10,6 +10,7 @@ import { strings } from "../i18n";
 import { formatRoute, viewTitles } from "../router";
 import { useDashboard } from "../state";
 import { DigestRow } from "./Digest";
+import { DemoConversion, InboxEmpty } from "./InboxEmpty";
 
 const text = strings({
   en: {
@@ -102,6 +103,8 @@ export function HomePane() {
     <header className="pane-head">
       <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{viewTitles.home}</h1></div>
     </header>
+    <DemoConversion />
+    {records.length === 0 && latest.length === 0 && <InboxEmpty />}
     {config.features.digest && <Section id="today-digest" title={t.digest}
       aside={<a className="today-more" href={formatRoute({ view: "digest", id: null, params: {} })}>{t.allDigests}<ChevronRight size={14} aria-hidden="true" /></a>}>
       {latest.length ? <ul className="digest-list today-card">{latest.map(summary => <DigestRow key={summary.id} summary={summary} part="all" selected={false}

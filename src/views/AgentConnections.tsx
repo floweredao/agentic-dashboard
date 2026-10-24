@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { accountAgents, revokeAgent, rotateAgent, type AccountAgent, type IssuedAgent } from "../account-api";
 import { errorMessage } from "../api";
-import { useDashboard } from "../state";
+import { useCredentials } from "../account-context";
 import { AgentTokenDialog } from "./AgentTokenDialog";
 import { agentText } from "./agent-copy";
 import "../styles/accounts.css";
 
 export function AgentConnections() {
   const t = agentText();
-  const d = useDashboard();
+  const d = useCredentials();
   const [agents, setAgents] = useState<readonly AccountAgent[] | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);

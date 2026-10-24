@@ -1,7 +1,8 @@
 import { createRoot } from "react-dom/client";
 import { loadConfig } from "./config";
 import { applyLocale, detectLocale, followSystemLanguage, strings } from "./i18n";
-import { errorMessage } from "./api";
+import { errorMessage, isUnauthorized } from "./api-errors";
+import { fetchSession, primeSession } from "./session-data";
 import { useRateLimited } from "./rate-limit";
 import "./styles/tokens.css";
 import "./styles/shell.css";
@@ -28,15 +29,21 @@ function ConfigFailure({ message }: { readonly message: string }) {
 async function start() {
   applyLocale(detectLocale());
   root.render(<main className="gate" role="status">{text().loading}</main>);
-  try { await loadConfig(); }
-  catch (cause) { root.render(<ConfigFailure message={await errorMessage(cause)} />); return; }
-  applyLocale(detectLocale());
-  followSystemLanguage();
-  // The app loads after the language is known, so labels built when its modules load are in that language.
-  const [{ App }, { registerWorker }, { PlaybackProvider }] = await Promise.all([import("./App"), import("./push"), import("./components/playback")]);
-  // The one audio element lives beside the app, outside its routes, so listening goes on across screens.
-  root.render(<PlaybackProvider><App /></PlaybackProvider>);
-  registerWorker();
+  const authentication = fetchSession().then(auth => ({ auth, error: "" }), async cause =>
+    ({ auth: null, error: isUnauthorized(cause) ? "" : await errorMessage(cause) }));
+  try {
+    const [, { AppEntry, applyAccountPreferences }, auth, { registerWorker }, { PlaybackProvider }] =
+      await Promise.all([loadConfig(), import("./AppEntry"), authentication, import("./push"), import("./components/playback")]);
+    applyLocale(detectLocale());
+    followSystemLanguage();
+    if (auth.auth?.account) applyAccountPreferences(auth.auth.account);
+    primeSession(auth.auth);
+    const entryPath = location.pathname;
+    if (auth.auth && (entryPath === "/account" || entryPath === "/delete-confirm")) history.replaceState(null, "", "/#/settings");
+    // The one audio element lives beside the app, outside its routes, so listening goes on across screens.
+    root.render(<PlaybackProvider><AppEntry initial={auth.auth} initialError={auth.error} entryPath={entryPath} /></PlaybackProvider>);
+    registerWorker();
+  } catch (cause) { root.render(<ConfigFailure message={await errorMessage(cause)} />); }
 }
 
 void start();
