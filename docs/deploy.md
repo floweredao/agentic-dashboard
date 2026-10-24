@@ -128,6 +128,10 @@ put credentials in it. Use these fields:
 | `DATABASE_URL` | Optional libSQL/HTTPS URL without credentials; otherwise resolved with `turso db show --url` |
 | `APP_ORIGIN` | Optional HTTPS origin; omit to discover Cloud Run's URL |
 | `OWNER_ALERT_EMAIL`, `CONTACT_EMAIL` | Operator-only Resend alert recipient and public contact address |
+| `DATABASE_REGION` | Optional, operator-verified Turso group location. The privacy page says undeclared when omitted; it never assumes the Cloud Run region |
+| `DEMO_HOSTED_URL` | Optional HTTPS destination for the read-only demo's hosted-account link; paths are allowed, URL credentials are not |
+| `AUTH_TRUST_PROXY`, `TRUSTED_PROXY_HOPS` | `on` and `1` for the Cloud Run proxy. Increase the hop count only for a known additional proxy |
+| `AUTH_START_LIMIT`, `PENDING_SIGN_IN_LIMIT` | `900` starts/minute and `10000` pending transactions. Pending capacity must be **greater than** ten minutes of admitted starts; tooling and server both enforce this |
 | `MAX_USERS` | Hosted sign-up ceiling, `50` |
 | `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT` | Account/service daily limits, `10` and `60` |
 | `OWNER_USER_LIMITS` | JSON account-ID-to-daily-limit map, `{}` |

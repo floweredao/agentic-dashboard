@@ -12,6 +12,7 @@ export async function oidcFixture(maxUsers = 50, appOrigin = oidcOrigin, trusted
   const directory = mkdtempSync(join(tmpdir(), "oidc-"));
   const app = await createApp({
     databasePath: ":memory:", credentialsPath: join(directory, "credentials.json"), privateOrigin: appOrigin, port: 4390, pushEnabled: false,
+    narration: { provider: null, audioDir: join(directory, "audio") },
     trustedAuthProxy, now: () => now, hosted: {
       sessionSigningKey: crypto.randomUUID() + crypto.randomUUID(), google: { clientId: "test-client", clientSecret: crypto.randomUUID() },
       maxUsers, endpoints: issuer.endpoints,

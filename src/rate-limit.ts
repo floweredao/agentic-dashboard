@@ -14,10 +14,13 @@ const listeners = new Set<() => void>();
 const changed = () => { for (const listener of listeners) listener(); };
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const rateLimited = () => Date.now() < until;
+export function clearRateLimit() { clearTimeout(timer); until = 0; changed(); }
 
 /** One browser credential shares the server's rate bucket, so its buttons share the deadline. */
 export function rememberRateLimit(error: unknown) {
   if (!(error instanceof HTTPError) || error.response.status !== 429) return;
+  const scope = error.response.headers.get("X-RateLimit-Scope");
+  if (scope === "narration" || scope === "export") return;
   const delay = retryAfterMs(error.response.headers.get("Retry-After"));
   if (!delay) return;
   until = Math.max(until, Date.now() + delay);

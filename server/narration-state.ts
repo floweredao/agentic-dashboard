@@ -1,6 +1,7 @@
 import type { DashboardRecord, Narration, NarrationState, NarrationStatus } from "../shared/contracts";
 import { type NarrationOptions, type Job, rowSchema, type Row, type Changes } from "./narration-types";
 import { sourceHash } from "./narration-text";
+import { accountActive } from "./work-guard";
 const ACTIVE: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
 export function createNarrationState(options: NarrationOptions, running: ReadonlyMap<string, Job>) {
   const { store, provider } = options;
@@ -16,8 +17,11 @@ export function createNarrationState(options: NarrationOptions, running: Readonl
   }
 
   async function set(id: string, changes: Changes) {
+    if (!await accountActive(store)) return 0;
     const entries = Object.entries({ ...changes, updated_at: now() });
-    (await store.db.run(`UPDATE narrations SET ${entries.map(([key]) => `${key}=?`).join(",")} WHERE (record_id=?) AND user_id=?`, [...entries.map(([, value]) => value ?? null), id]));
+    const lease = running.get(id)?.lease;
+    return (await store.db.run(`UPDATE narrations SET ${entries.map(([key]) => `${key}=?`).join(",")} WHERE (record_id=?)
+      ${lease ? "AND leased_by=?" : ""} AND user_id=?`, [...entries.map(([, value]) => value ?? null), id, ...(lease ? [lease] : [])])).changes;
   }
 
 
@@ -36,6 +40,7 @@ export function createNarrationState(options: NarrationOptions, running: Readonl
       ...(live && current.status === "scripting" && live.scriptTry !== null && live.scriptTry > 1 ? { scriptTry: live.scriptTry } : {}),
       attempts: current.attempts, error: current.error, requestedBy: current.requested_by, requestedAt: current.requested_at,
       updatedAt: current.updated_at, audio, script: current.script,
+      retryAt: current.retry_at,
     };
   }
 

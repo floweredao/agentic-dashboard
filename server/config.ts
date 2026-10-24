@@ -9,7 +9,7 @@ import { ApiError } from "./errors";
 
 const onOff = z.enum(["on", "off", "true", "false"]).transform(value => value === "on" || value === "true");
 const text = z.string().trim().min(1);
-const secretsSchema = z.object({
+export const secretsSchema = z.object({
   kek: z.record(z.string().regex(/^[1-9]\d*$/), z.string().regex(/^[A-Za-z0-9+/]{43}=$/)).default({}),
   sessionSigningKey: z.string().min(32).max(512).optional(),
   google: z.object({ clientId: text, clientSecret: text }).optional(),
@@ -57,7 +57,16 @@ const envSchema = z.object({
   AI_FILL_SOURCES: z.string().transform(value => value.split(",").map(item => item.trim()).filter(Boolean)).default([]),
   DEMO: onOff.default(false), MAX_USERS: z.coerce.number().int().min(0).default(50),
   OWNER_ALERT_EMAIL: z.email().optional(), CONTACT_EMAIL: z.email().optional(), AUDIO_BUCKET: text.optional(),
+  DATABASE_REGION: text.optional(),
+  DEMO_HOSTED_URL: z.url().refine(value => {
+    const url = new URL(value);
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password;
+  }, "HTTP(S) URL without credentials required").optional(),
   TASKS_QUEUE: text.optional(), TASKS_SERVICE_ACCOUNT: text.optional(),
+  OWNER_USER_LIMITS: z.string().transform((value, context): unknown => {
+    try { return JSON.parse(value); }
+    catch (error) { if (!(error instanceof SyntaxError)) throw error; context.addIssue({ code: "custom", message: "Expected JSON account limits" }); return z.NEVER; }
+  }).pipe(z.record(z.string().min(1), z.number().int().min(0).max(200))).prefault("{}"),
 });
 export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
   const parsed = envSchema.safeParse(env);
@@ -73,8 +82,11 @@ export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
   }
   if (config.NARRATION_TTS_PROVIDER === "vertex" && !config.NARRATION_VERTEX_PROJECT) fail("Vertex narration requires NARRATION_VERTEX_PROJECT.");
   if (config.AUTH_MODE === "local" && config.ENABLE_MCP && !config.MCP_AGENT) fail("Local MCP requires MCP_AGENT.");
+  if ((config.TASKS_QUEUE === undefined) !== (config.TASKS_SERVICE_ACCOUNT === undefined) ||
+    (config.TASKS_QUEUE && !config.APP_ORIGIN)) fail("Cloud Tasks requires TASKS_QUEUE, TASKS_SERVICE_ACCOUNT and APP_ORIGIN.");
   const hosted = (() => {
     if (config.AUTH_MODE === "local") return undefined;
+    if (!config.CONTACT_EMAIL) return fail("Google mode requires CONTACT_EMAIL for public privacy and terms pages.");
     const { google, sessionSigningKey, kek, vapid } = config.APP_SECRETS;
     if (!config.APP_ORIGIN || !google || !sessionSigningKey || !Object.keys(kek).length) return fail("Google mode requires APP_ORIGIN and Google, signing and encryption secrets.");
     const url = new URL(config.APP_ORIGIN);
@@ -83,7 +95,7 @@ export function parseConfig(env: Readonly<Record<string, string | undefined>>) {
     if (config.TRUSTED_USER_HEADER || config.AI_FILL_COMMAND) fail("Trusted-header login and command AI fill are local-only.");
     return { google, sessionSigningKey, maxUsers: config.MAX_USERS };
   })();
-  return { ...config, hosted,
+  return { ...config, NARRATION_DAILY_LIMIT: env.NARRATION_DAILY_LIMIT === undefined && hosted ? 10 : config.NARRATION_DAILY_LIMIT, hosted,
     trustedAuthProxy: config.AUTH_MODE === "google" && (config.AUTH_TRUST_PROXY ?? config.K_SERVICE !== undefined),
     bindings: originSettings(config.APP_ORIGIN ?? `http://127.0.0.1:${config.PORT}`, config.AUTH_MODE === "local", config.PORT),
     databaseToken: config.DATABASE_AUTH_TOKEN ?? config.APP_SECRETS.turso?.authToken,

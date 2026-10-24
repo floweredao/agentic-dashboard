@@ -71,6 +71,38 @@ Routes are hash based and the URL owns committed state: `#/home` (the first scre
 
 ## Components
 
+- **Public entry and setup:** the entry layer owns public `/privacy` and `/terms`,
+  sign-in, and the hosted `/welcome` journey. Signed-out visitors get no sidebar,
+  menu opener, tab bar or navigation listeners. The authenticated dashboard keeps
+  its existing route lifecycle, including returning to the first screen after
+  leaving and reopening the app; setup adds no route-resume storage.
+- **Welcome:** a constrained 720px column, semantic numbered steps, a quiet
+  progress label, Back and one primary Continue/Finish action. Language, agent
+  connection, digests, optional Gemini and phone setup reuse existing field,
+  button, dialog and settings primitives. A copied token or browser-only test
+  is not activation: an explicit Check agent save reads server proof from an
+  external bearer save. Gemini and phone setup can be skipped; there is no
+  automatic audio consent. No new colors, imagery or motion tokens.
+- **Account controls:** settings sections provide an account email, persisted
+  language/calendar zone, Replay setup, export download and a separate destructive
+  deletion dialog. Deletion requires typed email; reauthentication returns to
+  confirmation without submitting it. Export and backup retention explanations
+  are inline with the actions. Legal pages use the existing reader body scale and
+  42rem measure, ordinary links and a document-owned scroll.
+- **Library paging and freshness:** the visible list grows in 50-record batches
+  through an ordinary outlined button; a selected deep-linked record stays visible.
+  Refresh uses account-scoped change pages after an initial snapshot. A failed
+  refresh leaves the last successful data visible and shows a neutral Retry
+  notice; no route is persisted or restored on app return.
+- **References and constraints:** StyleGallery `sg:layout/saas-settings` supplies
+  the semantic section stack and content limiter (installed CLI, because no
+  StyleGallery MCP tool was available). Setup uses document scrolling; the
+  existing Settings main pane owns desktop scroll, and the document owns phone
+  scroll. Long emails, code/configuration text and URLs wrap without horizontal
+  page overflow. Keyboard focus, 44px phone targets, en/ko and light/dark are
+  required. Existing production dependencies and dev tooling remain in place;
+  this scoped journey change does not install unrelated instrumentation.
+
 - **Hosted sign-in:** reuse the centered gate and system typography, with a single Google action, Google-only/limited-capacity disclosure before authorization, and Privacy/Terms links. Google’s multicolor G is an identity-provider mark, not an application illustration. The provider button follows Google's light-button colors (`#ffffff`, `#1f1f1f`, `#747775`) and 40px minimum height (44px touch target); these are isolated provider-brand exceptions, not new app tokens. Capacity failures use a plain reading page with a self-hosting alternative and no repeat-authorization prompt.
 - **Hosted credential settings:** follow StyleGallery `recipes/saas-settings.md`: semantic sections in a constrained vertical stack; the existing main pane owns desktop scroll and the document owns phone scroll. Agent secrets appear once in a dialog with copy acknowledgement and an actual test-save result; key settings use a password field and report “Key accepted”, never guaranteed audio availability. Chrome, spacing, focus and errors reuse existing primitives.
 
@@ -111,6 +143,12 @@ Panes sit on the canvas separated by hairlines, without shadows. Only dialogs an
 Landmarks for navigation, main content, the list pane and the reader article. One visible focus ring everywhere, 44px touch targets on phones, labelled icon buttons. Color is never the only signal: unread is a dot, a weight and words in the accessible name. Every string exists in English and Korean. Escape closes a dialog from its own keydown handler.
 
 ## Accessible reading and feedback
+
+Account export uses a button with a preparing state, not a raw download link.
+Show export-specific busy, size-limit and failure messages beside it in the
+selected language; they must not disable unrelated actions. State the 64 MiB cap.
+Leaving the account controls cancels an unfinished transfer and releases its
+temporary browser download URL.
 
 Text sizes use rem so text enlargement reflows. Touch pointers, including tablets, get 44px targets; list headings wrap within 320px at enlarged text sizes. Favorite changes are quiet because the pressed state supplies feedback; errors still announce. Empty Recent records offers New item. Digest loading keeps two row-shaped placeholders under a status label. Empty trash names its busy state. Reduce Motion uses fades for dialogs, toasts and the mini player. Validation errors name fields rather than schema paths.
 

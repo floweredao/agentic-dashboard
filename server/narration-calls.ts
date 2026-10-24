@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { NARRATION_LIMITS } from "../shared/contracts";
 import { type NarrationProvider, ProviderError, type NarrationOptions, type Job, Cancelled } from "./narration-types";
+import { assertWorkActive } from "./work-guard";
 
 /** A provider asking for a longer wait is not sat out: the job fails and the owner retries later. */
 const MAX_WAIT_MS = 60_000;
@@ -29,6 +30,7 @@ export function createNarrationCalls(options: NarrationOptions, jobContext: Asyn
 
   async function call<T>(work: (signal: AbortSignal) => Promise<T>, cancel: AbortSignal): Promise<T> {
     if (cancel.aborted) throw new Cancelled();
+    await assertWorkActive(store, jobContext.getStore());
     const signal = AbortSignal.any([AbortSignal.timeout(timeoutMs), cancel]);
     try {
       return await work(signal);

@@ -141,6 +141,56 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 | `GET /api/v1/agents` | owner | `{ items }` registered agents |
 | `POST /api/v1/agents/connect` | anyone with a connection code | `{ code }`; 201 `{ agent, key }` once (the agent is registered then); unknown, used or expired codes 404 `invite_invalid`; not on the agent ingress; 403 in demo mode |
 
+### Account and onboarding
+
+`/privacy` and `/terms` are public application pages in English and Korean.
+Public configuration includes `contactEmail`, `databaseRegion` and
+`demoHostedUrl` (nullable). Google-mode startup requires `CONTACT_EMAIL`.
+`DATABASE_REGION` is an operator declaration, not an inferred Cloud Run location.
+`DEMO_HOSTED_URL` is optional and cannot contain URL credentials. Deployment
+tooling forwards these settings and the canonical authentication budgets.
+Hashed build assets support compression; narration retry responses identify
+their scope with `X-RateLimit-Scope: narration`.
+
+`GET /api/v1/account` returns `{ account: { id, email, locale, timeZone,
+onboardedAt, features: { digest, push }, agentSaveVerified } }` to its owner session.
+Google-mode `GET /api/v1/auth/session` also includes this account projection.
+`PATCH /api/v1/account/preferences` (session + CSRF) persists `locale`
+(`system`, `en`, `ko`), an IANA `timeZone`, and feature choices. The calendar
+preference does not change the fixed server-zone narration reset.
+`POST /api/v1/onboarding/done` requires a successful external agent record save
+and sets `users.onboarded_at`; a manual sample or same-origin browser token test
+does not count. REST bearer saves without a browser Origin and bearer MCP saves
+prove the connection. Reading and saving require no Gemini key.
+
+`GET /api/v1/account/export` is an authenticated, non-cacheable `.tar.gz` download.
+It includes `README.txt`, `data.json` with the account and every tenant table,
+HTML documents, trash, comments, digests/reactions, scripts, referenced `audio/`
+files, agents, shares and settings. Token/session/invitation hashes, CSRF secrets,
+Gemini ciphertext/KEK version and push encryption credentials are excluded.
+There is no user-facing bulk import; this export is not the operator backup format.
+Export generation and download are streamed through private temporary files. The
+uncompressed tar and compressed download each have a hard 64 MiB cap
+(`413 account_export_too_large`); failures answer `503 account_export_unavailable`.
+There is one export per account across instances and one export per instance
+because Cloud Run temporary storage also consumes memory. Busy requests answer
+`429 account_export_busy`, `Retry-After: 60` and `X-RateLimit-Scope: export` without
+blocking unrelated UI actions. Temporary files and the export lease are removed
+on completion, cancellation or failure; a crashed instance's lease expires after
+15 minutes. The same deadline bounds an active export.
+
+`DELETE /api/v1/account` is hosted-only and requires CSRF, exact email confirmation
+`{ confirm }`, and verified provider authentication less than ten minutes ago.
+A recently issued ordinary SSO cookie is not sufficient. Wrong confirmation
+returns 400; stale authentication returns 403 `reauth_required`. One transaction
+removes all tenant rows and leaves a scrubbed user tombstone with Google subject
+and deletion timestamp. Sessions and agent tokens are revoked. Audio-prefix
+deletion follows; failed object removal is retried by daily maintenance. Backups
+expire after 14 days and offline restores honor target tombstones. A later Google
+sign-in creates a new empty account instead of restoring deleted data.
+Restoring a later account with the same Google subject releases the old subject
+association without deleting the older account's tombstone.
+
 ### Records
 
 | Route | Who | Result |
@@ -207,12 +257,33 @@ Reactions: the owner can mark each article Like, Not for me or Seen it (`like`, 
 
 ### Narration (when a provider key is set)
 
+Audio storage uses an account-scoped `AudioStore`. Without `AUDIO_BUCKET`, the existing
+local files and authenticated byte-range route remain unchanged. With `AUDIO_BUCKET`,
+objects use `u/<userId>/<name>` in a private GCS bucket; completed encodes are temporary
+files, uploaded with `private, max-age=600` object metadata. The authenticated audio
+route returns 302 with `Cache-Control: private, no-store` to a ten-minute V4 signed
+GET URL. The runtime service account signs through IAM `signBlob`; metadata-server
+credentials never enter responses or logs. Cloud pruning follows narration rows,
+not filesystem enumeration. Replacing or deleting audio removes its object.
+
 | Route | Who | Result |
 |---|---|---|
 | `GET`, `POST`, `DELETE /api/v1/records/:id/narration` | owner, agent in read scope (DELETE owner only) | state, start (`{ force?, style? }`, 202 when started), remove |
 | `POST /api/v1/records/:id/narration/cancel` | owner | stop a running job |
 | `GET /api/v1/records/:id/narration/audio` | owner, agent in read scope | audio with byte ranges |
 | `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part (`articles`, `messages`) or the whole digest (`all`) |
+| `GET /api/v1/narration/allowance` | owner | `{ limit, used, remaining, resetsAt, timeZone, failedStartsCount: true }` |
+
+Hosted overrides to the local defaults below: Google accounts get 10 daily starts
+unless `NARRATION_DAILY_LIMIT` is set. `OWNER_USER_LIMITS` is a JSON object mapping
+account IDs to explicit limits, for example `{"operator-user-id":20}`. Automatic
+audio never raises a hosted allowance and begins off. A start is counted when
+queued, including a job that later fails; starts are not a count of provider calls
+or a spending cap. Resets follow the server's `TIME_ZONE`, not a device setting.
+Daily-limit 429 responses include `error.retryAt` and `Retry-After` seconds.
+Provider retry deadlines are persisted as `narration.retryAt`. A new start before
+that deadline returns `429 narration_retry_later` with the same retry metadata.
+An upload that loses its account or job lease is removed rather than published.
 
 Only research, work-report, note and social records can be narrated. Limits: 6000-character scripts (10,000 for a digest, whose script tells every sentence of each article summary and is written once more when a Korean one leaves out a number the summary states), 20 queued jobs per account, `NARRATION_DAILY_LIMIT` runs per account per day (default 20), a service-wide `NARRATION_GLOBAL_DAILY_LIMIT` (default 60; 429 `narration_global_daily_limit`) and 3 failed attempts per content version. `style` is `read` (one voice) or `podcast` (two hosts, records only); the state reports the style last chosen, which is the default for the next request. A busy or rate-limited provider is retried with backoff. Vertex scripts use `NARRATION_SCRIPT_MODEL` (default `gemini-4-argon`); AI Studio scripts use `NARRATION_KEY_SCRIPT_MODEL` (default `gemini-3.8-flash`). A script gets 1 + 4 tries: with Vertex configured it is streamed first from the Vertex model through `streamGenerateContent?alt=sse`, then from the key model through AI Studio, taking the two routes in turn; a try that sends nothing for 30 s or goes quiet for 90 s fails as `stalled` and, like `timeout`, is followed at once; another transient failure waits as above; a route that fails for good is not asked again. When every try fails the job fails with the last failure and nothing is spoken. Each script try logs one line naming the host and the model that wrote it, never a token. Each job reports its stage, `progress` (while scripting the script characters streamed in so far over the expected length; while speaking the chunks done and total) and `stepAt` (when the current step began), `scriptTry` (only while a script is on its second or later try: which try is running; absent otherwise, so clients built before it still parse the state); a failure names its cause. A record is scripted from its whole body: code, tables, link-only lines and source or reference sections are left out, the rest is split at its headings into parts of at most 5,000 characters, each part is scripted in order (up to 18,000 characters each, else the job fails as `script_too_long`), and a part script under 60% of its source is written once more. Scripts saved under earlier rules are rewritten. A Korean script with plain (반말) endings or written almost all in 해요체 or in 습니다체 is written once more. Korean audio reads each number before a known unit as it is spoken (5곳 다섯 곳, 6월 유월, 4.2% 사 점 이 퍼센트); the saved script keeps the digits.
 
@@ -231,6 +302,19 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 | `DELETE /api/v1/push/subscription` | owner | `{ endpoint }` |
 | `POST /api/v1/push/test` | owner | send a test notification |
 
+### Incremental record synchronization
+
+`GET /api/v1/records/changes` returns the account's current cursor without rows.
+With `after=<cursor>`, it returns at most 50 journal entries as
+`{ cursor, items, deletedIds, hasMore, reset }`. Mutations and their journal entries
+commit together. A pruned or future cursor requires a fresh snapshot (`reset:
+true`); maintenance retains the latest 5000 changes per account. It never reads
+another account's changes.
+
+Push subscriptions accept an optional `hideContent` flag, defaulting to false.
+When enabled for a device, notifications contain a generic title and body without
+record text or identifiers; other devices retain their own setting.
+
 ### Capture
 
 `POST /api/v1/capture` saves a link as a `social` record. It only works for the owner signed in through the trusted proxy, with the header `X-Capture: v1`.
@@ -238,6 +322,57 @@ Settings › Automatic audio: `GET /api/v1/narration/auto` (owner) answers `{ di
 In Google mode capture instead requires an agent bearer with `capture` enabled and `X-Capture: shortcut-v1` (legacy `X-Floweredao-Capture: shortcut-v1` is accepted). The token selects the tenant and saved attribution. A session cookie or trusted header cannot substitute. Local trusted-owner capture continues to accept `X-Capture: v1`.
 
 ## Other listeners
+
+OIDC uses the canonical sign-in limiter, including its per-/64, per-/48 and global
+start budgets. A separate non-OIDC limiter allows 60 public share requests and
+20 owner-key session POSTs per minute; it never handles `/auth/*` or authenticated
+session GETs. Both reuse `authClientKey`, selecting the configured trusted hop from
+the right and otherwise using the socket address, with IPv6 normalized to /64.
+Full maps evict the oldest bucket instead of rejecting new clients.
+Authenticated API session buckets are
+keyed by account; one account cannot exhaust another account's allowance. Every
+rate rejection includes `Retry-After`. The request body caps are unchanged.
+
+### Background operations
+
+Without `TASKS_QUEUE`, narration and title enrichment use the local in-process
+queues. With `TASKS_QUEUE` and `TASKS_SERVICE_ACCOUNT`, they enqueue account-bound
+HTTP tasks at `${APP_ORIGIN}/internal/tasks/narration` or `/ai-fill`. The queue
+request includes an OIDC token with audience `APP_ORIGIN`. Internal routes require
+a verified Google RSA signature, issuer, audience, expiry and verified service-account
+email; browser sessions and unsigned calls are not sufficient. Fifteen-minute
+database leases prevent duplicate work across instances. Narration checks account
+liveness and its lease before provider calls and writes. Failed enqueue attempts
+leave queued state recoverable on restart; Tasks retries failures. Push delivery is
+awaited before the task response.
+
+`POST /internal/tasks/maintenance` uses the same service-account authentication.
+Its durable lease is global operator state, not a local-account row; hosted
+maintenance skips the legacy local account using the same boundary as requests.
+It purges expired trash for all accounts, prunes narration runs older than 31 days,
+retries deleted accounts' audio-prefix removal, and writes a gzip NDJSON snapshot of
+every table as `backups/YYYY-MM-DD.ndjson.gz` in `AUDIO_BUCKET` (or the local
+database's `backups/` directory). Backups expire after 14 days; bucket lifecycle
+configuration should enforce this independently of the daily maintenance request.
+The backup is written before deleted-account audio cleanup. Each failed prefix is
+logged and alerts the operator without aborting the other cleanups or that day's
+backup. Successful prefixes receive `users.audio_purged_at` and are not retried
+on subsequent days; failed prefixes remain pending. Alert delivery failures are
+logged without replacing the original maintenance failure.
+With Turso platform credentials, usage is compared to the current subscription's
+published quotas, not hardcoded free-tier numbers; greater than 70% alerts the operator.
+
+`OWNER_ALERT_EMAIL` and `APP_SECRETS.resend.apiKey` enable sign-up, capacity,
+maintenance-failure and usage alerts through Resend, from `onboarding@resend.dev`.
+Only the configured operator can receive them, with a durable one-per-kind/day
+claim and provider idempotency key; an uncertain send is not retried that day.
+Alerts contain no account identity, saved content or credentials. No mail goes to users.
+
+`bun scripts/restore.ts --from backup.ndjson.gz --database-url <empty database>`
+is an offline operator command, not a public API. It refuses a populated target,
+restores only installed schema tables/columns, and preserves target tombstones,
+skipping their historical tenant data. Backups contain secrets and must remain
+private; they differ from the credential-free user export.
 
 - **Agent ingress** (`ENABLE_AGENT_INGRESS`, `127.0.0.1:AGENT_PORT`): only `POST /api/v1/records` and `GET /api/v1/records/:id` with an agent key.
 - **MCP** (`ENABLE_MCP`, `http://127.0.0.1:MCP_PORT/mcp`): tools `save_record`, `update_record`, `get_record` and `search_records`. Every call, including discovery and notifications, now requires an agent bearer; there is no `MCP_AGENT` authority fallback. Calls use the token's account/principal and a per-token rate bucket. Browser Origins are rejected.

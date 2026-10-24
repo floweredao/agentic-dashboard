@@ -1,36 +1,28 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { existsSync, readdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { NARRATABLE_KINDS, NARRATION_LIMITS } from "../shared/contracts";
-import { startOfZonedDay } from "../shared/time";
 import type { DashboardRecord, NarrationState, NarrationStatus, NarrationStyle } from "../shared/contracts";
-import { ApiError } from "./errors";
+import { ApiError, RetryError } from "./errors";
 import type { Principal } from "./store";
-import { ControlDb } from "./control-db";
 import { type NarrationOptions, type Job } from "./narration-types";
 import { sourceHash } from "./narration-text";
 import { createNarrationState } from "./narration-state";
 import { createNarrationSettings } from "./narration-settings";
 import { createNarrationWork } from "./narration-work";
+import { narrationFiles } from "./narration-files";
+import { accountActive } from "./work-guard";
+import type { JobPayload } from "./jobs";
+import { narrationAllowance } from "./narration-allowance";
 
 
 const ACTIVE: ReadonlySet<NarrationStatus> = new Set(["queued", "scripting", "speaking"]);
-
-const FILE_NAME = /^[0-9a-f-]{36}-[0-9a-f]{8}\.(?:m4a|wav)$/;
-
-const PART_NAME = /^[0-9a-f-]{36}\.part\.(?:m4a|wav)$/;
 
 /** Automatic requests refused for a reason that passes (the day's limit, a full queue, no key), tried again by `retryDeferred`. */
 const RETRY_LATER = new Set(["narration_daily_limit", "narration_queue_full", "narration_unavailable"]);
 export type Narrator = ReturnType<typeof createNarration>;
 export function createNarration(options: NarrationOptions) {
 
-  const { store, audioDir } = options;
-
-  const dailyLimit = options.dailyLimit ?? NARRATION_LIMITS.dailyRuns;
-
-  const timeZone = options.timeZone ?? "UTC";
+  const { store } = options;
 
   const concurrency = Math.max(1, options.concurrency ?? 1);
 
@@ -50,9 +42,10 @@ export function createNarration(options: NarrationOptions) {
   const { now, available, row, set, state } = rows;
   const settings = createNarrationSettings(options);
   const { autoSettings } = settings;
+  const { allowance, assertAllowance } = narrationAllowance(options, settings);
   const work = createNarrationWork(options, { rows, settings, jobs: jobContext });
 
-  const removeFile = (name: string | null) => { if (name) rmSync(join(audioDir, name), { force: true }); };
+  const { removeFile, prune, audioFile } = narrationFiles(options, rows);
 
 
   /** `chosen` defaults to the style last chosen for this record, else read. */
@@ -63,6 +56,9 @@ export function createNarration(options: NarrationOptions) {
     const startedJob = await store.db.tx(async () => {
     const hash = sourceHash(record);
     const current = (await row(record.id));
+    if (current?.retry_at && Date.parse(current.retry_at) > store.now()) throw new RetryError({
+      code: "narration_retry_later", message: "Wait for the provider retry deadline before starting again", retryAt: current.retry_at,
+    });
     const style = chosen ?? current?.style ?? "read";
     const settings = (await autoSettings());
     // A digest has no summary of its own to choose: it is always read whole.
@@ -79,36 +75,30 @@ export function createNarration(options: NarrationOptions) {
     if (attempts >= NARRATION_LIMITS.attempts && !(owner && force)) {
       throw new ApiError(409, "narration_attempts_exhausted", `Narration failed ${attempts} times for this content; change the record, or the owner can force another attempt`);
     }
-    const dayStart = new Date(startOfZonedDay(store.now(), timeZone)).toISOString();
-    const started = z.object({ count: z.number() }).parse((await store.db.get("SELECT count(*) AS count FROM narration_runs WHERE (started_at>=?) AND user_id=?", [dayStart]))).count;
-    const limit = settings.records === "off" ? dailyLimit : Math.max(dailyLimit, NARRATION_LIMITS.autoDailyRuns);
-    if (started >= limit) throw new ApiError(429, "narration_daily_limit", `Daily narration limit of ${limit} reached; try again tomorrow (${timeZone})`);
-    if (await new ControlDb(store.db.sql).narrationCount(dayStart) >= (options.globalDailyLimit ?? 60)) {
-      throw new ApiError(429, "narration_global_daily_limit", "The service daily narration limit has been reached");
-    }
+    await assertAllowance();
     const waiting = z.object({ count: z.number() }).parse((await store.db.get("SELECT count(*) AS count FROM narrations WHERE (status='queued') AND user_id=?", []))).count;
     if (waiting >= NARRATION_LIMITS.queue) throw new ApiError(429, "narration_queue_full", "Too many narrations are waiting; try again later");
-    const timestamp = now();
+    const timestamp = new Date(Math.max(store.now(), current ? Date.parse(current.requested_at) + 1 : 0)).toISOString();
       if (!current) {
         (await store.db.run(`INSERT INTO narrations(record_id,status,job_hash,requested_by,requested_at,updated_at,attempts,style,scope,user_id)
           VALUES(?,'queued',?,?,?,?,0,?,?,?)`, [record.id, hash, principal.id, timestamp, timestamp, style, scope]));
       } else {
         (await set(record.id, { status: "queued", style, scope, job_hash: hash, requested_by: principal.id, requested_at: timestamp,
-          attempts: owner && force ? 0 : attempts, error: null, progress_done: null, progress_total: null }));
+          attempts: owner && force ? 0 : attempts, error: null, retry_at: null, progress_done: null, progress_total: null }));
       }
       (await store.db.run("INSERT INTO narration_runs(record_id,started_at,user_id) VALUES(?,?,?)", [record.id, timestamp]));
       return true;
     });
-    if (startedJob) enqueue(record.id);
+    if (startedJob) await enqueue(record.id);
     return { state: await state(record), started: startedJob };
   }
 
 
-  async function run(id: string) {
+  async function run(id: string, lease?: string) {
     const job = (await row(id));
     if (!job || job.status !== "queued") return;
     const controller = new AbortController();
-    const live: Job = { id, controller, waitUntil: null, stepAt: null, scriptTry: null };
+    const live: Job = { id, controller, ...(lease ? { lease } : {}), waitUntil: null, stepAt: null, scriptTry: null };
     running.set(id, live);
     starting.delete(id);
     try { await jobContext.run(live, () => work(id, job, controller.signal)); }
@@ -116,9 +106,28 @@ export function createNarration(options: NarrationOptions) {
   }
 
 
-  function enqueue(id: string) {
+  async function enqueue(id: string) {
+    if (options.jobs) {
+      const current = await row(id);
+      if (current) await options.jobs.enqueue("narration", { userId: store.db.userId, id, revision: current.requested_at });
+      return;
+    }
     if (!pending.includes(id)) pending.push(id);
     pump();
+  }
+
+  async function deliver(payload: JobPayload) {
+    if (payload.userId !== store.db.userId || !await accountActive(store)) return;
+    const lease = crypto.randomUUID();
+    const claimed = await store.db.run(`UPDATE narrations SET leased_by=?,leased_until=?,status='queued'
+      WHERE record_id=? AND requested_at=? AND status IN ('queued','scripting','speaking')
+      AND (leased_until IS NULL OR leased_until<=?) AND user_id=?`,
+    [lease, store.now() + 15 * 60 * 1000, payload.id, payload.revision, store.now()]);
+    if (!claimed.changes) return;
+    try { await run(payload.id, lease); }
+    finally {
+      await store.db.run("UPDATE narrations SET leased_by=NULL,leased_until=NULL WHERE record_id=? AND leased_by=? AND user_id=?", [payload.id, lease]);
+    }
   }
 
   /** Starts waiting jobs while slots are free, oldest first, passing over a record whose earlier job is still running. */
@@ -188,6 +197,7 @@ export function createNarration(options: NarrationOptions) {
     })().catch((error: unknown) => { console.error(`narration auto ${id} failed: ${error instanceof Error ? error.name : "unknown"}`); });
     autoRuns.add(work);
     void work.finally(() => autoRuns.delete(work));
+    return work;
   }
 
   /**
@@ -208,28 +218,8 @@ export function createNarration(options: NarrationOptions) {
   async function resume() {
     for (const value of (await store.db.all("SELECT record_id FROM narrations WHERE (status IN ('queued','scripting','speaking')) AND user_id=? ORDER BY requested_at", []))) {
       const { record_id } = z.object({ record_id: z.string() }).parse(value);
-      (await set(record_id, { status: "queued" }));
-      enqueue(record_id);
-    }
-  }
-
-  /** Drops narrations of records that are neither live nor in the trash, and audio files nothing refers to. */
-  async function prune() {
-    for (const value of (await store.db.all(`SELECT record_id, audio_file FROM narrations WHERE (record_id NOT IN (SELECT id FROM records WHERE records.user_id=narrations.user_id)
-      AND record_id NOT IN (SELECT id FROM trash WHERE trash.user_id=narrations.user_id) AND status NOT IN ('queued','scripting','speaking')) AND user_id=?`, []))) {
-      const orphan = z.object({ record_id: z.string(), audio_file: z.string().nullable() }).parse(value);
-      if ((await options.lookup?.(orphan.record_id))) continue;
-      removeFile(orphan.audio_file);
-      (await store.db.run("DELETE FROM narrations WHERE (record_id=?) AND user_id=?", [orphan.record_id]));
-    }
-    if (!existsSync(audioDir)) return;
-    const referenced = new Set((await store.db.all("SELECT audio_file FROM narrations WHERE (audio_file IS NOT NULL) AND user_id=?", []))
-      .map(value => z.object({ audio_file: z.string() }).parse(value).audio_file));
-    const working = new Set((await store.db.all("SELECT record_id FROM narrations WHERE (status IN ('queued','scripting','speaking')) AND user_id=?", []))
-      .map(value => z.object({ record_id: z.string() }).parse(value).record_id));
-    for (const name of readdirSync(audioDir)) {
-      if (FILE_NAME.test(name) && !referenced.has(name)) removeFile(name);
-      if (PART_NAME.test(name) && !working.has(name.slice(0, 36))) removeFile(name);
+      if (!options.jobs) await set(record_id, { status: "queued" });
+      await enqueue(record_id);
     }
   }
 
@@ -249,21 +239,15 @@ export function createNarration(options: NarrationOptions) {
     const current = (await row(id));
     if (!current) return;
     if (ACTIVE.has(current.status)) throw new ApiError(409, "narration_busy", "A narration is being made for this record; delete it after it finishes");
-    removeFile(current.audio_file);
+    await removeFile(current.audio_file);
     (await store.db.run("DELETE FROM narrations WHERE (record_id=?) AND user_id=?", [id]));
-  }
-
-  async function audioFile(id: string) {
-    const current = (await row(id));
-    if (!current?.audio_file || !current.audio_mime) throw new ApiError(404, "not_found", "No narration audio for this record");
-    return { path: join(audioDir, current.audio_file), mime: current.audio_mime };
   }
 
   async function idle() {
     do { await Promise.all([...autoRuns, ...tasks]); } while (tasks.size > 0 || autoRuns.size > 0 || pending.length > 0);
   }
 
-  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, ...settings, auto, retryDeferred, styleOf };
+  return { state, available, request, cancel, remove, prune, resume, audioFile, idle, deliver, allowance, ...settings, auto, retryDeferred, styleOf };
 }
 export * from "./narration-types";
 export * from "./narration-prompts";

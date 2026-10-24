@@ -46,6 +46,22 @@ Personal keys are managed in Settings. Model-list validation says **Key accepted
 
 Validation reports whether the selected script and speech models appear in the key's model list. It does not generate audio or spend model credits. A later visit labels this availability check as not checked; the first actual job separately reports credential, permission, missing-model and quota failures.
 
+## Deletion reauthentication
+
+Deletion intent requests `prompt=login`, `max_age=0` and an essential `auth_time`
+ID-token claim. The signed claim must be recent, tied to the requested login
+(allowing 60 seconds of clock skew), and no more than ten minutes old. Its
+verified timestamp is stored separately from dashboard session creation.
+Ordinary SSO sessions without that evidence cannot delete an account.
+
+Google documents `auth_time` as opt-in: enable it for the OAuth client in Google
+Auth Platform, or include it in a Custom Claims Template. Missing/stale claims
+fail closed. Google's currently documented `prompt` values do not include
+`login`; the requested `login`/`max_age` behavior must therefore be verified with
+the actual configured Google client before deployment. The local issuer models
+the requested behavior but is not proof of Google interoperability.
+See the [Google OIDC documentation](https://developers.google.com/identity/openid-connect/openid-connect).
+
 ## Local mock OIDC and manual QA
 
 No Google client, external account or real provider key is needed:

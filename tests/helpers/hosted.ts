@@ -10,10 +10,11 @@ export async function hostedFixture(extra: AppOptions = {}) {
   const directory = mkdtempSync(join(tmpdir(), "hosted-test-"));
   const app = await createApp({
     databasePath: ":memory:", privateOrigin: hostedOrigin, port: 4390, credentialsPath: join(directory, "credentials.json"),
-    pushEnabled: false, rateLimit: 10000, narration: { provider: null, audioDir: join(directory, "audio"), encode: async path => ({ path, mime: "audio/wav" }) },
+    pushEnabled: false, rateLimit: 10000,
     hosted: { google: { clientId: "test-client", clientSecret: secret() }, sessionSigningKey: secret(), maxUsers: 50 },
     enrichCapture: async () => ({ title: "A captured article", fields: { summary: "A useful source",
       captureEnrichment: { status: "available", source: "page" } } }), ...extra,
+    narration: { provider: null, audioDir: join(directory, "audio"), encode: async path => ({ path, mime: "audio/wav" }), ...extra.narration },
   });
   async function account(id: string) {
     await new ControlDb(app.sql).createUser(id, new Date().toISOString());

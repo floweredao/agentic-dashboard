@@ -48,6 +48,40 @@ export const MIGRATIONS: readonly Migration[] = [
     await sql.run("CREATE TABLE oauth_transactions(tx_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)");
     await sql.run("ALTER TABLE principals ADD COLUMN capture INTEGER NOT NULL DEFAULT 0");
   } },
+  { version: 4, async up(sql) {
+    await sql.run("ALTER TABLE narrations ADD COLUMN leased_until INTEGER");
+    await sql.run("ALTER TABLE narrations ADD COLUMN leased_by TEXT");
+    await sql.run(`CREATE TABLE IF NOT EXISTS background_jobs(user_id TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL,
+      revision TEXT NOT NULL, leased_until INTEGER, leased_by TEXT, completed_at TEXT, PRIMARY KEY(user_id,kind,id,revision))`);
+    await sql.run("CREATE TABLE operator_alerts(kind TEXT NOT NULL, day TEXT NOT NULL, PRIMARY KEY(kind,day))");
+    await sql.run("CREATE TABLE maintenance_runs(day TEXT PRIMARY KEY, leased_until INTEGER NOT NULL DEFAULT 0, leased_by TEXT, completed_at TEXT)");
+  } },
+  { version: 5, async up(sql) {
+    await sql.run("ALTER TABLE users ADD COLUMN time_zone TEXT");
+    await sql.run("ALTER TABLE users ADD COLUMN agent_saved_at TEXT");
+    await sql.run("ALTER TABLE users ADD COLUMN agent_saved_record TEXT");
+    await sql.run(`ALTER TABLE users ADD COLUMN features TEXT NOT NULL DEFAULT '{"digest":true,"push":true}'`);
+    await sql.run("ALTER TABLE sessions ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0");
+  } },
+  { version: 6, async up(sql) {
+    await sql.run("ALTER TABLE push_subscriptions ADD COLUMN hide_content INTEGER NOT NULL DEFAULT 0");
+  } },
+  { version: 7, async up(sql) {
+    await sql.run("ALTER TABLE narrations ADD COLUMN retry_at TEXT");
+  } },
+  { version: 8, async up(sql) {
+    await createSchema(sql);
+  } },
+  { version: 9, async up(sql) {
+    await sql.run("ALTER TABLE users ADD COLUMN export_lease TEXT");
+    await sql.run("ALTER TABLE users ADD COLUMN export_until INTEGER");
+  } },
+  { version: 10, async up(sql) {
+    await sql.run("ALTER TABLE sessions ADD COLUMN authenticated_at INTEGER NOT NULL DEFAULT 0");
+  } },
+  { version: 11, async up(sql) {
+    await sql.run("ALTER TABLE users ADD COLUMN audio_purged_at TEXT");
+  } },
 ];
 
 /** Each version and its ledger entry commit together, including upgrades interrupted mid-copy. */

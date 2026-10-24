@@ -2,6 +2,8 @@ import { z } from "zod";
 import { NarrationAutoSchema, NarrationStatusSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { DashboardRecord, NarrationAuto } from "../shared/contracts";
 import type { Store } from "./store";
+import type { AudioStore } from "./audio-store";
+import type { Jobs } from "./jobs";
 
 
 /** One spoken turn of a podcast: host A explains, host B asks and sums up. */
@@ -44,6 +46,8 @@ export type Encoder = (wavPath: string, signal: AbortSignal) => Promise<{ path: 
 export interface NarrationSource { readonly record: DashboardRecord; readonly label: string; readonly audioBase: string }
 
 export interface NarrationOptions {
+  readonly audioStore?: AudioStore;
+  readonly jobs?: Jobs;
   readonly requireKey?: () => Promise<void>;
   readonly store: Store;
   readonly lookup?: (id: string) => Promise<NarrationSource | null>;
@@ -52,6 +56,7 @@ export interface NarrationOptions {
   readonly audioDir: string;
   readonly encode?: Encoder;
   readonly dailyLimit?: number;
+  readonly strictDailyLimit?: boolean;
   /** The zone whose calendar day the daily limit counts in; defaults to UTC. */
   readonly timeZone?: string;
   readonly timeoutMs?: number;
@@ -66,7 +71,8 @@ export interface NarrationOptions {
 }
 
 /** A running job: its controller, and the wait, step start and script try the owner sees. */
-export interface Job { readonly id: string; readonly controller: AbortController; waitUntil: number | null; stepAt: number | null; scriptTry: number | null }
+export interface Job { readonly id: string; readonly controller: AbortController; readonly lease?: string;
+  waitUntil: number | null; stepAt: number | null; scriptTry: number | null }
 
 /** The owner stopped this job; nothing more is paid for and the row was already settled by `cancel`. */
 export class Cancelled extends Error {
@@ -74,6 +80,7 @@ export class Cancelled extends Error {
 }
 
 export const rowSchema = z.object({
+  retry_at: z.string().nullable(),
   record_id: z.string(), status: NarrationStatusSchema, job_hash: z.string(), requested_by: z.string(),
   requested_at: z.string(), updated_at: z.string(), attempts: z.number().int(), error: z.string().nullable(),
   progress_done: z.number().int().nullable(), progress_total: z.number().int().nullable(),

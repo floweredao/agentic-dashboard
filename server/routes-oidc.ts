@@ -18,9 +18,9 @@ export function registerOidc(app: Hono, runtime: TenantRuntime) {
     c.header("Set-Cookie", oidcCookie("", privateUrl.protocol === "https:", 0));
     try {
       const user = await options.oidc.callback(c.req.raw);
-      const session = await auth.signInUser(user.id, c.req.raw);
+      const session = await auth.signInUser(user.id, c.req.raw, user.authenticatedAt);
       c.header("Set-Cookie", auth.cookie(session.value, session.expiresAt, privateUrl.protocol === "https:"), { append: true });
-      return c.redirect(user.onboarded ? "/" : "/welcome", 302);
+      return c.redirect(user.deletionIntent ? "/delete-confirm" : user.onboarded ? "/" : "/welcome", 302);
     } catch (error) {
       if (!(error instanceof ApiError)) throw error;
       return c.html(authPage(error.code === "signup_capacity", korean(c.req.raw)), error.status);

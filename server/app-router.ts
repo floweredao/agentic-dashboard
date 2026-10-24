@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
+import { compress } from "hono/compress";
 import { z } from "zod";
 import { hash } from "./auth";
-import { ApiError } from "./errors";
+import { ApiError, RetryError } from "./errors";
 
 import type { TenantRuntime } from "./app-runtime";
 import { registerSession } from "./routes-session";
@@ -13,6 +14,7 @@ import { registerRecords } from "./routes-records";
 import { registerOidc } from "./routes-oidc";
 import { registerAgents } from "./routes-agents";
 import { registerGemini } from "./routes-gemini";
+import { registerAccount } from "./routes-account";
 export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
   const { options, now, demo, auth, origins, hosts, limit, rate } = runtime;
 
@@ -45,7 +47,7 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
         if (authorization?.startsWith("Bearer ")) {
           const credentialHash = hash(authorization.slice(7));
           if (await auth.control.principalByToken(credentialHash)) rateKey = credentialHash;
-        } else if (c.req.header("cookie")) rateKey = "browser";
+        } else if (await auth.findSession(c.req.raw)) rateKey = `user:${runtime.store.db.userId}`;
         const count = (rate.buckets.get(rateKey) ?? 0) + 1;
         rate.buckets.set(rateKey, count);
         if (count > limit) { c.header("Retry-After", "60"); throw new ApiError(429, "rate_limited", "Request limit exceeded"); }
@@ -55,6 +57,11 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
     });
 
     app.onError((error, c) => {
+      if (error instanceof RetryError) {
+        c.header("X-RateLimit-Scope", "narration");
+        c.header("Retry-After", String(Math.max(1, Math.ceil((Date.parse(error.retryAt) - now()) / 1000))));
+        return c.json({ error: { code: error.code, message: error.message, retryAt: error.retryAt } }, 429);
+      }
       if (error instanceof ApiError) return c.json({ error: { code: error.code, message: error.message,
         ...(error.details ? { details: error.details } : {}) } }, error.status);
       if (error instanceof z.ZodError) return c.json({ error: { code: "invalid_input", message: "Input validation failed", details: error.issues } }, 400);
@@ -65,12 +72,14 @@ export function createRouter(runtime: TenantRuntime, publicOnly: boolean) {
     if (!publicOnly) {
       app.all("/mcp", c => runtime.mcpFetch(c.req.raw));
       registerGemini(app, runtime); registerAgents(app, runtime); registerOidc(app, runtime); registerSession(app, runtime);
+      registerAccount(app, runtime);
       registerDigests(app, runtime); registerNarration(app, runtime); registerSharing(app, runtime);
     }
     registerRecords(app, runtime, publicOnly);
     app.all("/api/*", c => c.json({ error: { code: "not_found", message: "Route not found" } }, 404));
 
     if (!publicOnly) {
+      app.use("/assets/*", compress());
       app.use("*", serveStatic({ root: options.staticRoot ?? "./dist", onFound: (_path, c) => {
         if (/^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|jpe?g|svg|webp|avif)$/.test(new URL(c.req.url).pathname))
           c.header("Cache-Control", "public, max-age=31536000, immutable");
