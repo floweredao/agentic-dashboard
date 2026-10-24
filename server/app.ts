@@ -79,7 +79,10 @@ export async function createApp(options: AppOptions = {}) {
   const tenant = (userId: string) => {
     let scope = scopes.get(userId);
     if (!scope) {
-      scope = createTenantApp(options, new Store(new TenantDb(sql, userId), now));
+      scope = createTenantApp(options, new Store(new TenantDb(sql, userId), now)).catch((error: unknown) => {
+        scopes.delete(userId);
+        throw error;
+      });
       scopes.set(userId, scope);
     }
     return scope;
