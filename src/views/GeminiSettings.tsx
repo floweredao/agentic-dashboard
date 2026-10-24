@@ -3,7 +3,7 @@ import { getGemini, removeGemini, saveGemini, type KeyStatus } from "../account-
 import { errorCode, errorMessage } from "../api";
 import { RecoveryLink } from "../components/RecoveryLink";
 import { strings } from "../i18n";
-import { useDashboard } from "../state";
+import { useCredentials } from "../account-context";
 import { config } from "../config";
 import "../styles/accounts.css";
 
@@ -34,7 +34,7 @@ const text = strings({
 
 export function GeminiSettings() {
   const t = text();
-  const { csrfToken } = useDashboard();
+  const { csrfToken } = useCredentials();
   const [status, setStatus] = useState<KeyStatus | null>(null);
   const [key, setKey] = useState("");
   const [editing, setEditing] = useState(false);

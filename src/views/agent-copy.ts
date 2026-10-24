@@ -2,6 +2,9 @@ import { strings } from "../i18n";
 
 export const agentText = strings({
   en: {
+    preset: "Agent preset", custom: "Custom agent", copyJson: "Copy agent.json", copySave: "Copy save command", copyConnect: "Copy CLI connection command",
+    jsonNote: "agent.json describes the URL, source and token for your agent's HTTP client. The installed CLI uses the connect command below instead.",
+    browserTest: "This tests the token in your browser. Setup is complete only after your own agent saves a record from your computer.",
     title: "Connect an agent", create: "Create token", installer: "Connect a computer", name: "Agent name",
     access: "This token can read shared records within your account and edit its own records. Channels label who saved a record; they are not private inboxes.",
     capture: "Allow this agent to capture links", once: "Copy this token now. It will not be shown again.",
@@ -21,6 +24,9 @@ export const agentText = strings({
     curl: "HTTP fallback: save the copied curl credential file as ~/.agentic-dashboard/curl.conf, readable only by you (chmod 600). Then run:",
   },
   ko: {
+    preset: "에이전트 종류", custom: "직접 입력", copyJson: "agent.json 복사", copySave: "저장 명령 복사", copyConnect: "CLI 연결 명령 복사",
+    jsonNote: "agent.json은 에이전트의 HTTP 클라이언트에 주소·저장 주체·토큰을 전달하는 파일이에요. 설치한 CLI는 대신 아래 연결 명령을 사용해요.",
+    browserTest: "이 버튼은 브라우저에서 토큰을 시험해요. 시작 설정을 마치려면 내 컴퓨터의 에이전트가 기록을 저장해야 해요.",
     title: "에이전트 연결", create: "토큰 만들기", installer: "컴퓨터 연결", name: "에이전트 이름",
     access: "토큰은 내 계정의 공유 기록을 읽고 자신이 저장한 기록을 수정할 수 있어요. 채널은 저장한 주체를 나타내며 비공개 보관함이 아니에요.",
     capture: "이 에이전트의 링크 캡처 허용", once: "지금 토큰을 복사해 주세요. 다시 보여 드리지 않아요.",

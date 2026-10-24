@@ -6,6 +6,7 @@ import { errorMessage, listAgents } from "../api";
 import type { AgentInfo } from "../api";
 import { BackButton, ChannelMark, Dialog, SidebarOpen } from "../components/primitives";
 import { config } from "../config";
+import { useAccount } from "../account-context";
 import { strings } from "../i18n";
 import { channelKeys, channelOf, channelLabel, isRecord, relativeTime } from "../model";
 import type { Channel } from "../model";
@@ -17,6 +18,7 @@ import { AgentConnections } from "./AgentConnections";
 
 const text = strings({
   en: {
+    signedInGoogle: (email: string) => `Signed in with Google as ${email}`, googleSession: "Signed in with Google",
     savedBy: (name: string) => `Records saved by ${name}`,
     share: "Links saved with the share button",
     manual: "Records you saved in this app",
@@ -38,6 +40,7 @@ const text = strings({
     cancel: "Cancel", connect: "Sign in",
   },
   ko: {
+    signedInGoogle: (email: string) => `Google 계정 ${email}로 로그인했어요`, googleSession: "Google로 로그인했어요",
     savedBy: (name: string) => `${name} 에이전트가 저장한 기록`,
     share: "iPhone 공유 버튼으로 저장한 링크",
     manual: "이 앱에서 직접 저장한 기록",
@@ -70,6 +73,7 @@ export function AgentUsage({ agent }: { readonly agent: AgentInfo | undefined })
 }
 
 export function ChannelsView() {
+  const account = useAccount()?.account;
   const t = text();
   const { records, importJson, logout } = useDashboard();
   const [registered, setRegistered] = useState<readonly AgentInfo[]>([]);
@@ -150,7 +154,7 @@ export function ChannelsView() {
     <section className="channel-section session-section" aria-labelledby="session-title">
       <div className="channel-section-head">
         <h2 id="session-title">{t.session}</h2>
-        <p>{t.signedIn}</p>
+        <p>{config.authMode === "google" ? account?.email ? t.signedInGoogle(account.email) : t.googleSession : t.signedIn}</p>
       </div>
       <button type="button" className="btn btn-outline" onClick={() => { void logout(); }}>
         <LogOut size={16} aria-hidden="true" />{t.logout}
