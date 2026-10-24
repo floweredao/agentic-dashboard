@@ -10,7 +10,7 @@ const invite = z.object({ user_id: z.string(), agent: z.string() });
 
 /** Global capability resolution only. Tenant content queries belong to TenantDb, never here. */
 export class ControlDb {
-  constructor(private readonly sql: Sql, private readonly includeLocal = true) {}
+  constructor(private readonly sql: Sql, private readonly includeLocal = true, private readonly pendingSignInLimit = 2000) {}
   private permitted<T extends { readonly user_id: string }>(value: T) {
     return this.includeLocal || value.user_id !== "local" ? value : null;
   }
@@ -46,6 +46,9 @@ export class ControlDb {
       await sql.run(`DELETE FROM oauth_transactions WHERE tx_hash IN (
         SELECT tx_hash FROM oauth_transactions WHERE tx_hash GLOB ?
         ORDER BY expires_at DESC, tx_hash DESC LIMIT -1 OFFSET 19)`, [`${client}:*`]);
+      await sql.run(`DELETE FROM oauth_transactions WHERE tx_hash IN (
+        SELECT tx_hash FROM oauth_transactions ORDER BY expires_at DESC, rowid DESC
+        LIMIT -1 OFFSET ?)`, [this.pendingSignInLimit - 1]);
       await sql.run("INSERT INTO oauth_transactions(tx_hash,expires_at) VALUES(?,?)", [`${client}:${hash}`, expires]);
     });
   }

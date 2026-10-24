@@ -20,6 +20,18 @@ Provide `APP_SECRETS` as private JSON, with:
 
 Keep the JSON out of source, logs, screenshots and shell history. `DATABASE_AUTH_TOKEN` takes precedence over the Turso token in that JSON. `MAX_USERS` defaults to 50 active hosted accounts; existing accounts can still sign in at capacity.
 
+### Sign-in limits and proxy topology
+
+`/auth/*` permits 20 requests per client network per minute. IPv4 stays per address; IPv6 uses the expanded, lowercase /64 prefix. IPv4-mapped IPv6 uses the corresponding IPv4 address. The same network key binds the pending-sign-in budget across rate windows, without storing the IP itself.
+
+Pending OAuth transactions expire after ten minutes and are capped at 20 per client network. `PENDING_SIGN_IN_LIMIT` sets the positive-integer global row cap (default 2000). Each insertion removes expired rows, evicts the oldest pending starts as needed, and admits the new start atomically. An evicted browser must start sign-in again; capacity never rejects every new client.
+
+Forwarded addresses are trusted only in Google mode with `AUTH_TRUST_PROXY=on`, or by default when Cloud Run supplies `K_SERVICE`. `AUTH_TRUST_PROXY=off` overrides that default. Local mode always uses the socket address.
+
+`TRUSTED_PROXY_HOPS` is a positive integer counting from the right of `X-Forwarded-For`. It defaults to `1`, selecting the last entry for direct Cloud Run ingress. With an external HTTPS load balancer appending `<client>, <load-balancer-ip>`, set `TRUSTED_PROXY_HOPS=2` to select the client rather than sharing the load balancer's budget. Client-supplied entries to the left of that position are ignored. Missing or invalid entries at the configured position fall back to the socket, not another forwarded entry.
+
+Configure the hop count to match the actual ingress chain, and restrict listener access to that trusted ingress. Do not enable forwarding trust on a directly reachable listener or mix proxy paths with different trusted chain lengths.
+
 To rotate encryption keys, add a higher-numbered KEK while keeping the old versions, then run `bun scripts/rotate-kek.ts` with the same database configuration. It re-encrypts all key rows in one transaction. Remove old versions only after success and according to your backup-restoration policy.
 
 Personal keys are managed in Settings. Model-list validation says **Key accepted**, not **Audio ready**. Reading and saving need no provider key. Hosted automatic audio starts off; title enrichment uses the account's key and `AI_FILL_MODEL` (default `gemini-3.5-flash-lite`).
