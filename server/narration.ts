@@ -562,8 +562,11 @@ export function createNarration(options: NarrationOptions) {
       return { state: await state(record), started: false };
     }
     if (!await available()) throw new ApiError(503, "narration_unavailable", "No TTS key is configured on the dashboard server");
+    // Another request for this record may have queued its job during the key check; it is not started or counted twice.
+    const latest = row(record.id);
+    if (latest && ACTIVE.has(latest.status)) return { state: await state(record), started: false };
     const owner = principal.source === "manual";
-    const attempts = current?.job_hash === hash ? current.attempts : 0;
+    const attempts = latest?.job_hash === hash ? latest.attempts : 0;
     if (attempts >= NARRATION_LIMITS.attempts && !(owner && force)) {
       throw new ApiError(409, "narration_attempts_exhausted", `Narration failed ${attempts} times for this content; change the record, or the owner can force another attempt`);
     }
@@ -575,7 +578,7 @@ export function createNarration(options: NarrationOptions) {
     if (waiting >= NARRATION_LIMITS.queue) throw new ApiError(429, "narration_queue_full", "Too many narrations are waiting; try again later");
     const timestamp = now();
     store.db.transaction(() => {
-      if (!current) {
+      if (!latest) {
         store.db.query(`INSERT INTO narrations(record_id,status,job_hash,requested_by,requested_at,updated_at,attempts,style,scope)
           VALUES(?,'queued',?,?,?,?,0,?,?)`).run(record.id, hash, principal.id, timestamp, timestamp, style, scope);
       } else {
@@ -1008,11 +1011,19 @@ export function createNarration(options: NarrationOptions) {
         throw error;
       }
       mkdirSync(previewDir, { recursive: true, mode: 0o700 });
-      const part = join(previewDir, `${voice}.wav`);
-      writeFileSync(part, wav(pcm), { mode: 0o600 });
-      const encoded = await encode(part, AbortSignal.timeout(timeoutMs));
-      chmodSync(encoded.path, 0o600);
-      return encoded;
+      // Written and encoded under a part name and renamed when whole, so a half-written or failed sample is never served.
+      const part = join(previewDir, `${voice}.part.wav`);
+      try {
+        writeFileSync(part, wav(pcm), { mode: 0o600 });
+        const encoded = await encode(part, AbortSignal.timeout(timeoutMs));
+        const path = join(previewDir, `${voice}.${encoded.mime === "audio/wav" ? "wav" : "m4a"}`);
+        renameSync(encoded.path, path);
+        chmodSync(path, 0o600);
+        return { path, mime: encoded.mime };
+      } finally {
+        rmSync(part, { force: true });
+        rmSync(part.replace(/\.wav$/, ".m4a"), { force: true });
+      }
     })().finally(() => previews.delete(voice));
     previews.set(voice, made);
     return made;
