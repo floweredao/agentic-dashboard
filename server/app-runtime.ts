@@ -65,6 +65,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
 
   const narration = createNarration({ provider: null, ...options.narration, store,
+    ...(options.audioStore ? { audioStore: options.audioStore } : {}),
     ...(personalKey && keys && options.narrationEnabled !== false ? {
       provider: options.personalProvider ? options.personalProvider(personalKey) : geminiProvider({ key: personalKey }),
       requireKey: () => keys.require(store.db.userId),
@@ -145,7 +146,11 @@ export async function createRuntime(options: AppOptions, store: Store) {
   };
 
   /** Byte-range audio of a narration (a record's or a digest part's). The URL carries the file's version, so caching never outlives it. */
-  const serveAudio = (c: Context, audio: { path: string; mime: string }) => {
+  const serveAudio = (c: Context, audio: { path: string; mime: string; remote?: boolean }) => {
+    if (audio.remote) {
+      c.header("Cache-Control", "private, no-store");
+      return c.redirect(audio.path, 302);
+    }
     const file = Bun.file(audio.path);
     const size = file.size;
     c.header("Cache-Control", "private, max-age=31536000, immutable");

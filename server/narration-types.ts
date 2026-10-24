@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NarrationAutoSchema, NarrationStatusSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { DashboardRecord, NarrationAuto } from "../shared/contracts";
 import type { Store } from "./store";
+import type { AudioStore } from "./audio-store";
 
 
 /** One spoken turn of a podcast: host A explains, host B asks and sums up. */
@@ -44,6 +45,7 @@ export type Encoder = (wavPath: string, signal: AbortSignal) => Promise<{ path: 
 export interface NarrationSource { readonly record: DashboardRecord; readonly label: string; readonly audioBase: string }
 
 export interface NarrationOptions {
+  readonly audioStore?: AudioStore;
   readonly requireKey?: () => Promise<void>;
   readonly store: Store;
   readonly lookup?: (id: string) => Promise<NarrationSource | null>;

@@ -195,6 +195,15 @@ Reactions: the owner can mark each article Like, Not for me or Seen it (`like`, 
 
 ### Narration (when a provider key is set)
 
+Audio storage uses an account-scoped `AudioStore`. Without `AUDIO_BUCKET`, the existing
+local files and authenticated byte-range route remain unchanged. With `AUDIO_BUCKET`,
+objects use `u/<userId>/<name>` in a private GCS bucket; completed encodes are temporary
+files, uploaded with `private, max-age=600` object metadata. The authenticated audio
+route returns 302 with `Cache-Control: private, no-store` to a ten-minute V4 signed
+GET URL. The runtime service account signs through IAM `signBlob`; metadata-server
+credentials never enter responses or logs. Cloud pruning follows narration rows,
+not filesystem enumeration. Replacing or deleting audio removes its object.
+
 | Route | Who | Result |
 |---|---|---|
 | `GET`, `POST`, `DELETE /api/v1/records/:id/narration` | owner, agent in read scope (DELETE owner only) | state, start (`{ force?, style? }`, 202 when started), remove |
