@@ -66,7 +66,8 @@ export function registerSession(app: Hono, runtime: TenantRuntime) {
       app.get("/api/v1/config", async c => c.json({
         appName: options.appName ?? "Agentic Dashboard", version: packageJson.version, timeZone, locale: options.locale ?? "en",
         authMode: options.hosted ? "google" : "local",
-        features: { narration: options.hosted ? options.narration !== undefined : await narration.available(), push: pushOn, digest: digestOn, trustedLogin: !options.hosted && options.trustedIdentity !== undefined, demo },
+        ...(options.keyStore ? { narrationModels: options.keyStore.selectedModels } : {}),
+        features: { narration: options.hosted ? options.narrationEnabled !== false && options.keyStore !== undefined : await narration.available(), push: pushOn, digest: digestOn, trustedLogin: !options.hosted && options.trustedIdentity !== undefined, demo },
       }));
 
       app.get("/api/v1/agents", async c => {

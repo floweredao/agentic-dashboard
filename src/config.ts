@@ -9,6 +9,7 @@ const ConfigSchema = z.object({
   timeZone: z.string().min(1),
   locale: z.enum(["en", "ko"]).catch("en"),
   authMode: z.enum(["local", "google"]).default("local"),
+  narrationModels: z.object({ script: z.string(), speech: z.string() }).optional(),
   features: z.object({ narration: z.boolean(), push: z.boolean(), digest: z.boolean(), trustedLogin: z.boolean(), demo: z.boolean().default(false) }),
 });
 /** What GET /api/v1/config reports: the app's name and version, calendar zone, default language and optional features. */

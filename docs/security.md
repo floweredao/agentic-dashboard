@@ -37,6 +37,7 @@ The dashboard supports local owner-key installations and optional Google-authent
 
 Trusted-header bootstrap and owner-key login are local-only. Google mode verifies PKCE, signed state, nonce and RS256 ID-token claims and consumes a database transaction exactly once before issuing a session. Accounts are keyed by subject, never email. Keep `APP_SECRETS.sessionSigningKey` independent from the encryption key.
 
+Personal Gemini keys are AES-256-GCM encrypted with per-user authenticated data. Keep all required KEK versions in `APP_SECRETS.kek` until `scripts/rotate-kek.ts` succeeds, then retire old versions. A valid model-list response is not proof of audio-model permission or quota. Hosted readers are directed to their own key settings or the operator; only local users see server-admin audio guidance.
 
 ## Shares
 

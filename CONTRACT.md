@@ -232,6 +232,16 @@ In Google mode capture instead requires an agent bearer with `capture` enabled a
 
 Google mode exposes bearer MCP at `/mcp` on the main listener and never starts the separate agent/MCP listeners. `scripts/mcp-forward.ts --listen 127.0.0.1:4313 --to https://example.test/mcp --token-file <private-path>` supports a loopback tunnel. It adds its configured bearer, strips browser credentials, rejects browser Origins and foreign Hosts, and never logs tokens. This transport proof does not claim a hosted ChatGPT OAuth connector.
 
+## Personal Gemini credentials
+
+Google mode exposes owner-session `GET /api/v1/settings/gemini` returning `{ configured, last4 }`, CSRF-protected `PUT { key }`, and `DELETE` (204). PUT accepts a key only after Google's model-list endpoint returns 200; rejected keys produce `422 gemini_key_invalid` without replacing storage. Acceptance is not a speech-model or quota guarantee. The API never returns the full key.
+
+PUT also returns `modelAvailability.script` and `.speech`, each `{ name, listed }` for the configured models. The browser config exposes their names as `narrationModels`. This reports model-list visibility, not a paid generation test. On a later visit the UI explicitly marks visibility as not checked rather than persisting a stale access guarantee. Actual job failures distinguish rejected credentials, model permission, missing models, quota and operator-managed Vertex setup.
+
+Keys are stored only as AES-256-GCM envelopes `v<version>.<iv>.<ciphertext-with-tag>` in the existing `users.gemini_key_ct` and `gemini_key_kek` columns. A 12-byte random IV and `${userId}:gemini` additional authenticated data prevent moving ciphertext between accounts. `APP_SECRETS.kek` holds versioned 32-byte base64 encryption keys. `bun scripts/rotate-kek.ts` re-encrypts all stored keys transactionally using the highest configured version; keep old versions configured until rotation completes.
+
+Each tenant's narration and Gemini title-fill runner resolves its personal key at call time. A new narration without one returns `409 gemini_key_required`; existing reading and saving remain available. Hosted automatic audio defaults off. Title fill uses `AI_FILL_MODEL` (default `gemini-3.5-flash-lite`) and skips users without keys. Local installs retain `GEMINI_API_KEY` and optional `AI_FILL_COMMAND`.
+
 ## Demo mode
 
 With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](docs/demo.md)):
