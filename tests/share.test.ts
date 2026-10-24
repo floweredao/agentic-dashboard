@@ -3,11 +3,43 @@ import { z } from "zod";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 import { generateCode, normalizeCode } from "../server/share";
 
+test("an incomplete agent record returns structured field issues without echoing content", async () => {
+  // Given: an agent's research record lacks its required summary.
+  const f = setup();
+  // When: it tries to save the incomplete record.
+  const response = await f.call("/api/v1/records", "POST", payload({
+    kind: "research", title: "Incomplete", body: "PRIVATE-CONTENT", tags: ["test"], fields: {},
+  }), bearer("codex"));
+  // Then: safe field errors describe what to correct, without returning the draft.
+  const result = z.object({ error: z.object({ code: z.string(), details: z.array(z.object({
+    path: z.array(z.string()), message: z.string(),
+  })) }) }).parse(await response.json());
+  expect(result.error.code).toBe("record_incomplete");
+  expect(result.error.details.some(issue => issue.path.join(".") === "fields.summary")).toBe(true);
+  expect(JSON.stringify(result)).not.toContain("PRIVATE-CONTENT");
+});
+
 const shareSchema = z.object({ code: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/), url: z.string(), createdAt: z.iso.datetime() }).strict();
 const shareResult = z.object({ share: shareSchema });
 let fixtures: ReturnType<typeof fixture>[] = [];
 afterEach(() => { for (const f of fixtures) f.close(); fixtures = []; });
 function setup() { const f = fixture(); fixtures.push(f); return f; }
+
+test("Markdown follows the configured locale without changing JSON keys or source content", async () => {
+  // Given: a Korean server and a shared Korean record.
+  const f = fixture(10000, Date.now, { locale: "ko" });
+  fixtures.push(f);
+  const h = await f.login();
+  const record = await ownerRecord(f, h);
+  const created = await share(f, record.id, h);
+  // When: an unauthenticated recipient reads Markdown and JSON.
+  const markdown = await (await f.call(`/s/${created.code}`)).text();
+  const json = await (await f.call(`/api/v1/shared/${created.code}`)).json();
+  // Then: the wrapper is Korean; stable keys and the original text remain intact.
+  expect(markdown).toContain("## 요약\n\n짧은 요약");
+  expect(markdown).toContain("- 출처: 소유자");
+  expect(json).toMatchObject({ record: { kind: "research", source: "manual", summary: "짧은 요약" } });
+});
 
 async function ownerRecord(f: ReturnType<typeof fixture>, headers: Record<string, string>) {
   const response = await f.call("/api/v1/records", "POST", payload({

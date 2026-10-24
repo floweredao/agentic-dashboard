@@ -19,29 +19,29 @@
 .sidebar-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
 .sidebar-head .brand { flex: 1; min-width: 0; gap: 8px; padding: 0 2px 0 4px; }
 /* A configurable app name ("Agentic Dashboard") fits beside the hide button at the sidebar's 248px. */
-.sidebar-head .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.sidebar-head .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9375rem; }
 .sidebar-toggle { color: var(--faint); }
 .sidebar-toggle:hover { color: var(--ink); }
 .compose-btn { width: 100%; min-height: 36px; margin: 0 0 12px; padding: 0 12px; justify-content: flex-start; }
-.brand { display: flex; align-items: center; gap: 10px; min-height: 40px; color: var(--ink); font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
+.brand { display: flex; align-items: center; gap: 10px; min-height: 40px; color: var(--ink); font-size: 1rem; font-weight: 800; letter-spacing: -0.3px; }
 .brand img { width: 26px; height: 26px; border-radius: 7px; }
 /* The public demo's marker beside the app name: a quiet outlined chip, no color. */
 .demo-badge {
   flex-shrink: 0; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 999px;
-  color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0; line-height: 1.4;
+  color: var(--muted); font-size: 0.71875rem; font-weight: 600; letter-spacing: 0; line-height: 1.4;
 }
 .appbar .brand .brand-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-list { display: grid; gap: 2px; }
 .nav-item {
   display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 10px; border-radius: var(--r);
-  color: var(--muted); font-size: 14px; font-weight: 500; transition: background-color 120ms var(--ease);
+  color: var(--muted); font-size: 0.875rem; font-weight: 500; transition: background-color 120ms var(--ease);
 }
 .nav-item:hover { background: var(--wash); color: var(--ink); }
 .nav-item[aria-current="page"] { background: var(--selected); color: var(--ink); font-weight: 600; }
 .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-count { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.nav-count { color: var(--faint); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .nav-count.strong { color: var(--accent); font-weight: 700; }
-.nav-section { padding: 18px 10px 6px; color: var(--faint); font-size: 11.5px; font-weight: 600; letter-spacing: 0.2px; }
+.nav-section { padding: 18px 10px 6px; color: var(--faint); font-size: var(--text-label); font-weight: 600; letter-spacing: 0.2px; }
 /* Sticky so a short window still shows the sync time and refresh button without scrolling the sidebar.
    It also covers the sidebar's bottom padding (same layout at rest), so nothing scrolls by underneath it. */
 .sidebar-foot {
@@ -56,7 +56,7 @@
 .sidebar-foot:has(.demo-badge)::before { content: ""; flex-basis: 100%; height: 0; }
 .sidebar-foot .demo-badge { order: -1; }
 .sidebar-foot:has(.demo-badge) .demo-badge { margin-bottom: 6px; }
-.sidebar-foot .status { flex: 1; min-width: 0; color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-foot .status { flex: 1; min-width: 0; color: var(--faint); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-foot .status.offline { color: var(--danger); font-weight: 600; }
 /* Before the owner connects there is nothing to navigate to; the gate carries the only action. */
 .locked .nav-list, .locked .compose-btn, .locked .tabbar { display: none; }
@@ -66,23 +66,24 @@
    instead of stretching the document; that phantom page scrollbar vanished under a dialog and shifted the panes. */
 .pane { position: relative; min-width: 0; background: var(--surface); }
 .pane-head {
-  position: sticky; top: 0; z-index: 3; display: grid; gap: 12px; padding: 16px 16px 12px;
+  position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px 16px 12px;
   background: var(--surface); border-bottom: 1px solid var(--line);
 }
-.pane-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; }
-.pane-title { display: flex; align-items: baseline; gap: 8px; color: var(--ink); font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
-.pane-title .count { color: var(--faint); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pane-toolbar { display: grid; gap: 10px; }
+.pane-title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; }
+.pane-title { display: flex; align-items: baseline; gap: 8px; color: var(--ink); font-size: 1.25rem; font-weight: 700; letter-spacing: -0.3px; }
+.pane-title .count { color: var(--faint); font-size: 0.875rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Columns that never grow past the pane, so large text wraps inside it instead of widening the page. */
+.pane-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .search {
   display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 10px;
   border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--raised); color: var(--faint);
 }
-.search input { flex: 1; min-width: 0; align-self: stretch; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 14px; }
+.search input { flex: 1; width: 0; min-width: 0; align-self: stretch; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 0.875rem; }
 .search-clear { display: grid; place-items: center; width: 28px; height: 28px; margin-right: -6px; border: 0; border-radius: 999px; background: transparent; color: var(--faint); }
 .search-clear:hover { background: var(--wash); color: var(--ink); }
 .search:focus-within { outline: 2px solid var(--accent); outline-offset: 0; }
 @media (pointer: coarse) {
-  .search input { font-size: 16px; }
+  .search input { font-size: 1rem; }
   /* An invisible 44px hit area around the small clear button, like .chip::after. */
   .search-clear { position: relative; }
   .search-clear::after { content: ""; position: absolute; inset: calc(50% - 22px); }
@@ -101,7 +102,7 @@
   height: calc(var(--appbar) + var(--safe-top)); padding: var(--safe-top) calc(8px + var(--safe-right)) 0 calc(16px + var(--safe-left));
   background: var(--canvas); border-bottom: 1px solid var(--line);
 }
-.appbar .brand { flex: 1; }
+.appbar .brand { flex: 1; min-width: 0; }
 .appbar-back { display: none; margin-left: -12px; }
 .appbar-menu { margin-left: -10px; color: var(--muted); }
 /* The desktop copy of the back button, at the top of its pane; a phone shows it in the app bar instead. */
@@ -109,21 +110,21 @@
 .pane-back:hover { color: var(--ink); }
 .reader .pane-back, .channels-heading .pane-back { margin-bottom: 12px; }
 .tabbar {
-  position: fixed; inset: auto 0 0 0; z-index: 10; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  position: fixed; inset: auto 0 0 0; z-index: 10; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   height: calc(var(--tabbar) + var(--safe-bottom)); padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
   background: var(--canvas); border-top: 1px solid var(--line);
 }
-/* Every tab shares one 24px glyph row and one 16px label row, so all five labels sit on one baseline. */
+/* Every tab shares one 24px glyph row and one 16px label row, so all the labels sit on one baseline; the tabs share the bar's width equally, however many there are. */
 .tab {
   position: relative; display: grid; grid-template-rows: 24px 16px; place-items: center; align-content: center; gap: 4px; min-height: 44px;
-  padding: 0; border: 0; background: transparent; color: var(--faint); font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap;
+  padding: 0; border: 0; background: transparent; color: var(--faint); font-size: 0.6875rem; font-weight: 600; line-height: 1.45; white-space: nowrap;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 /* page: the tab's own screen; true: a screen under it (보관함, 휴지통, 채널 관리 under 더보기). */
 .tab[aria-current] { color: var(--ink); }
 .tab-badge {
   position: absolute; top: 6px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
-  background: var(--accent); color: var(--on-ink); font-size: 10px; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
+  background: var(--accent); color: var(--on-ink); font-size: 0.625rem; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
 }
 
 /* The playback that goes on while its record's player is off screen: above the phone's tab bar, in the corner on wider screens. */
@@ -138,8 +139,8 @@
 .mini-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--ink); text-decoration: none; }
 .mini-title > svg { flex: none; color: var(--muted); }
 .mini-text { display: grid; min-width: 0; line-height: 1.3; }
-.mini-text strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.mini-text span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.mini-text strong { overflow: hidden; font-size: 0.875rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.mini-text span { color: var(--muted); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .mini-player .mini-toggle { width: 36px; height: 36px; }
 .mini-close { flex: none; width: 44px; min-height: 44px; color: var(--muted); }
 .has-mini ~ .toast { bottom: calc(var(--tabbar) + var(--safe-bottom) + var(--mini) + 24px); }
@@ -150,7 +151,7 @@
   position: fixed; left: calc(16px + var(--safe-left)); right: calc(16px + var(--safe-right)); bottom: calc(var(--tabbar) + 16px + var(--safe-bottom)); z-index: 60;
   display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 480px; margin-inline: auto; padding: 8px 8px 8px 16px;
   border-radius: var(--r-lg); background: var(--ink); color: var(--on-ink); box-shadow: var(--shadow-float);
-  font-size: 13.5px; font-weight: 500; animation: toast-in 160ms var(--ease);
+  font-size: 0.84375rem; font-weight: 500; animation: toast-in 160ms var(--ease);
 }
 .toast > span { flex: 1; min-width: 0; }
 .toast.error { background: var(--danger); color: var(--on-ink); }
@@ -160,9 +161,9 @@
 
 .gate { display: grid; place-content: center; justify-items: center; gap: 16px; min-height: 70dvh; padding: 32px; text-align: center; }
 .gate img { width: 56px; height: 56px; border-radius: 14px; }
-.gate h1 { color: var(--ink); font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+.gate h1 { color: var(--ink); font-size: 1.375rem; font-weight: 700; letter-spacing: -0.3px; }
 .gate p { color: var(--muted); max-width: 36ch; }
-.gate-more { display: grid; justify-items: center; gap: 8px; color: var(--faint); font-size: 12.5px; }
+.gate-more { display: grid; justify-items: center; gap: 8px; color: var(--faint); font-size: 0.78125rem; }
 .gate-more summary { padding: 4px 8px; border-radius: 6px; cursor: pointer; }
 .gate-more summary:hover { color: var(--muted); }
 .gate-more summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -191,12 +192,15 @@
   /* The list head scrolls away with the list: on a phone only the app bar and the day label stay pinned,
      and wrapped chip rows keep every filter visible instead of hiding some off the right edge. */
   .pane-head { position: static; padding: 12px 16px; }
+  /* Inside an open dialog the toast sits above the bottom sheet instead of on top of its commands. */
+  .dialog .toast { top: calc(16px + var(--safe-top)); bottom: auto; }
+}
+/* 44pt targets wherever the pointer is a finger: phones by width, and touch iPads at any width (pointer: coarse). */
+@media (max-width: 767px), (pointer: coarse) {
   .nav-item, .btn, .icon-btn { min-height: 44px; }
   .search { min-height: 44px; }
   .search-clear { width: 36px; height: 36px; }
   .toast button { min-height: 44px; min-width: 44px; }
-  /* Inside an open dialog the toast sits above the bottom sheet instead of on top of its commands. */
-  .dialog .toast { top: calc(16px + var(--safe-top)); bottom: auto; }
   .icon-btn { width: 44px; }
 }
 

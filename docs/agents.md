@@ -59,6 +59,31 @@ Other CLI commands, from `bun run agent --help`:
 | `--timeline <task-id>` | Show a task's timeline |
 | `--narrate <record-id> [--style read\|podcast] [--force] [--wait]`, `--narration <record-id>` | Request or check Listen audio. `--style read` is one voice, `podcast` two hosts; without it the record's last style is used (read at first). Digests are always read aloud. |
 | `--digest digest.json [--quiet]`, `--digests [--from] [--to]` | Upload or list digests |
+| `--briefing <dir> [--sections mail,domestic,international] [--quiet]` | Convert a briefing folder and upload it as a digest |
+| `--briefing-file digest.json [--sections <names>] [--quiet]` | Upload a public digest body, like `--digest` |
+| `--briefings [--from YYYY-MM-DD] [--to YYYY-MM-DD]` | Alias for `--digests` |
+| `--digest-reactions [--days 30]`, `--briefing-reactions [--days 30]` | Read recent article reactions (the two flags are aliases) |
+
+### Upload a briefing folder
+
+Use the same connected key or `DASHBOARD_TOKEN` as the other agent commands:
+
+```sh
+bun run agent --briefing ./briefing --quiet
+bun run agent --briefing ./ai-briefing --sections ai-development,social
+bun run agent --briefings --from 2026-10-01 --to 2026-10-02
+```
+
+The folder needs `news.json` or `mail.json`. Each has `targetScheduledAt` (an ISO timestamp with an offset). The converter uses its Korean time (UTC+09:00) for the date and slot: `morning` at 08:00, `evening` at 21:00, otherwise `HH:MM`; a news edition of `morning` or `evening` takes precedence.
+
+- `news.json`: `articles.domestic` and `articles.international` are arrays of `{ eventKey, title, url, source?, summary?, originalUrl?, publishedAt?, publishedDate?, imageUrl? }`. Optional `shortfalls` maps section names to a string or `null`. A timestamp takes precedence over a date-only publication value.
+- AI editions (`edition: "ai-morning"` or `"ai-evening"`) upload only `articles.aiDevelopment` and, when present, `x.json`. They use the scheduled `HH:MM` slot, since the public API has no AI-named slots. The public section key is `ai-development`; `--sections` also accepts the input name `aiDevelopment`.
+- `x.json`: `{ targetScheduledAt, items: [{ key, title, author, summary, url, postedAt? }], shortfall? }`. These become an `articles` section with key `social`; ordinary news editions ignore it.
+- `mail.json`: `{ targetScheduledAt, messages: string[] }`. The grouped Markdown uses `**즉시 조치 | 1건**`, `**할 일 | 1건**`, `**확인 | 1건**` or `**참고 | 1건**` headings, `• sender | address | subject` bullets, summary lines, a category-prefixed action line and an optional `[메일에서 열기](https://example.com/mail/1)` link. It becomes a `messages` section with key `mail`. AI editions ignore mail.
+
+Each input may set `locale: "en" | "ko"` (default `en`) and `sectionTitles: { "<section-key>": "<title>" }`; mail and social input may also set `title`. Explicit titles win over localized defaults. News controls the locale when both news and mail are present. The app always displays `social` as Social / 소셜 in its own language.
+
+`--sections` sends only the named sections, preserving other sections already on the server; selecting none of the available sections fails. `--quiet` sets `notify: false`. `--briefing-file` takes an already converted public `POST /api/v1/digests` body, not an individual news or mail file, and supports the same filtering and quiet flag. A successful upload prints the digest id, date, slot, version and section counts.
 
 ### With HTTP
 
@@ -134,3 +159,7 @@ If you want agents to reach only the record endpoints, turn on `ENABLE_AGENT_ING
 ## Skill file
 
 Agents that load skills (Codex, Claude Code and others) can install [skills/agentic-dashboard/SKILL.md](../skills/agentic-dashboard/SKILL.md), which teaches them the format and both ways to save. `agentic-dashboard connect` installs it for you with that computer's own command path; `agentic-dashboard skills install [--target claude-code|codex|omo|agents]` writes it again, and never replaces a skill file it didn't write unless you pass `--force`.
+
+## Portable storage and listening
+
+Every install uses the same [storage structure](storage.md) and [generated contracts](schema/agentic-dashboard.schema.json). Keep the full Markdown document in `body`, even when attaching HTML. Automatic audio covers all narratable record kinds and waits for configured title fill. Write conclusions and summaries as findings, not work logs: verification methods, tool details, kept/deleted files and closing reference lists are omitted from listening scripts. Keep relevant study limitations and counterarguments in the content sections. See [install.md](install.md) for machine-independent setup.

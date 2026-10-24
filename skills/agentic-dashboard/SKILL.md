@@ -102,3 +102,7 @@ Over HTTP these are `POST /api/v1/comments` and `GET /api/v1/comments?state=new`
 ## After saving
 
 Tell the user the record's title and id from the response. Don't paste the whole record back.
+
+## Storage and audio
+
+Use the same record format on every connected computer. Keep the full document in `body` even with an HTML attachment; the server handles automatic audio after configured title fill. Keep findings, source limitations and counterarguments in content sections, separate from verification/tool work logs and closing source lists, which are omitted from listening scripts. Installation and storage contracts are documented in `docs/install.md`, `docs/storage.md` and `docs/schema/agentic-dashboard.schema.json`.

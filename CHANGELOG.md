@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Port operational reading and accessibility fixes: equal phone tabs, two recent digests, full-screen digest reading, scalable text, touch targets and clearer states.
+- Narrate every new narratable record and meaningful text edit, defer temporary failures, and run independent jobs concurrently.
+- Separate Vertex and key script models, improve listening scripts, remove work logs and source lists, and add ffmpeg encoding plus portable storage documentation.
+
 All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -7,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Until 1.0.0, the agent API and the database format can still change between minor versions.
 
 ## [Unreleased]
+
+### Added
+
+- Briefing-folder uploads in the agent CLI: `--briefing <dir>` converts `news.json`, `mail.json` and AI-edition `x.json` to public digest sections, including null AI shortfalls, input titles and English/Korean defaults. `--briefing-file` uploads a converted digest body; both support `--sections` and `--quiet`. `--briefings` and `--briefing-reactions` alias the existing digest commands, using the same connected key or `DASHBOARD_TOKEN`.
 
 ## [0.4.0] - 2026-10-24
 

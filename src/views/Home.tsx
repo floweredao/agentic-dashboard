@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
-import { ChevronRight, Headphones, Pause, Play } from "lucide-react";
+import { ChevronRight, Headphones, Pause, Play, Plus } from "lucide-react";
 import type { DashboardRecord } from "../../shared/contracts";
 import { clock, usePlayback } from "../components/playback";
 import { SidebarOpen, Time } from "../components/primitives";
@@ -15,17 +15,19 @@ const text = strings({
   en: {
     digest: "Latest digest", noDigest: "No digests yet", allDigests: "All digests",
     records: "Recent records", toReview: (count: number) => `${count} to review`, seeAll: "See all", noRecords: "No records yet",
-    listen: "Continue listening", play: "Play", pause: "Pause", tasks: "Tasks",
+    listen: "Continue listening", play: "Play", pause: "Pause", tasks: "Tasks", compose: "New item",
   },
   ko: {
     digest: "최신 다이제스트", noDigest: "아직 온 다이제스트 없음", allDigests: "다이제스트 모두 보기",
     records: "최근 기록", toReview: (count: number) => `미확인 ${count}`, seeAll: "모두 보기", noRecords: "아직 기록 없음",
-    listen: "이어 듣기", play: "재생", pause: "일시정지", tasks: "할 일",
+    listen: "이어 듣기", play: "재생", pause: "일시정지", tasks: "할 일", compose: "새로 저장",
   },
 });
 
 /** How many rows Recent records and Tasks show before their See all link. */
 const SHOWN = 5;
+/** How many of the newest digests 최신 브리핑 shows (this morning's and the one before it). */
+const DIGESTS_SHOWN = 2;
 
 function Row({ record, href }: { readonly record: DashboardRecord; readonly href: string }) {
   const unread = isRecord(record) && record.reviewState === "pending";
@@ -74,12 +76,12 @@ function Listening() {
 }
 
 /**
- * Home, the first screen, with no day boundary (a day brings few records): the latest digest (when digests are on),
+ * Home, the first screen, with no day boundary (a day brings few records): the two latest digests (when digests are on),
  * the newest records, the playback going on and the open tasks, those waiting for review first.
  */
 export function HomePane() {
   const t = text();
-  const { records, comments, digests, digestReads } = useDashboard();
+  const { records, comments, digests, digestReads, compose } = useDashboard();
   const today = localDate();
   const recent = useMemo(() => foldContinuations(libraryView(records, "all", today)).slice(0, SHOWN).map(entry => entry.item), [records, today]);
   const pendingCount = useMemo(() => inboxItems(records, today).length, [records, today]);
@@ -89,7 +91,7 @@ export function HomePane() {
     .sort((a, b) => Number(b.review) - Number(a.review) || b.at.localeCompare(a.at))
     .map(entry => entry.record), [records, comments]);
   // The App's per-part read overlay (`<id>:<part>`) wins over the loaded summaries, as in the Digest list.
-  const latest = (digests?.items ?? []).slice(0, 1).map(item => ({
+  const latest = (digests?.items ?? []).slice(0, DIGESTS_SHOWN).map(item => ({
     ...item,
     ...(digestReads.has(`${item.id}:articles`) ? { articlesReadAt: digestReads.get(`${item.id}:articles`) ?? null } : {}),
     ...(digestReads.has(`${item.id}:messages`) ? { messagesReadAt: digestReads.get(`${item.id}:messages`) ?? null } : {}),
@@ -113,7 +115,9 @@ export function HomePane() {
       </span>}>
       {recent.length ? <ul className="record-list today-card">{recent.map(record =>
         <Row key={record.id} record={record} href={formatRoute({ view: "library", id: record.id, params: {} })} />)}</ul>
-        : <p className="today-empty">{t.noRecords}</p>}
+        : <div className="today-empty-row"><p className="today-empty">{t.noRecords}</p>
+          <button type="button" className="btn btn-outline today-empty-action" onClick={() => compose()}><Plus size={16} aria-hidden="true" />{t.compose}</button>
+        </div>}
     </Section>
     <Listening />
     {tasks.length > 0 && <Section id="today-tasks" title={t.tasks}
