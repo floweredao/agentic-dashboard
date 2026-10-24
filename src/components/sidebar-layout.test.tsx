@@ -40,6 +40,7 @@ async function serveApp() {
     "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "UTC", locale: "en", features: { narration: false, push: false, digest: false, trustedLogin: false } }),
     "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
     "/api/v1/records": Response.json({ items: records, nextCursor: null }),
+    "/api/v1/records/changes": Response.json({ cursor: 0, items: [], deletedIds: [], hasMore: false, reset: false }),
     "/api/v1/trash": Response.json({ items: [] }),
     "/api/v1/comments": Response.json({ items: [] }),
     "/api/v1/agents": Response.json({ items: [] }),
