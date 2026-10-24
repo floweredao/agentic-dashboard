@@ -111,7 +111,7 @@ All routes are under the private listener (`HOST:PORT`, default `127.0.0.1:4310`
 
 | Route | Who | Result |
 |---|---|---|
-| `GET /api/v1/records` | owner, agent | `{ items, nextCursor }`; query `kind`, `status`, `reviewState`, `archived` (`false`, `true`, `all`), `projectId`, `q`, `dueFrom`, `dueTo`, `limit` (1..50), `cursor` |
+| `GET /api/v1/records` | owner, agent | `{ items, nextCursor }`, newest first (`createdAt`, then `id`, both descending); query `kind`, `status`, `reviewState`, `archived` (`false`, `true`, `all`), `projectId`, `q`, `dueFrom`, `dueTo`, `limit` (1..50), `cursor` |
 | `POST /api/v1/records` | owner, agent | 201 `{ record, replayed: false }` |
 | `GET /api/v1/records/:id` | owner, agent | `{ record }` |
 | `PATCH /api/v1/records/:id` | owner, agent (own records) | `{ record }` |
