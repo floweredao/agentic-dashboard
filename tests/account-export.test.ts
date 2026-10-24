@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
+import { randomFillSync } from "node:crypto";
 import { z } from "zod";
 import type { AudioStore } from "../server/audio-store";
 import { hostedFixture } from "./helpers/hosted";
 import { deferred } from "./narration-helper";
+import { ControlDb } from "../server/control-db";
 
 class StreamOnlyAudio extends Blob {
   chunks = 0;
@@ -31,7 +33,7 @@ async function fixture(read: AudioStore["read"], size: number) {
     async url() { throw new Error("Unexpected signed link"); },
     async remove() {}, async removeAll() {},
   };
-  const f = await hostedFixture({ audioStore: audio });
+  const f = await hostedFixture({ audioStore: audio, now: () => Date.now() });
   const { record } = z.object({ record: z.object({ id: z.string() }) }).parse(await (await f.call("/api/v1/records", {
     method: "POST", body: { requestId: "export", record: { kind: "note", title: "Export fixture", body: "Complete text." } },
   })).json());
@@ -102,5 +104,93 @@ test("an export lease held by another instance cannot be replaced or cleared", a
     expect((await f.call("/api/v1/account/export")).status).toBe(429);
     expect(z.object({ export_lease: z.string() }).parse(
       await f.app.sql.get("SELECT export_lease FROM users WHERE id='a'")).export_lease).toBe("other-instance");
+  } finally { await f.close(); }
+});
+
+test("another account can export while a slow download holds one of two slots", async () => {
+  // Given: three accounts on one instance and an unread first download.
+  const f = await hostedFixture();
+  const responses: Response[] = [];
+  try {
+    await new ControlDb(f.app.sql).createUser("c", new Date().toISOString());
+    const c = await f.app.tenant("c");
+    await f.app.sql.run("INSERT INTO principals(id,source,token_hash,user_id) VALUES('owner','manual','test-c','c')");
+    const session = await c.auth.createOwnerSession();
+    const headers = { Cookie: `session=${session.value}` };
+    responses.push(await f.call("/api/v1/account/export"));
+    // When: a second account downloads, and a third asks at full capacity.
+    const second = await f.call("/api/v1/account/export", { headers: f.b.headers });
+    responses.push(second);
+    const full = await f.call("/api/v1/account/export", { headers });
+    // Then: two accounts are admitted; only instance capacity gets a retryable 503.
+    expect(second.status).toBe(200);
+    expect(full.status).toBe(503);
+    expect(full.headers.get("Retry-After")).toBe("60");
+    expect(await full.json()).toMatchObject({ error: { code: "account_export_capacity" } });
+    expect((await f.call("/api/v1/account/export")).status).toBe(429);
+    await second.body?.cancel();
+    const next = await f.call("/api/v1/account/export", { headers });
+    responses.push(next);
+    expect(next.status).toBe(200);
+  } finally {
+    for (const response of responses) await response.body?.cancel();
+    await f.close();
+  }
+});
+
+test("download progress renews its lease and idle deadline until bytes stop", async () => {
+  // Given: an archive large enough for several backpressured reads and a fake clock.
+  const audio = new Blob([randomFillSync(new Uint8Array(48 * 1024 * 1024))]);
+  const f = await fixture(async () => audio.stream(), audio.size);
+  let response: Response | undefined;
+  jest.useFakeTimers();
+  try {
+    response = await f.call("/api/v1/account/export");
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Missing export body");
+    try {
+      await reader.read();
+      // When: progress continues beyond the old fifteen-minute total deadline.
+      for (let i = 0; i < 16; i++) {
+        jest.advanceTimersByTime(59000);
+        expect((await reader.read()).done).toBe(false);
+      }
+      const lease = z.object({ export_until: z.number() }).parse(
+        await f.app.sql.get("SELECT export_until FROM users WHERE id='a'"));
+      expect(lease.export_until).toBeGreaterThan(Date.now());
+      // Then: a full idle minute aborts the body, rather than its total age.
+      const closed = reader.closed;
+      jest.advanceTimersByTime(60000);
+      await expect(closed).rejects.toThrow();
+    } finally { reader.releaseLock(); }
+  } finally {
+    jest.useRealTimers();
+    await Promise.allSettled([response?.body?.cancel()]);
+    await f.close();
+  }
+});
+
+test("paged exports include sparse signed rowids exactly once in ascending order", async () => {
+  // Given: more than two pages, gaps and negative rowids, with unordered scans reversed.
+  const f = await hostedFixture();
+  try {
+    for (let i = 0; i < 35; i++) {
+      await f.call("/api/v1/records", { method: "POST", body: {
+        requestId: `page-${i}`, record: { kind: "note", title: `Record ${i}`, body: "Text" },
+      } });
+    }
+    await f.app.sql.run("UPDATE records SET rowid=-rowid*3");
+    const expected = z.array(z.object({ id: z.string() })).parse(
+      await f.app.sql.all("SELECT id FROM records WHERE user_id='a' ORDER BY rowid"));
+    await f.app.sql.run("PRAGMA reverse_unordered_selects=ON");
+    // When: the account downloads its real archive.
+    const response = await f.call("/api/v1/account/export");
+    const files = await new Bun.Archive(await response.arrayBuffer()).files();
+    const data = z.object({ tables: z.object({ records: z.array(
+      z.object({ id: z.string() }).passthrough(),
+    ) }) }).parse(JSON.parse(await files.get("data.json")?.text() ?? "{}"));
+    // Then: ordering and completeness do not depend on SQLite's scan direction.
+    expect(data.tables.records.map(row => row.id)).toEqual(expected.map(row => row.id));
+    expect(data.tables.records.some(row => "_export_rowid" in row)).toBe(false);
   } finally { await f.close(); }
 });

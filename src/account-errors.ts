@@ -8,6 +8,7 @@ export const accountErrorText = strings({
     signup_capacity: "Sign-ups are full. Existing accounts can still sign in.",
     agent_revoked: "This agent was revoked. Create a token under a new agent name.",
     account_export_busy: "An export is already in progress. Wait for it to finish, then try again.",
+    account_export_capacity: "The server is handling other exports. Try again in a minute.",
     account_export_too_large: "This export exceeds the 64 MiB limit. Contact the operator for help transferring larger data.",
     account_export_unavailable: "The export could not finish. Try again, or contact the operator if it keeps failing.",
     operator: "The service's audio provider needs attention from the operator. You do not need to change server credentials.",
@@ -22,6 +23,7 @@ export const accountErrorText = strings({
     signup_capacity: "지금은 가입 정원이 찼어요. 기존 계정은 계속 로그인할 수 있어요.",
     agent_revoked: "해제된 에이전트예요. 다른 에이전트 이름으로 새 토큰을 만들어 주세요.",
     account_export_busy: "내보내기가 진행 중이에요. 완료된 뒤 다시 시도해 주세요.",
+    account_export_capacity: "서버에서 다른 내보내기를 처리하고 있어요. 1분 뒤 다시 시도해 주세요.",
     account_export_too_large: "내보내기 크기가 64 MiB 한도를 넘었어요. 더 큰 자료를 옮기려면 운영자에게 문의해 주세요.",
     account_export_unavailable: "내보내기를 완료하지 못했어요. 다시 시도하고, 계속 실패하면 운영자에게 문의해 주세요.",
     operator: "서비스의 음성 제공자 설정을 운영자가 확인해야 해요. 서버 인증 정보를 직접 바꿀 필요는 없어요.",
@@ -40,6 +42,7 @@ export function accountErrorMessage(code: string) {
     case "signup_capacity": return t.signup_capacity;
     case "agent_revoked": return t.agent_revoked;
     case "account_export_busy": return t.account_export_busy;
+    case "account_export_capacity": return t.account_export_capacity;
     case "account_export_too_large": return t.account_export_too_large;
     case "account_export_unavailable": return t.account_export_unavailable;
     default: return undefined;
