@@ -32,7 +32,7 @@ const searchArgs = z.object({
 }).strict();
 const { $schema: _unused, ...recordJsonSchema } = z.toJSONSchema(RecordInputSchema, { io: "input", unrepresentable: "any" });
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "save_record",
     title: "Save to the dashboard",
@@ -127,50 +127,52 @@ export interface McpOptions {
   readonly port: number;
   readonly rateLimit: number;
   readonly now: () => number;
-  readonly onCreate?: (id: string) => void;
-  readonly onUpdate?: (before: DashboardRecord, after: DashboardRecord) => void;
+  readonly onCreate?: (id: string) => void | Promise<void>;
+  readonly onUpdate?: (before: DashboardRecord, after: DashboardRecord) => void | Promise<void>;
+  readonly resolveAgent?: (request: Request) => Promise<Principal>;
 }
 
-export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate, onUpdate }: McpOptions) {
+export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate, onUpdate, resolveAgent }: McpOptions) {
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   let bucketWindow = Math.floor(now() / 60000);
   let count = 0;
 
-  function runTool(name: string, args: Record<string, unknown>) {
+  async function runTool(name: string, args: Record<string, unknown>, principal: Principal) {
     if (name === "save_record") {
       const input = saveArgs.parse(args);
-      const { record, replayed } = store.create(agent, input.requestId, RecordInputSchema.parse(input.record), input.record, undefined, SAME_SAVE_WINDOW_MS);
-      if (!replayed) onCreate?.(record.id);
+      const { record, replayed } = (await store.create(principal, input.requestId, RecordInputSchema.parse(input.record), input.record, undefined, SAME_SAVE_WINDOW_MS));
+      if (!replayed) await onCreate?.(record.id);
       return { id: record.id, replayed, kind: record.kind, title: record.title, source: record.source,
         reviewState: record.reviewState, createdAt: record.createdAt };
     }
     if (name === "update_record") {
       const { id, ...patch } = updateArgs.parse(args);
-      const before = store.get(id);
-      const record = store.agentPatch(agent, id, patch);
-      onUpdate?.(before, record);
+      const before = (await store.get(id));
+      const record = (await store.agentPatch(principal, id, patch));
+      await onUpdate?.(before, record);
       return { id: record.id, kind: record.kind, title: record.title, source: record.source,
         reviewState: record.reviewState, version: record.version, updatedAt: record.updatedAt };
     }
     if (name === "get_record") {
-      const record = store.get(getArgs.parse(args).id);
-      if (!agentCanRead(agent, record)) throw new ApiError(404, "not_found", "Record not found");
-      return detail(record, agent);
+      const record = (await store.get(getArgs.parse(args).id));
+      if (!agentCanRead(principal, record)) throw new ApiError(404, "not_found", "Record not found");
+      return detail(record, principal);
     }
     const input = searchArgs.parse(args);
     const limit = input.limit ?? 10;
-    const items = (input.kind ? [input.kind] : SEARCHABLE)
-      .flatMap(kind => store.list({ kind, limit: String(limit), ...(input.query ? { q: input.query } : {}) }, agent).items)
+    const pages = await Promise.all((input.kind ? [input.kind] : SEARCHABLE)
+      .map(kind => store.list({ kind, limit: String(limit), ...(input.query ? { q: input.query } : {}) }, principal)));
+    const items = pages.flatMap(page => page.items)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
       .slice(0, limit).map(summary);
     return { items };
   }
 
-  function callTool(params: Record<string, unknown>) {
+  async function callTool(params: Record<string, unknown>, principal: Principal) {
     const call = toolCallSchema.safeParse(params);
     if (!call.success || !TOOLS.some(tool => tool.name === call.data.name)) throw new RpcError(-32602, "Unknown tool");
     try {
-      const data = runTool(call.data.name, call.data.arguments);
+      const data = (await runTool(call.data.name, call.data.arguments, principal));
       return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data, isError: false };
     } catch (error) {
       const message = error instanceof ApiError ? `${error.code}: ${error.message}`
@@ -181,7 +183,7 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate,
     }
   }
 
-  function dispatch(method: string, params: Record<string, unknown>): Record<string, unknown> {
+  async function dispatch(method: string, params: Record<string, unknown>, principal: Principal): Promise<Record<string, unknown>> {
     switch (method) {
       case "initialize": {
         const requested = params.protocolVersion;
@@ -192,7 +194,7 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate,
         return { supportedVersions: SUPPORTED_VERSIONS, capabilities: CAPABILITIES, instructions: INSTRUCTIONS };
       case "ping": return {};
       case "tools/list": return { tools: TOOLS, ttlMs: 300000, cacheScope: "private" };
-      case "tools/call": return callTool(params);
+      case "tools/call": return (await callTool(params, principal));
       default: throw new RpcError(-32601, "Method not found");
     }
   }
@@ -232,7 +234,8 @@ export function createMcpHandler({ store, agent, port, rateLimit, now, onCreate,
       if (metaVersion !== undefined && (typeof metaVersion !== "string" || !SUPPORTED_VERSIONS.includes(metaVersion))) {
         throw new RpcError(-32022, "Unsupported protocol version", { supported: SUPPORTED_VERSIONS, requested: metaVersion });
       }
-      const result = dispatch(method, params);
+      const principal = resolveAgent ? await resolveAgent(request) : agent;
+      const result = (await dispatch(method, params, principal));
       const stateless = metaVersion === STATELESS_VERSION || headerVersion === STATELESS_VERSION || method === "server/discover";
       return reply({ jsonrpc: "2.0", id, result: stateless
         ? { ...result, resultType: "complete", _meta: { "io.modelcontextprotocol/serverInfo": SERVER_INFO } } : result });

@@ -138,11 +138,6 @@ function writePrivate(path: string, value: unknown) {
  * web-push's generateRequestDetails and sent with fetch. A 404 or 410 means the device dropped the subscription.
  */
 export function createPush(store: Store, options: PushOptions) {
-  store.db.exec(`CREATE TABLE IF NOT EXISTS push_subscriptions(endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
-    kinds TEXT NOT NULL CHECK(json_valid(kinds)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
-  // Add-only migration: older databases gain the device language (NULL means the server's default language); no row is rewritten.
-  const columns = new Set(store.db.query("PRAGMA table_info(push_subscriptions)").all().map(column => z.object({ name: z.string() }).parse(column).name));
-  if (!columns.has("locale")) store.db.exec("ALTER TABLE push_subscriptions ADD COLUMN locale TEXT");
   const defaultLocale: Locale = options.locale ?? "en";
   /** A device that never said its language (NULL, or a database from before this column) uses the server's default language. */
   const localeOf = (value: string | null): PushLocale => value === "en" || value === "ko" ? value : defaultLocale;
@@ -166,9 +161,9 @@ export function createPush(store: Store, options: PushOptions) {
     return vapid;
   }
   const now = () => new Date(store.now()).toISOString();
-  const rows = () => store.db.query("SELECT * FROM push_subscriptions").all().map(value => rowSchema.parse(value));
-  const row = (endpoint: string) => {
-    const value = store.db.query("SELECT * FROM push_subscriptions WHERE endpoint=?").get(endpoint);
+  const rows = async () => (await store.db.all("SELECT * FROM push_subscriptions WHERE user_id=?", [])).map(value => rowSchema.parse(value));
+  const row = async (endpoint: string) => {
+    const value = (await store.db.get("SELECT * FROM push_subscriptions WHERE (endpoint=?) AND user_id=?", [endpoint]));
     return value ? rowSchema.parse(value) : null;
   };
   const view = (value: z.infer<typeof rowSchema>): PushDevice => ({ kinds: PushKindsSchema.parse(JSON.parse(value.kinds)), locale: localeOf(value.locale), createdAt: value.created_at, updatedAt: value.updated_at });
@@ -191,7 +186,7 @@ export function createPush(store: Store, options: PushOptions) {
   };
   async function deliver(value: z.infer<typeof rowSchema>, payload: PushPayload) {
     const status = await (options.deliver ?? send)({ endpoint: value.endpoint, keys: { p256dh: value.p256dh, auth: value.auth } }, payload);
-    if (status === 404 || status === 410) store.db.query("DELETE FROM push_subscriptions WHERE endpoint=?").run(value.endpoint);
+    if (status === 404 || status === 410) (await store.db.run("DELETE FROM push_subscriptions WHERE (endpoint=?) AND user_id=?", [value.endpoint]));
     return status;
   }
   const track = <T,>(work: Promise<T>) => {
@@ -202,10 +197,10 @@ export function createPush(store: Store, options: PushOptions) {
 
   return {
     publicKey: () => keys().publicKey,
-    device: (endpoint: string) => { const value = row(endpoint); return value ? view(value) : null; },
-    count: () => z.object({ count: z.number() }).parse(store.db.query("SELECT count(*) AS count FROM push_subscriptions").get()).count,
+    device: async (endpoint: string) => { const value = (await row(endpoint)); return value ? view(value) : null; },
+    count: async () => z.object({ count: z.number() }).parse((await store.db.get("SELECT count(*) AS count FROM push_subscriptions WHERE user_id=?", []))).count,
     /** Stores or refreshes a device; without `kinds` or `locale` an existing device keeps its choice and a new one gets every kind and the server's language. */
-    subscribe(raw: unknown, kinds?: PushKinds): PushDevice {
+    async subscribe(raw: unknown, kinds?: PushKinds): Promise<PushDevice> {
       const parsed = PushSubscriptionSchema.safeParse(raw);
       const url = parsed.success && URL.canParse(parsed.data.endpoint) ? new URL(parsed.data.endpoint) : null;
       if (!parsed.success || !url || !allow(url) || decoded(parsed.data.keys.p256dh) !== 65 || decoded(parsed.data.keys.auth) !== 16) {
@@ -213,17 +208,16 @@ export function createPush(store: Store, options: PushOptions) {
       }
       keys();
       const { endpoint, locale, keys: { p256dh, auth } } = parsed.data;
-      const existing = row(endpoint);
+      const existing = (await row(endpoint));
       const chosen = kinds ?? (existing ? PushKindsSchema.parse(JSON.parse(existing.kinds)) : DEFAULT_PUSH_KINDS);
       const timestamp = now();
-      store.db.query(`INSERT INTO push_subscriptions(endpoint,p256dh,auth,kinds,locale,created_at,updated_at) VALUES(?,?,?,?,?,?,?)
-        ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth,kinds=excluded.kinds,locale=excluded.locale,updated_at=excluded.updated_at`)
-        .run(endpoint, p256dh, auth, JSON.stringify(chosen), locale ?? existing?.locale ?? null, existing?.created_at ?? timestamp, timestamp);
-      return view(row(endpoint) ?? (() => { throw new Error("subscription vanished"); })());
+      (await store.db.run(`INSERT INTO push_subscriptions(endpoint,p256dh,auth,kinds,locale,created_at,updated_at,user_id) VALUES(?,?,?,?,?,?,?,?)
+        ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth,kinds=excluded.kinds,locale=excluded.locale,updated_at=excluded.updated_at`, [endpoint, p256dh, auth, JSON.stringify(chosen), locale ?? existing?.locale ?? null, existing?.created_at ?? timestamp, timestamp]));
+      return view({ endpoint, p256dh, auth, kinds: JSON.stringify(chosen), locale: locale ?? existing?.locale ?? null, created_at: existing?.created_at ?? timestamp, updated_at: timestamp });
     },
-    unsubscribe(endpoint: string) { store.db.query("DELETE FROM push_subscriptions WHERE endpoint=?").run(endpoint); },
+    async unsubscribe(endpoint: string) { (await store.db.run("DELETE FROM push_subscriptions WHERE (endpoint=?) AND user_id=?", [endpoint])); },
     async test(endpoint: string) {
-      const value = row(endpoint);
+      const value = (await row(endpoint));
       if (!value) throw new ApiError(404, "not_found", "This device is not subscribed");
       const status = await track(deliver(value, testPayload(localeOf(value.locale))));
       return { delivered: status !== null && status >= 200 && status < 300, status };
@@ -232,9 +226,9 @@ export function createPush(store: Store, options: PushOptions) {
      * Sends each device the first of `choices` whose kind it wants (a reply that also asks for review reaches a device once).
      * Fire and forget: returns how many devices were chosen; `idle()` waits for the sends.
      */
-    notify(choices: readonly { readonly kind: keyof PushKinds; readonly payload: PushPayload }[]): number {
+    async notify(choices: readonly { readonly kind: keyof PushKinds; readonly payload: PushPayload }[]): Promise<number> {
       let chosen = 0;
-      for (const value of rows()) {
+      for (const value of (await rows())) {
         const kinds = PushKindsSchema.parse(JSON.parse(value.kinds));
         const choice = choices.find(item => kinds[item.kind]);
         if (!choice) continue;
