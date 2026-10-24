@@ -13,9 +13,17 @@ import { createRouter } from "./app-router";
 import { createOidc, type HostedAuth } from "./oidc";
 import { authLimiter } from "./auth-rate";
 import { ApiError } from "./errors";
+import { createGeminiKeys, type GeminiKeys, type GeminiKeyOptions } from "./gemini-settings";
+import type { KeySource } from "./gemini";
+import type { NarrationProvider } from "./narration";
 
 export interface AppOptions {
   readonly hosted?: HostedAuth;
+  readonly geminiKeys?: GeminiKeyOptions;
+  readonly keyStore?: GeminiKeys;
+  readonly personalProvider?: (key: KeySource) => NarrationProvider;
+  readonly narrationEnabled?: boolean;
+  readonly audioBucket?: string;
   /** Shared protocol cache, initialized by createApp for all tenants. */
   readonly oidc?: ReturnType<typeof createOidc>;
   readonly databasePath?: string;
@@ -82,9 +90,12 @@ export async function createApp(options: AppOptions = {}) {
   const localAuth = new Auth(localStore, options.demo === true, options.hosted ? options.privateOrigin : undefined);
   if (!options.hosted) await localAuth.initialize(options.credentialsPath ?? "data/credentials.json");
   if (options.hosted && !options.privateOrigin) throw new ApiError(500, "configuration", "Hosted mode requires privateOrigin");
-  const effective = options.hosted && options.privateOrigin ? { ...options, oidc: createOidc({
+  const effective: AppOptions = { ...options,
+    ...(options.geminiKeys ? { keyStore: createGeminiKeys(sql, options.geminiKeys) } : {}),
+    ...(options.hosted && options.privateOrigin ? { oidc: createOidc({
     hosted: options.hosted, origin: options.privateOrigin, control: localAuth.control, now,
-  }) } : options;
+  }) } : {}),
+  };
   const scopes = new Map<string, Promise<Awaited<ReturnType<typeof createTenantApp>>>>();
   const tenant = (userId: string) => {
     let scope = scopes.get(userId);

@@ -7,6 +7,8 @@ export const accountErrorText = strings({
     reauth_required: "Sign in with Google again to continue this action.",
     signup_capacity: "Sign-ups are full. Existing accounts can still sign in.",
     operator: "The service's audio provider needs attention from the operator. You do not need to change server credentials.",
+    permission: "This project does not have permission to use the selected model. Check its Google model access and billing.",
+    model: "The selected model was not found by the provider. Ask the operator to check the configured model name and availability.",
     settings: "Gemini key settings", signIn: "Sign in again", capacity: "View availability",
   },
   ko: {
@@ -15,6 +17,8 @@ export const accountErrorText = strings({
     reauth_required: "이 작업을 계속하려면 Google 계정으로 다시 로그인해 주세요.",
     signup_capacity: "지금은 가입 정원이 찼어요. 기존 계정은 계속 로그인할 수 있어요.",
     operator: "서비스의 음성 제공자 설정을 운영자가 확인해야 해요. 서버 인증 정보를 직접 바꿀 필요는 없어요.",
+    permission: "이 프로젝트에서 선택한 모델을 사용할 권한이 없어요. Google 모델 권한과 결제 설정을 확인해 주세요.",
+    model: "제공자에서 선택한 모델을 찾지 못했어요. 운영자에게 모델 이름과 이용 가능 여부를 확인해 달라고 알려 주세요.",
     settings: "Gemini 키 설정", signIn: "다시 로그인", capacity: "가입 가능 여부",
   },
 });
@@ -41,6 +45,8 @@ export function accountErrorAction(code: string | null) {
 }
 export function audioRecovery(code: string | null, mode: "local" | "google") {
   if (code === "vertex_auth" || code === "vertex_disabled") return mode === "google" ? "operator" : "admin";
-  if (mode === "google" && (code === "no_key" || code === "http_401" || code === "http_403" || code === "gemini_key_required")) return "key";
+  if (mode === "google" && code === "http_403") return "permission";
+  if (mode === "google" && code === "http_404") return "model";
+  if (mode === "google" && (code === "no_key" || code === "http_401" || code === "gemini_key_required")) return "key";
   return null;
 }

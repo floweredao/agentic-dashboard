@@ -19,6 +19,8 @@ import { createNarration, narrationSourceChanged } from "./narration";
 import { Shares } from "./share";
 import { agentCanRead, Store } from "./store";
 import type { AppOptions } from "./app";
+import { geminiProvider } from "./gemini";
+import { geminiRunner, AI_FILL_MODEL } from "./gemini-runner";
 import { originSettings } from "./origin";
 export async function createRuntime(options: AppOptions, store: Store) {
 
@@ -38,7 +40,13 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
   const digestOn = options.digestEnabled !== false;
 
-  const aiFillSources = new Set(options.aiFill?.sources ?? []);
+  const keys = options.keyStore;
+  const personalKey = keys ? () => keys.keyFor(store.db.userId) : null;
+  const fillOptions = personalKey ? {
+    run: geminiRunner(personalKey, options.geminiKeys?.model), model: options.geminiKeys?.model ?? AI_FILL_MODEL,
+    sources: options.aiFill?.sources ?? [], available: async () => await personalKey() !== null,
+  } : options.aiFill;
+  const aiFillSources = new Set(fillOptions?.sources ?? []);
 
   const comments = new Comments(store);
 
@@ -49,7 +57,7 @@ export async function createRuntime(options: AppOptions, store: Store) {
   /** New records whose audio waits for their AI title fill, so it reads the filled title and summary. */
   const afterFill = new Set<string>();
 
-  const aiFill = options.aiFill ? createAiFill({ store, ...options.aiFill, onSettled: async id => {
+  const aiFill = fillOptions ? createAiFill({ store, ...fillOptions, onSettled: async id => {
     if (!afterFill.delete(id)) return;
     try { (await autoNarrate((await store.get(id)))); }
     catch (error) { if (!(error instanceof ApiError) || error.status !== 404) throw error; }
@@ -57,6 +65,11 @@ export async function createRuntime(options: AppOptions, store: Store) {
 
 
   const narration = createNarration({ provider: null, ...options.narration, store,
+    ...(personalKey && keys && options.narrationEnabled !== false ? {
+      provider: options.personalProvider ? options.personalProvider(personalKey) : geminiProvider({ key: personalKey }),
+      requireKey: () => keys.require(store.db.userId),
+      autoDefaults: { digests: "off" as const, records: "off" as const },
+    } : {}),
     timeZone,
     audioDir: store.db.userId === "local"
       ? options.narration?.audioDir ?? join(dirname(options.databasePath ?? "data/dashboard.sqlite"), "audio")
