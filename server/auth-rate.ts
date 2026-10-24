@@ -20,7 +20,7 @@ export function authClientKey(request: Request, socketAddress: string | undefine
   return [...words.slice(0, 4).map(word => word.padStart(4, "0")), "0000", "0000", "0000", "0000"].join(":") + "/64";
 }
 
-export function authLimiter(now: () => number, hops = 0, startLimit = 300) {
+export function authLimiter(now: () => number, hops = 0, startLimit = 900) {
   const buckets = new Map<string, number>();
   const startNetworks = new Map<string, number>();
   let starts = 0;

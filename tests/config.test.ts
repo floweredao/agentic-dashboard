@@ -52,12 +52,12 @@ test("forwarded auth addresses are trusted only for hosted proxy ingress", () =>
 
 test("auth limits parse operator overrides independently of defaults", () => {
   // Given explicit operator settings distinct from the defaults.
-  const env = { TRUSTED_PROXY_HOPS: "2", PENDING_SIGN_IN_LIMIT: "7", AUTH_START_LIMIT: "3" };
+  const env = { TRUSTED_PROXY_HOPS: "2", PENDING_SIGN_IN_LIMIT: "31", AUTH_START_LIMIT: "3" };
   // When configuration is parsed.
   const config = parseConfig(env);
   // Then both settings survive boundary parsing.
   expect(config.TRUSTED_PROXY_HOPS).toBe(2);
-  expect(config.PENDING_SIGN_IN_LIMIT).toBe(7);
+  expect(config.PENDING_SIGN_IN_LIMIT).toBe(31);
   expect(config.AUTH_START_LIMIT).toBe(3);
 });
 
@@ -69,7 +69,24 @@ test("auth limits default to one trusted hop and ten thousand pending starts", (
   // Then bounded defaults are available.
   expect(config.TRUSTED_PROXY_HOPS).toBe(1);
   expect(config.PENDING_SIGN_IN_LIMIT).toBe(10000);
-  expect(config.AUTH_START_LIMIT).toBe(300);
+  expect(config.AUTH_START_LIMIT).toBe(900);
+});
+
+test.each([900, 901])("startup refuses a start ceiling of %i when pending capacity is 9000", limit => {
+  // Given a ten-minute allowance that meets or exceeds pending capacity.
+  const env = { AUTH_START_LIMIT: String(limit), PENDING_SIGN_IN_LIMIT: "9000" };
+  // When startup parses the operator settings, then unsafe capacity is refused.
+  expect(() => parseConfig(env)).toThrow();
+});
+
+test("startup accepts a start allowance strictly below pending capacity", () => {
+  // Given one row of headroom above the ten-minute allowance.
+  const env = { AUTH_START_LIMIT: "900", PENDING_SIGN_IN_LIMIT: "9001" };
+  // When startup parses the settings.
+  const config = parseConfig(env);
+  // Then the safe relationship preserves both operator choices.
+  expect(config.AUTH_START_LIMIT).toBe(900);
+  expect(config.PENDING_SIGN_IN_LIMIT).toBe(9001);
 });
 
 test.each(["0", "-1", "1.5", "invalid", ""])("auth settings reject invalid positive integers: %s", value => {
@@ -80,25 +97,28 @@ test.each(["0", "-1", "1.5", "invalid", ""])("auth settings reject invalid posit
   }
 });
 
-const configuredAuthApp = (overrides: Readonly<Record<string, string>>) => createApp(appOptions(parseConfig({
+const configuredAuthApp = (overrides: Readonly<Record<string, string>>) => createApp({ ...appOptions(parseConfig({
   AUTH_MODE: "google", APP_ORIGIN: "https://example.test", APP_SECRETS: secrets(),
   PUSH: "off", DIGEST: "off", NARRATION: "off", DATABASE_PATH: ":memory:", AUTH_TRUST_PROXY: "on",
   ...overrides,
-})));
+})), now: () => Date.parse("2026-10-24T12:00:00Z") });
 
 test("configured pending capacity reaches the real sign-in route", async () => {
-  // Given production configuration with a two-row global cap.
-  const app = await configuredAuthApp({ PENDING_SIGN_IN_LIMIT: "2" });
+  // Given safe production configuration and legacy rows already at its capacity.
+  const app = await configuredAuthApp({ PENDING_SIGN_IN_LIMIT: "11", AUTH_START_LIMIT: "1" });
   try {
-    // When three independent clients start sign-in.
-    const responses = [];
-    for (let i = 1; i <= 3; i++) responses.push(await app.fetch(new Request("https://example.test/auth/google/start", {
-      headers: { "X-Forwarded-For": `198.51.100.${i}` },
-    })));
+    await app.sql.run(`WITH RECURSIVE pending(n) AS (
+      VALUES(1) UNION ALL SELECT n+1 FROM pending WHERE n<11)
+      INSERT INTO oauth_transactions(tx_hash,expires_at)
+      SELECT 'legacy-' || n || ':tx', ? FROM pending`, [Date.parse("2026-10-24T12:10:00Z")]);
+    // When a new client starts sign-in.
+    const response = await app.fetch(new Request("https://example.test/auth/google/start", {
+      headers: { "X-Forwarded-For": "198.51.100.1" },
+    }));
     // Then new clients are admitted while total pending storage stays bounded.
-    expect(responses.map(response => response.status)).toEqual([302, 302, 302]);
+    expect(response.status).toBe(302);
     const row = z.object({ count: z.number() }).parse(await app.sql.get("SELECT count(*) AS count FROM oauth_transactions"));
-    expect(row.count).toBe(2);
+    expect(row.count).toBe(11);
   } finally { await app.close(); }
 });
 
