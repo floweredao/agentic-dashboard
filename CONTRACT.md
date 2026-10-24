@@ -264,6 +264,17 @@ Each tenant's narration and Gemini title-fill runner resolves its personal key a
 
 The container listens on `0.0.0.0:8080` and includes the digest-pinned static ffmpeg 7.1 image's encoder. Encoding chooses ffmpeg first, macOS afconvert second, and preserves WAV if neither encoder is available.
 
+## Hosted deployment tools
+
+`scripts/bootstrap-gcp.sh`, `scripts/set-secret.ts` and `scripts/deploy-cloud-run.sh`
+require a private dotenv configuration via `--env-file` and refuse execution
+without `--yes`. `--dry-run` renders commands without invoking GCP/Turso or
+materializing secrets. Secret JSON travels through captured stdout and upload
+stdin, never command arguments or logs. Runtime IAM is scoped to the named
+secret, audio bucket, task queue and service account. See
+[deployment tooling](docs/deploy.md#hosted-google-sign-in-deployment-tooling)
+for prerequisites, sequencing, retention and the limits of dry-run validation.
+
 ## Demo mode
 
 With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](docs/demo.md)):
