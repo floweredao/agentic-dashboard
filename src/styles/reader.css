@@ -219,7 +219,12 @@ button.listen-play:active, .listen-open:active .listen-play { opacity: .7; }
 @media (max-width: 767px) {
   .reader-inner { padding: 20px 20px 40px; }
   .reader-title { font-size: 1.3125rem; }
-  .reader-actions { top: calc(var(--appbar) + var(--safe-top)); margin: 14px -20px 0; padding: 8px 20px; }
+  /* One row on a phone: the buttons keep their 44px targets, More sits at the end and the primary label shortens first. */
+  .reader-actions { top: calc(var(--appbar) + var(--safe-top)); flex-wrap: nowrap; gap: 4px; margin: 14px -20px 0; padding: 8px 20px; }
+  .reader-actions > * { flex: none; }
+  .reader-actions > .btn-primary { flex: 0 1 auto; min-width: 0; }
+  .reader-actions .btn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reader-actions > .menu-wrap { margin-left: auto; }
   .reader-actions .btn, .reader-corner-button, .reader-top .reader-meta { min-height: 44px; }
   .reader-corner-button { width: 44px; }
   .reader-actions .icon-toggle { width: 44px; }
