@@ -8,6 +8,8 @@
 - Port operational reading and accessibility fixes: equal phone tabs, two recent digests, full-screen digest reading, scalable text, touch targets and clearer states.
 - Narrate every new narratable record and meaningful text edit, defer temporary failures, and run independent jobs concurrently.
 - Separate Vertex and key script models, improve listening scripts, remove work logs and source lists, and add ffmpeg encoding plus portable storage documentation.
+- Call the app Agentic Dashboard everywhere users see a name (push titles, export file and its README, terms), and fix phone layout: tab badges on the glyph corner, one-line digest filter, a one-row reader toolbar, the full sidebar name and settings cards on the page gutter.
+- Rewrite both READMEs around what the app does and why, with fresh desktop and phone screenshots of the fixed layout, and add the Google OAuth client steps.
 
 All notable changes to this project are documented here.
 
