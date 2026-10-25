@@ -25,7 +25,7 @@ test("a client abort during download removes its private export directory", asyn
       headers: f.a.headers, signal: abort.signal,
     }));
     expect(response.status).toBe(200);
-    expect((await readdir(directory)).filter(name => name.startsWith("floweredao-export-"))).toHaveLength(1);
+    expect((await readdir(directory)).filter(name => name.startsWith("agentic-dashboard-export-"))).toHaveLength(1);
     const reader = response.body?.getReader();
     if (!reader) throw new Error("Missing export body");
     try {
@@ -35,7 +35,7 @@ test("a client abort during download removes its private export directory", asyn
       abort.abort();
       await expect(closed).rejects.toThrow();
       // Then: cleanup removed the directory and released the account lease.
-      expect((await readdir(directory)).filter(name => name.startsWith("floweredao-export-"))).toEqual([]);
+      expect((await readdir(directory)).filter(name => name.startsWith("agentic-dashboard-export-"))).toEqual([]);
       expect(z.object({ export_lease: z.null() }).parse(
         await f.app.sql.get("SELECT export_lease FROM users WHERE id='a'")).export_lease).toBeNull();
     } finally { reader.releaseLock(); }

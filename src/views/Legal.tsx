@@ -21,7 +21,7 @@ const text = strings({
       ["Changes", "The effective date above identifies this policy version. Material processing changes should be announced before they take effect. Contact the operator about this installation's actual configuration or unresolved requests."],
     ],
     termsSections: [
-      ["Service and eligibility", "floweredao is an inbox for results saved by your AI agents. Hosted access requires a verified Google account and available capacity. It is not intended for children under 14. Use the service only when you can consent to these terms under applicable law."],
+      ["Service and eligibility", "Agentic Dashboard is an inbox for results saved by your AI agents. Hosted access requires a verified Google account and available capacity. It is not intended for children under 14. Use the service only when you can consent to these terms under applicable law."],
       ["Your account and agents", "Keep credentials private, give tokens only to agents you trust and revoke lost tokens. A token can read the account's shared records and edit its own records; channels are attribution, not separate private inboxes. You are responsible for what your agents submit and for permission to store or share it."],
       ["Content and sharing", "You retain rights to your content and permit the operator to process it only to provide and operate the service. Do not upload unlawful material, infringe others' rights, compromise accounts or abuse the service. Anyone holding a share link can read its published projection until you revoke it."],
       ["Optional providers and costs", "Reading and saving need no Gemini key. AI generation is optional, uses your Google project and may incur provider charges. Free availability varies by project, region, model and provider terms; no fixed free audio allowance or currency cap is promised. App limits count starts, including failed starts; one start may make several provider requests."],
@@ -51,7 +51,7 @@ const text = strings({
       ["변경 안내", "위 시행일로 방침의 버전을 구분해요. 중요한 처리 변경은 적용 전에 안내해야 해요. 실제 설치 설정이나 해결되지 않은 요청은 운영자에게 문의해 주세요."],
     ],
     termsSections: [
-      ["서비스와 이용 자격", "floweredao는 AI 에이전트가 저장한 결과를 모아 읽는 공간이에요. 호스팅 서비스에는 확인된 Google 계정과 남은 가입 정원이 필요해요. 만 14세 미만을 대상으로 하지 않으며, 적용 법률에 따라 이 약관에 동의할 수 있을 때 이용해 주세요."],
+      ["서비스와 이용 자격", "Agentic Dashboard는 AI 에이전트가 저장한 결과를 모아 읽는 공간이에요. 호스팅 서비스에는 확인된 Google 계정과 남은 가입 정원이 필요해요. 만 14세 미만을 대상으로 하지 않으며, 적용 법률에 따라 이 약관에 동의할 수 있을 때 이용해 주세요."],
       ["계정과 에이전트", "인증 정보를 비공개로 보관하고 신뢰하는 에이전트에게만 토큰을 주세요. 잃어버린 토큰은 해제해 주세요. 토큰은 계정의 공유 기록을 읽고 자신이 저장한 기록을 수정할 수 있으며 채널은 별도의 비공개 보관함이 아니에요. 에이전트가 올리는 내용과 저장·공유 권한을 확인할 책임은 사용자에게 있어요."],
       ["콘텐츠와 공유", "콘텐츠의 권리는 사용자에게 있으며 운영자는 서비스 제공과 운영에 필요한 범위에서만 처리할 수 있어요. 불법 자료 업로드, 타인의 권리 침해, 계정 침해와 서비스 악용은 허용하지 않아요. 공유 링크를 가진 사람은 공유를 끌 때까지 공개된 내용을 읽을 수 있어요."],
       ["선택 기능과 비용", "읽기와 저장에는 Gemini 키가 필요하지 않아요. AI 생성은 선택 사항이며 내 Google 프로젝트를 사용해 제공자 요금이 발생할 수 있어요. 무료 이용 여부는 프로젝트·지역·모델·제공자 약관에 따라 달라지며 정해진 무료 음성 수나 금액 상한을 약속하지 않아요. 앱 한도는 실패를 포함한 시작 횟수이며, 한 번의 시작에 여러 제공자 요청이 발생할 수 있어요."],
