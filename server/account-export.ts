@@ -54,7 +54,7 @@ export async function accountExport(store: Store, audio: AudioStore, readme: str
       WHERE id=? AND deleted_at IS NULL AND (export_until IS NULL OR export_until<=?)`,
     [lease, store.now() + DURATION, userId, store.now()]);
     if (!claimed.changes) throw new ApiError(429, "account_export_busy", "An account export is already in progress");
-    directory = await mkdtemp(join(tmpdir(), "floweredao-export-"));
+    directory = await mkdtemp(join(tmpdir(), "agentic-dashboard-export-"));
     const root = directory, dataPath = join(root, "data.json"), audioPath = join(root, "audio-entry");
     const names = new Set<string>();
     const writer = Bun.file(dataPath).writer({ highWaterMark: 65536 });
@@ -150,7 +150,7 @@ export async function accountExport(store: Store, audio: AudioStore, readme: str
     }, { highWaterMark: 0 });
     return new Response(body, { headers: {
       "Content-Type": "application/gzip", "Content-Length": String(file.size),
-      "Content-Disposition": 'attachment; filename="floweredao-export.tar.gz"', "Cache-Control": "private, no-store",
+      "Content-Disposition": 'attachment; filename="agentic-dashboard-export.tar.gz"', "Cache-Control": "private, no-store",
     } });
   } catch (error) {
     await cleanup();

@@ -14,7 +14,7 @@ const port = z.coerce.number().int().min(1).max(65535).parse(process.env.PORT ??
 const directory = mkdtempSync(join(tmpdir(), "hosted-qa-"));
 const issuer = await mockOidc();
 const config = parseConfig({
-  AUTH_MODE: "google", APP_ORIGIN: `http://127.0.0.1:${port}`, PORT: String(port), PUSH: "off", APP_NAME: "floweredao",
+  AUTH_MODE: "google", APP_ORIGIN: `http://127.0.0.1:${port}`, PORT: String(port), PUSH: "off",
   DATA_DIR: directory, TIME_ZONE: "UTC", LOCALE: "en", NARRATION_RECORD_AUTO: "off",
   CONTACT_EMAIL: "operator@example.test", DATABASE_REGION: "local QA database",
   APP_SECRETS: JSON.stringify({ google: { clientId: "mock-client", clientSecret: secret() }, sessionSigningKey: secret(),

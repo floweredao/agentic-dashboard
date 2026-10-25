@@ -10,7 +10,7 @@ const userRow = z.object({ id: z.string(), email: z.email().nullable(), locale: 
   time_zone: z.string().nullable(), onboarded_at: z.string().nullable(), agent_saved_at: z.string().nullable(),
   features: z.string(), agent_saved_record: z.string().nullable() });
 const exportReadme = [
-  "floweredao account export / 계정 내보내기", "",
+  "Agentic Dashboard account export / 계정 내보내기", "",
   "Open this .tar.gz archive with your operating system's archive utility.",
   "data.json contains your account and every tenant table: records, HTML documents, trash, comments, digests, narration scripts, agents, shares, settings and push endpoints.",
   "Record data and digest sections are JSON strings inside their table rows. audio/ contains audio referenced by narration rows.",
