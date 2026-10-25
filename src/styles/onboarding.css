@@ -17,6 +17,10 @@
 .legal-page ul, .phone-steps { padding-inline-start: 24px; list-style: disc; }
 .phone-steps li { margin-block: 8px; line-height: 1.75; }
 .account-danger { padding: 20px; border: 1px solid var(--line); border-radius: var(--r-lg); }
+/* In Settings the card keeps the page gutter like the other grouped cards instead of running into the screen edges. */
+.settings-page .account-danger { margin-inline: 16px; }
+/* Inside a card the heading lines up with the card's text; the 4px list-header inset is for headings above a list. */
+.setup-panel .more-heading, .account-danger .more-heading { padding-inline: 0; }
 .account-danger .btn-danger { background: var(--danger); color: var(--on-ink); }
 .onboarding-empty { margin: 24px 16px; padding: 24px; border: 1px solid var(--line); border-radius: var(--r-lg); display: grid; gap: 16px; }
 .onboarding-empty h2 { font-size: 1.25rem; color: var(--ink); }

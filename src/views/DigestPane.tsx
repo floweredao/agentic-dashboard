@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
-import { CalendarDays, Layers, Mail, Newspaper } from "lucide-react";
+import { CalendarDays, Newspaper } from "lucide-react";
 import type { DigestHit, DigestSummary } from "../../shared/contracts";
 import { errorMessage, loadDigests, searchDigests } from "../api";
 import { BackButton, Chip, Empty, SidebarOpen } from "../components/primitives";
@@ -112,9 +112,8 @@ export function DigestPane() {
         <div className="segmented" role="group" aria-label={t.filterGroup}>
           {DIGEST_FILTERS.map(each => {
             const unread = (each === "all" ? page?.unread : page?.parts[each].unread) ?? 0;
-            const Icon = each === "messages" ? Mail : each === "articles" ? Newspaper : Layers;
             return <button key={each} type="button" aria-pressed={part === each} onClick={() => pickPart(each)}>
-              <Icon size={15} aria-hidden="true" />{filterLabel(each)}
+              {filterLabel(each)}
               {unread > 0 && <span className="segment-count"><span className="visually-hidden">{t.unread}</span>{unread}</span>}
             </button>;
           })}
