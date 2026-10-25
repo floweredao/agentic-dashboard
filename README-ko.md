@@ -1,30 +1,42 @@
 <p align="center"><img src="public/icon.svg" width="84" height="84" alt=""></p>
 
-# floweredao · Agentic Dashboard
+# Agentic Dashboard
 
-**AI 에이전트가 한 일을 모아 읽는 받은편지함입니다.** Codex, Claude Code, OmO나 HTTP 클라이언트가 조사 결과, 보고서, 메모, 링크, 다이제스트를 올립니다. 데스크톱이나 휴대폰에서 읽고 코멘트로 일을 이어 갑니다.
+**AI 에이전트가 끝낸 일을 한곳에 모아 읽는 받은편지함이에요.** Codex, Claude Code, OmO나 HTTP 클라이언트가 조사 결과, 작업 보고, 메모, 링크, 아침·저녁 다이제스트를 여기에 저장해요. 데스크톱이나 휴대폰에서 결론부터 읽고, 다음 할 일을 코멘트로 돌려보내요.
 
-대화 기록 속에 묻히는 결과를 한곳에 모읍니다. 저장 형식을 검증하고, 본문을 검색하며, 결론부터 읽을 수 있습니다.
+이런 점이 좋아요.
 
-- **읽고 검토하기:** 메인에서 최근 기록·다이제스트·열린 할 일을 보고, 기록 화면에서 확인 상태·즐겨찾기·보관 여부로 찾습니다.
-- **에이전트와 협업하기:** 에이전트별 토큰, 할 일 진행 기록, 코멘트, 안전한 재시도, 1회용 컴퓨터 연결을 지원합니다.
-- **전체 문서 읽기:** Markdown, 표, 코드, 샌드박스 HTML 첨부 문서와 전체 화면 읽기를 지원합니다.
-- **원할 때 듣기:** 읽어 주기나 두 진행자의 팟캐스트로 들을 수 있습니다. 호스팅 모드는 개인 Gemini 키를 사용합니다.
-- **어디서나 사용하기:** 영어·한국어, 시스템 라이트·다크 테마, 휴대폰 홈 화면 설치, 선택형 푸시 알림을 제공합니다.
-- **운영 방식 고르기:** 로컬 1인 설치 또는 데이터가 계정별로 분리되고 내보내기·삭제가 가능한 Google 로그인 모드로 운영합니다.
+- **결과가 대화 기록 속에 묻히지 않아요.** 저장할 때마다 결론·요약·출처·다음 할 일을 갖춘 한 가지 형식으로 검증하고, 나중에 검색할 수 있어요.
+- **다시 읽지 않고 검토만 하면 돼요.** 새 결과는 미확인으로 들어오고, 한 번 눌러 확인하거나 즐겨찾기하거나 나중에 다시 보도록 미룰 수 있어요.
+- **자리를 비워도 에이전트가 이어서 일해요.** 할 일마다 에이전트 보고와 내 코멘트가 시간순으로 쌓여, 에이전트가 남긴 메모에서 바로 이어 가요.
+- **내 데이터는 내가 가져요.** 내 컴퓨터에서 로컬 SQLite로 쓰거나, 계정마다 데이터가 분리되고 내보내기·삭제가 되는 Google 로그인 서비스로 배포할 수 있어요.
+
+## 주요 기능
+
+- **메인·다이제스트·기록:** 최근 기록, 아침·저녁 다이제스트, 열린 할 일을 한 화면에서 보고, 미확인·즐겨찾기·보관됨으로 걸러 봐요.
+- **어느 화면에서나 읽기 좋게:** Markdown, 표, 코드, 샌드박스 HTML 문서, 전체 화면 읽기, 아래 탭 막대와 44pt 터치 영역을 갖춘 휴대폰 화면.
+- **에이전트 연결:** 에이전트별 토큰, 1회용 컴퓨터 초대, 요청 ID로 안전한 재시도, 코멘트와 할 일 보고.
+- **원할 때 듣기:** 내 Gemini 키로 읽어 주기나 두 진행자 팟캐스트 음성을 만들 수 있어요.
+- **영어·한국어, 라이트·다크:** 시스템 언어와 테마를 따르고, 휴대폰 홈 화면에 설치해 푸시 알림도 받을 수 있어요.
 
 [빠른 시작](#빠른-시작) · [호스팅 계정](#호스팅-계정) · [에이전트 연결](#에이전트-연결하기) · [English](README.md)
 
 ## 화면
 
-격리된 로컬 호스팅 서버에서 한국어 화면과 가상 예제 기록을 촬영했습니다. 라이트 다음 다크 순서이며, 개인 데이터나 실제 Google 계정은 사용하지 않았습니다.
+격리된 로컬 서버에서 한국어 화면과 예시 기록으로 찍었어요. 라이트 다음 다크 순서예요.
 
-![한국어 호스팅 라이브러리와 조사 본문, 라이트 모드](docs/images/hosted-ko-desktop-light.png)
-![같은 한국어 호스팅 본문, 다크 모드](docs/images/hosted-ko-desktop-dark.png)
+![데스크톱의 기록 목록과 조사 기록, 라이트 모드](docs/images/ko-desktop-light.png)
+![같은 데스크톱 화면, 다크 모드](docs/images/ko-desktop-dark.png)
 
 <p>
-  <img src="docs/images/hosted-ko-phone-light.png" width="280" alt="휴대폰의 한국어 홈, 라이트 모드">
-  <img src="docs/images/hosted-ko-phone-dark.png" width="280" alt="휴대폰의 한국어 홈, 다크 모드">
+  <img src="docs/images/ko-phone-home-light.png" width="250" alt="휴대폰의 메인, 라이트 모드">
+  <img src="docs/images/ko-phone-reader-light.png" width="250" alt="휴대폰의 조사 기록, 라이트 모드">
+  <img src="docs/images/ko-phone-digest-light.png" width="250" alt="휴대폰의 아침 다이제스트, 라이트 모드">
+</p>
+<p>
+  <img src="docs/images/ko-phone-home-dark.png" width="250" alt="휴대폰의 메인, 다크 모드">
+  <img src="docs/images/ko-phone-reader-dark.png" width="250" alt="휴대폰의 조사 기록, 다크 모드">
+  <img src="docs/images/ko-phone-digest-dark.png" width="250" alt="휴대폰의 아침 다이제스트, 다크 모드">
 </p>
 
 ## 두 가지 운영 방식
@@ -73,6 +85,14 @@ bun start
 ## 호스팅 계정
 
 운영자는 기존 [Cloud Run 배포 절차](docs/deploy.md#hosted-google-sign-in-deployment-tooling)에 따라 리소스 생성, 비밀 설정, 배포를 진행합니다. 본인의 결제 활성화 Google Cloud 프로젝트, Turso 계정·그룹, Google OAuth 클라이언트가 필요합니다. 실행 전 세 도구를 모두 `--dry-run`으로 확인하세요. 유휴 사용량을 낮추고 예산 알림을 설정해도 요금이 0원으로 보장되지는 않습니다.
+
+### Google 로그인
+
+Google Cloud 콘솔의 **Google 인증 플랫폼**에서 OAuth 클라이언트를 한 번 만들어요.
+
+1. **브랜딩:** 앱 이름, 지원 이메일, 개발자 연락처를 넣고 **대상**은 외부로 정해요. 테스트 상태에서는 추가한 테스트 사용자만 로그인할 수 있으니 가입을 열기 전에 게시해요. 기본 범위(`openid`, `email`, `profile`)는 Google 검증이 필요 없어요.
+2. **클라이언트 → 클라이언트 만들기 → 웹 애플리케이션:** *승인된 JavaScript 원본*에 내 origin을, *승인된 리디렉션 URI*에 `<APP_ORIGIN>/auth/google/callback`을 넣어요. 루프백 시험이면 `http://localhost:<포트>`와 그 콜백 주소로 돼요.
+3. 클라이언트 JSON을 내려받아 저장소 밖에 두고, `client_id`와 `client_secret`을 `APP_SECRETS.google`에 넣어요(Cloud Run이면 `bun scripts/set-secret.ts`가 Secret Manager에 저장해요).
 
 `AUTH_MODE=google`은 하나의 HTTPS origin과 기본 리스너를 사용합니다. Google 리디렉션 URI로 `<APP_ORIGIN>/auth/google/callback`을 등록합니다. 공개 연락처와 실제 데이터베이스 리전을 설정하고 Google·서명·암호화·푸시 비밀은 저장소 밖에 보관합니다. [.env.example](.env.example)로 시작하고, 고급 경로·공급자 설정은 [실행 설정 표](docs/hosted-auth.md#runtime-environment-reference)를 참고하세요.
 

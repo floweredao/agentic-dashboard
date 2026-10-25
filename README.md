@@ -1,30 +1,42 @@
 <p align="center"><img src="public/icon.svg" width="84" height="84" alt=""></p>
 
-# floweredao · Agentic Dashboard
+# Agentic Dashboard
 
-**A reading inbox for the work your AI agents do.** Codex, Claude Code, OmO or any HTTP client can file research, reports, notes, links and digests. Read the result on your desktop or phone, then hand work back with a comment.
+**One inbox for everything your AI agents finish.** Codex, Claude Code, OmO or any HTTP client saves its research, work reports, notes, links and daily digests here. You read the conclusion first on your desktop or phone, then send the next step back as a comment.
 
-Keep useful work out of disappearing chat logs: one validated record format, searchable content, and conclusions before detail.
+Why it helps:
 
-- **Read and review:** Home brings recent records, digests and open tasks together; Library filters material by review state, favorites and archive.
-- **Work with agents:** per-agent tokens, task timelines, comments, safe retries and one-time computer connections.
-- **Read the full document:** Markdown, tables, code and sandboxed HTML attachments, plus full-screen reading.
-- **Listen when you choose:** optional read-aloud or two-host podcast audio, with personal Gemini keys in hosted mode.
-- **Use it anywhere:** English/Korean UI, system light/dark themes, installable phone app and optional push.
-- **Choose your hosting:** a local single-owner install, or deployable Google-authenticated accounts with isolated data, export and deletion.
+- **Results stop disappearing into chat logs.** Every save is validated into one record format with a conclusion, summary, sources and next actions, and it stays searchable.
+- **You review instead of re-reading.** New work arrives marked To review; one tap confirms it, stars it or schedules a second look.
+- **Agents keep working while you are away.** Tasks carry a timeline of agent reports and your comments, so an agent can pick up exactly where you left a note.
+- **It is yours.** Run it on your own computer with local SQLite, or deploy accounts with Google sign-in where each account's data is kept apart and can be exported or deleted.
+
+## Key features
+
+- **Home, Digest and Library:** recent records, the morning and evening digests and open tasks on one screen; filters for To review, Favorites and Archived.
+- **Readable on any screen:** Markdown, tables, code and sandboxed HTML documents, full-screen reading, and a phone layout with a bottom tab bar and 44pt touch targets.
+- **Agent connections:** a token per agent, one-time computer invitations, safe retries with request IDs, comments and task reports.
+- **Listen when you want:** optional read-aloud or two-host podcast audio from your own Gemini key.
+- **English and Korean, light and dark:** follows the system language and theme; installable on a phone's home screen with optional push.
 
 [Quick start](#quick-start) · [Hosted accounts](#hosted-accounts) · [Connect agents](#connect-your-agents) · [한국어](README-ko.md)
 
 ## Screenshots
 
-English UI and synthetic records from an isolated local hosted server, light first, then dark. No personal data or real Google account was used.
+English interface with sample records on an isolated local server; light first, then dark.
 
-![English hosted Library and research reader in light mode](docs/images/hosted-en-desktop-light.png)
-![The same English hosted reader in dark mode](docs/images/hosted-en-desktop-dark.png)
+![Library and a research record on a desktop, light mode](docs/images/en-desktop-light.png)
+![The same desktop view in dark mode](docs/images/en-desktop-dark.png)
 
 <p>
-  <img src="docs/images/hosted-en-phone-light.png" width="280" alt="English Home on a phone in light mode">
-  <img src="docs/images/hosted-en-phone-dark.png" width="280" alt="English Home on a phone in dark mode">
+  <img src="docs/images/en-phone-home-light.png" width="250" alt="Home on a phone, light mode">
+  <img src="docs/images/en-phone-reader-light.png" width="250" alt="A research record on a phone, light mode">
+  <img src="docs/images/en-phone-digest-light.png" width="250" alt="The morning digest on a phone, light mode">
+</p>
+<p>
+  <img src="docs/images/en-phone-home-dark.png" width="250" alt="Home on a phone, dark mode">
+  <img src="docs/images/en-phone-reader-dark.png" width="250" alt="A research record on a phone, dark mode">
+  <img src="docs/images/en-phone-digest-dark.png" width="250" alt="The morning digest on a phone, dark mode">
 </p>
 
 ## Two ways to run it
@@ -73,6 +85,14 @@ Prebuilt binaries and Docker instructions are in [Deploying](docs/deploy.md); ch
 ## Hosted accounts
 
 Operators use the existing [Cloud Run deployment workflow](docs/deploy.md#hosted-google-sign-in-deployment-tooling): provision resources, configure secrets, then deploy. It requires your own billing-enabled Google Cloud project, Turso account/group and Google OAuth client. Inspect all three tooling entrypoints with `--dry-run` before execution. Low idle usage and budget alerts do not guarantee a zero bill.
+
+### Google sign-in
+
+Create the OAuth client once in the Google Cloud console under **Google Auth Platform**:
+
+1. **Branding:** app name, support email and developer contact; **Audience:** External. While the app is in Testing, only the test users you add can sign in; publish it before opening sign-up. Basic scopes (`openid`, `email`, `profile`) need no Google verification.
+2. **Clients → Create client → Web application:** add your origin to *Authorized JavaScript origins* and `<APP_ORIGIN>/auth/google/callback` to *Authorized redirect URIs*. For a loopback test, `http://localhost:<port>` and its callback work.
+3. Download the client JSON and keep it outside the checkout; put its `client_id` and `client_secret` into `APP_SECRETS.google` (`bun scripts/set-secret.ts` stores them in Secret Manager for Cloud Run).
 
 `AUTH_MODE=google` uses one HTTPS origin and the main listener. Register `<APP_ORIGIN>/auth/google/callback` as the Google redirect URI. Set the public contact and actual database region, and keep Google, signing, encryption and push secrets outside the checkout. Start with [.env.example](.env.example); the [runtime reference](docs/hosted-auth.md#runtime-environment-reference) also covers advanced overrides.
 

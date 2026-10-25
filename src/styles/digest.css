@@ -1,10 +1,10 @@
-/* 전체·뉴스·메일 switch: a three-segment control at the top of the 다이제스트 list; each segment carries its unread count. */
+/* 전체·뉴스·메일 switch: a three-segment control at the top of the 다이제스트 list; each segment is a text label and its unread count on one line (HIG: text or images in a segmented control, not both). */
 .segmented {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px;
   border-radius: 10px; background: var(--selected);
 }
 .segmented button {
-  display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 6px; min-width: 0; min-height: 32px; padding: 0 8px;
+  display: inline-flex; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 32px; padding: 0 8px;
   border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 0.84375rem; font-weight: 600;
   overflow-wrap: anywhere; word-break: normal; white-space: normal;
   transition: background-color 120ms var(--ease), color 120ms var(--ease);
@@ -183,8 +183,8 @@
 .setting-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 12px 10px 14px; color: var(--ink); font-size: 0.9375rem; font-weight: 500; }
 .setting-note { color: var(--faint); font-size: var(--text-meta); font-weight: 500; line-height: 1.4; }
 .setting-row .btn { flex-shrink: 0; }
-/* Language: the three choices as radio rows, inside the page gutter like the lists. */
-.settings-languages { display: grid; gap: 8px; min-width: 0; margin: 0 16px; padding: 0; border: 0; }
+/* Language: the three choices as radio rows, on the same gutter as the section's other rows (the group already pads it). */
+.settings-languages { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
 .language-option {
   display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-lg);
   background: var(--surface); cursor: pointer; transition: background-color 160ms var(--ease);
@@ -197,7 +197,7 @@
 .language-option-text { display: grid; gap: 2px; min-width: 0; }
 .language-option-text strong { color: var(--ink); font-size: 0.90625rem; font-weight: 600; }
 .language-option-text span { color: var(--muted); font-size: 0.8125rem; line-height: 1.5; }
-.settings-language-note { margin: 8px 16px 0; }
+.settings-language-note { margin: 8px 0 0; }
 @media (prefers-reduced-motion: reduce) { .language-option { transition: none; } }
 .switch {
   position: relative; flex-shrink: 0; width: 46px; height: 28px; padding: 0; border: 0; border-radius: 999px;

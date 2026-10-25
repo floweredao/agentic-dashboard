@@ -99,6 +99,6 @@ export function exportResponse(file: BunFile, signal: AbortSignal, cleanup: () =
   });
   return new Response(body, { headers: {
     "Content-Type": "application/gzip", "Content-Length": String(file.size),
-    "Content-Disposition": 'attachment; filename="floweredao-export.tar.gz"', "Cache-Control": "private, no-store",
+    "Content-Disposition": 'attachment; filename="agentic-dashboard-export.tar.gz"', "Cache-Control": "private, no-store",
   } });
 }

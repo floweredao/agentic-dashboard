@@ -57,7 +57,7 @@ export function AccountControls() {
           if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
           downloadUrl.current = URL.createObjectURL(blob);
           const link = document.createElement("a");
-          link.href = downloadUrl.current; link.download = "floweredao-export.tar.gz"; link.click();
+          link.href = downloadUrl.current; link.download = "agentic-dashboard-export.tar.gz"; link.click();
         }, async cause => { if (!request.signal.aborted) setExportError(await errorMessage(cause)); }).finally(() => {
           if (!request.signal.aborted) setExporting(false);
           if (downloadRequest.current === request) downloadRequest.current = null;
