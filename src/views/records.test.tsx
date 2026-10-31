@@ -60,10 +60,10 @@ test("the reader hides the version and shows legacy fields only when filled", ()
   expect(html).not.toContain("<h3>더 알아볼 점</h3>");
   expect(html).not.toMatch(/v3\b/);
   expect(html).toContain("저장 9월 28일</p>");
-  // And: the secondary commands sit behind one menu button.
+  // And: the other secondary commands sit behind one menu button (7일 뒤 다시 보기 also has its own button in the bar).
   expect(html).toContain('aria-haspopup="menu"');
   expect(html).toContain('aria-expanded="false"');
-  expect(html).not.toContain("7일 뒤");
+  expect(html).not.toContain("후속 할 일");
 });
 
 test("the reader shows the edit date only when it falls on another Seoul day", () => {
@@ -97,7 +97,7 @@ test("the reader lists links by address and names a finished confirmation", () =
   // And: every link is a whole-card block opening in a new tab, followed by the inline 링크 추가 button.
   expect(html.match(/<a class="link-card" href="https:\/\/example\.(com|net)[^"]*" target="_blank" rel="noopener noreferrer">/g)).toHaveLength(2);
   expect(html).toMatch(/<button[^>]*inline-add[^>]*>.*?링크 추가<\/button>/);
-  expect(html).toMatch(/disabled=""[^>]*>.*?확인함<\/button>/);
+  expect(html).toMatch(/disabled=""[^>]*>.*?<span class="btn-label">확인함<\/span><\/button>/);
 });
 
 test("task rows show status and due date without the channel and kind", async () => {
@@ -172,7 +172,7 @@ test("a pending item's primary button reads 확인 for every material kind", () 
   const report = withDashboard(<Reader record={make({ reviewState: "pending" })} />);
   // Then: both use the one vocabulary, with no read/unread wording or check mark.
   for (const html of [link, report]) {
-    expect(html).toMatch(/<button[^>]*btn-primary[^>]*>확인<\/button>/);
+    expect(html).toMatch(/<button[^>]*btn-primary[^>]*><span class="btn-label">확인<\/span><\/button>/);
     expect(html).toContain("미확인</span>");
     expect(html).not.toContain("읽음");
   }
@@ -185,7 +185,7 @@ test("an approved record with a due revisit keeps 확인함 and shows the separa
   expect(html).toContain(">확인함</span>");
   expect(html).toContain(">다시 볼 날</span>");
   expect(html).toMatch(/<button[^>]*>.*?다시 봤어요<\/button>/);
-  expect(html).toMatch(/disabled=""[^>]*>.*?확인함<\/button>/);
+  expect(html).toMatch(/disabled=""[^>]*>.*?<span class="btn-label">확인함<\/span><\/button>/);
 });
 
 test("Full screen shows only its icon, named for assistive tech and the pointer tooltip", () => {

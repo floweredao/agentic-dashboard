@@ -4,14 +4,14 @@ import { z } from "zod";
 import { DocumentStateSchema } from "../shared/contracts";
 import { agentRecord, bearer, fixture, recordResult } from "./backend-helper";
 
-const cleanups: (() => void)[] = [];
-afterEach(() => { while (cleanups.length) cleanups.pop()?.(); });
-function setup() {
-  const f = fixture();
-  cleanups.push(() => f.close());
+const cleanups: (() => void | Promise<void>)[] = [];
+afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });
+async function setup() {
+  const f = (await fixture());
+  cleanups.push(async () => (await f.close()));
   return f;
 }
-type Fixture = ReturnType<typeof setup>;
+type Fixture = Awaited<ReturnType<typeof setup>>;
 const HTML = "<!doctype html><html><head><title>t</title></head><body><h1>전체 문서</h1><p>본문</p><script>alert(1)</script></body></html>";
 const doc = (id: string) => `/api/v1/records/${id}/document`;
 async function create(f: Fixture, record: Record<string, unknown>, headers: HeadersInit) {
@@ -21,7 +21,7 @@ async function create(f: Fixture, record: Record<string, unknown>, headers: Head
 }
 
 test("the creating agent attaches an HTML document that the owner and readers get back unchanged; other agents cannot replace it", async () => {
-  const f = setup();
+  const f = (await setup());
   const owner = await f.login();
   const record = await create(f, agentRecord(), bearer("omo"));
   expect(DocumentStateSchema.parse(await (await f.call(doc(record.id), "GET", undefined, owner)).json()).document).toBeNull();
@@ -46,7 +46,7 @@ test("the creating agent attaches an HTML document that the owner and readers ge
 });
 
 test("documents are for material records, need HTML, refuse over 1 MiB, and answer 404 for unknown records", async () => {
-  const f = setup();
+  const f = (await setup());
   const owner = await f.login();
   const record = await create(f, agentRecord(), bearer("omo"));
   const task = await create(f, { kind: "task", title: "할 일", status: "todo" }, owner);
@@ -58,7 +58,7 @@ test("documents are for material records, need HTML, refuse over 1 MiB, and answ
 });
 
 test("a full research text far past the old 16,000 characters is saved as the body", async () => {
-  const f = setup();
+  const f = (await setup());
   const body = `## 배경\n\n${"전체 조사 내용을 그대로 남깁니다. ".repeat(3000)}`;
   expect(body.length).toBeGreaterThan(50_000);
   const record = await create(f, agentRecord({ body }), bearer("omo"));
@@ -66,7 +66,7 @@ test("a full research text far past the old 16,000 characters is saved as the bo
 });
 
 test("a document stays with a trashed record and its restore, and goes when the record is deleted for good", async () => {
-  const f = setup();
+  const f = (await setup());
   const owner = await f.login();
   const record = await create(f, agentRecord(), bearer("omo"));
   expect((await f.call(doc(record.id), "PUT", { html: HTML }, bearer("omo"))).status).toBe(200);

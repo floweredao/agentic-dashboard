@@ -1,6 +1,9 @@
 // Agentic Dashboard service worker: Web Push only. It caches nothing, so every load still gets the current build.
 // Payload (server/push.ts): { kind, title, body, url, tag }; url is an in-app address such as /#/digest/<id>.
 
+// An in-app address: one leading slash. "//host" and "/\host" are other sites to a browser.
+const inApp = url => typeof url === "string" && /^\/(?![/\\])/.test(url);
+
 self.addEventListener("install", () => { self.skipWaiting(); });
 self.addEventListener("activate", event => { event.waitUntil(self.clients.claim()); });
 
@@ -12,7 +15,7 @@ self.addEventListener("push", event => {
   event.waitUntil(self.registration.showNotification(payload.title || "Agentic Dashboard", {
     body: payload.body || "",
     tag: payload.tag || "Agentic Dashboard",
-    data: { url: typeof payload.url === "string" && payload.url.startsWith("/") ? payload.url : "/" },
+    data: { url: inApp(payload.url) ? payload.url : "/" },
     icon: "/icon-192.png",
     badge: "/favicon-32.png",
   }));
@@ -20,7 +23,7 @@ self.addEventListener("push", event => {
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
+  const url = event.notification.data && inApp(event.notification.data.url) ? event.notification.data.url : "/";
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     const target = windows.find(client => client.focused) || windows[0];

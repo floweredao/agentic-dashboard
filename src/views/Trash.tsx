@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { ArchiveRestore, Trash2 } from "lucide-react";
 import { TRASH_RETENTION_DAYS } from "../../shared/contracts";
 import { BackButton, Empty, SidebarOpen } from "../components/primitives";
-import { channelOf, channelLabel, kindLabels } from "../model";
+import { channelOf, channelLabel, kindLabels, localDate } from "../model";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
 
@@ -9,23 +10,23 @@ const text = strings({
   en: {
     purgeToday: "Deleted permanently today",
     purgeIn: (days: number) => `Deleted permanently in ${days} ${days === 1 ? "day" : "days"}`,
-    title: "Trash", emptyTrash: "Empty trash",
+    title: "Trash", emptyTrash: "Empty trash", emptying: "Emptying…",
     note: (days: number) => `Deleted items are kept for ${days} days, then removed permanently.`,
     empty: "Trash is empty", restore: "Restore", purge: "Delete permanently",
   },
   ko: {
     purgeToday: "오늘 영구 삭제",
     purgeIn: (days: number) => `${days}일 뒤 영구 삭제`,
-    title: "휴지통", emptyTrash: "휴지통 비우기",
+    title: "휴지통", emptyTrash: "휴지통 비우기", emptying: "비우는 중…",
     note: (days: number) => `삭제한 항목은 ${days}일 동안 보관한 뒤 영구 삭제돼요.`,
     empty: "휴지통이 비어 있음", restore: "복원", purge: "영구 삭제",
   },
 });
 
 const day = 86_400_000;
-/** Days left before the purge, rounded up; on the purge day itself it reads "today". */
+/** Calendar days (in the dashboard's zone) left before the purge; on the purge day itself it reads "today". */
 export function purgeLabel(purgeAt: string, now = Date.now()) {
-  const days = Math.max(0, Math.ceil((new Date(purgeAt).getTime() - now) / day));
+  const days = Math.max(0, Math.round((Date.parse(localDate(new Date(purgeAt))) - Date.parse(localDate(new Date(now)))) / day));
   return days === 0 ? text().purgeToday : text().purgeIn(days);
 }
 
@@ -34,14 +35,18 @@ export function TrashPane({ now = Date.now() }: { readonly now?: number }) {
   const t = text();
   const { trash, busy, restore, purge, emptyTrash } = useDashboard();
   const items = [...trash].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  /** The button says what it is doing until the server answers (the confirm dialog comes first, inside emptyTrash). */
+  const [emptying, setEmptying] = useState(false);
+  const empty = async () => { setEmptying(true); try { await emptyTrash(); } finally { setEmptying(false); } };
 
   return <div className="trash-page">
     <header className="trash-head">
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen />
         <h1 className="pane-title">{t.title} <span className="count">{items.length}</span></h1>
-        <button type="button" className="btn btn-quiet btn-danger trash-empty" onClick={() => { void emptyTrash(); }} disabled={busy || items.length === 0}>
-          {t.emptyTrash}
+        <button type="button" className="btn btn-quiet btn-danger trash-empty" onClick={() => { void empty(); }} disabled={busy || items.length === 0}
+          aria-busy={emptying && busy}>
+          {emptying && busy ? t.emptying : t.emptyTrash}
         </button>
       </div>
       <p className="pane-note">{t.note(TRASH_RETENTION_DAYS)}</p>
