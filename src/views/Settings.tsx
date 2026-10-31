@@ -13,10 +13,15 @@ import { viewTitles } from "../router";
 import { AutoSettings } from "./AutoSettings";
 import { VoiceSettings } from "./VoiceSettings";
 import { useRateLimited } from "../rate-limit";
+import { GeminiSettings } from "./GeminiSettings";
+import { useCredentials } from "../account-context";
+import { AccountControls } from "./AccountControls";
+import { PhoneSetup } from "./PhoneSetup";
 
 type KindText = { readonly label: string; readonly note: string };
 const text = strings({
   en: {
+    hideContent: "Hide notification content", hideNote: "Show a generic update instead of saved titles or excerpts on this device.",
     language: "Language",
     system: "Follow the system",
     systemNote: (name: string) => `This device: ${name}`,
@@ -54,6 +59,7 @@ const text = strings({
     ],
   },
   ko: {
+    hideContent: "알림 내용 숨기기", hideNote: "이 기기에서는 저장한 제목·내용 대신 새 업데이트가 있다는 안내만 표시해요.",
     language: "언어",
     system: "시스템 설정 따르기",
     systemNote: (name: string) => `지금 이 기기: ${name}`,
@@ -149,10 +155,11 @@ export function SettingsPane() {
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen /><h1 className="pane-title">{viewTitles.settings}</h1></div>
     </header>
-    <LanguageChoice />
+    {config.authMode === "google" && <GeminiSettings />}
+    {config.authMode === "google" ? <AccountControls /> : <LanguageChoice />}
     {config.features.narration && <VoiceSettings />}
     {config.features.narration && <AutoSettings />}
-    {config.features.push && <PushSettings />}
+    <PhoneSetup />
     <section className="more-group" aria-labelledby="settings-installed">
       <h2 id="settings-installed" className="more-heading">{text().installed}</h2>
       <p className="setting-note">{text().internet}</p>
@@ -161,17 +168,18 @@ export function SettingsPane() {
   </div>;
 }
 
-function PushSettings() {
+export function PushSettings() {
   const t = text();
-  const d = useDashboard();
+  const d = useCredentials();
   const limited = useRateLimited();
   const support = pushSupport();
   const [permission, setPermission] = useState(() => typeof Notification === "undefined" ? "default" : Notification.permission);
   const [device, setDevice] = useState<PushDevice | null | undefined>(undefined);
+  const [hideContent, setHideContent] = useState(true);
   const [pending, setPending] = useState(false);
   useEffect(() => {
     if (support !== "supported") { setDevice(null); return; }
-    deviceState().then(setDevice, () => setDevice(null));
+    deviceState().then(value => { setDevice(value); if (value) setHideContent(value.hideContent ?? false); }, () => setDevice(null));
   }, [support]);
   const run = async (work: () => Promise<void>) => {
     setPending(true);
@@ -180,7 +188,7 @@ function PushSettings() {
   };
   const turn = (on: boolean) => run(async () => {
     if (!on) { await disablePush(d.csrfToken); setDevice(null); d.notify(t.turnedOff); return; }
-    const result = await enablePush(d.csrfToken);
+    const result = await enablePush(d.csrfToken, undefined, hideContent);
     if (result === "denied") { d.notify(t.denied, "error"); return; }
     if (result === "unsupported") { d.notify(t.unsupported, "error"); return; }
     if (result === "unavailable") { d.notify(t.unavailable, "error"); return; }
@@ -189,7 +197,7 @@ function PushSettings() {
   });
   const choose = (key: keyof PushKinds, value: boolean) => run(async () => {
     if (!device) return;
-    const result = await enablePush(d.csrfToken, { ...device.kinds, [key]: value });
+    const result = await enablePush(d.csrfToken, { ...device.kinds, [key]: value }, hideContent);
     if (typeof result === "object") setDevice(result);
     else d.notify(t.kindFailed, "error");
   });
@@ -207,6 +215,19 @@ function PushSettings() {
 
   return <>
     {support === "ios-browser" && <p className="settings-notice" role="note">{t.iosNotice}</p>}
+    <section className="more-group">
+      <label className="account-check"><input type="checkbox" checked={hideContent} disabled={limited || pending}
+        onChange={event => {
+          const hide = event.target.checked;
+          if (!device) { setHideContent(hide); return; }
+          void run(async () => {
+            const result = await enablePush(d.csrfToken, device.kinds, hide);
+            if (typeof result === "object") { setDevice(result); setHideContent(hide); }
+            else d.notify(t.kindFailed, "error");
+          });
+        }} />{t.hideContent}</label>
+      <p className="setting-note">{t.hideNote}</p>
+    </section>
     <section className="more-group" aria-labelledby="settings-device">
       <h2 id="settings-device" className="more-heading">{t.device}</h2>
       <ul className="more-list">

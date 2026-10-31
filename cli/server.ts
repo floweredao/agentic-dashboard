@@ -155,12 +155,12 @@ export async function start(p: Paths) {
   await import("../server/index");
 }
 
-export function invite(p: Paths, name: string | undefined) {
+export async function invite(p: Paths, name: string | undefined) {
   if (!name) throw new CliError(t("inviteUsage"));
   const settings = loadServerEnv(p);
-  const store = new Store(settings.database, Date.now);
+  const store = await Store.open(settings.database, Date.now);
   try {
-    const issued = new Invites(store, new Agents(store)).create(name);
+    const issued = await new Invites(store, new Agents(store)).create(name);
     const zone = process.env["TIME_ZONE"]?.trim();
     const time = new Date(issued.expiresAt).toLocaleTimeString(detectLang() === "ko" ? "ko-KR" : "en-US",
       { hour: "2-digit", minute: "2-digit", ...(zone && validTimeZone(zone) ? { timeZone: zone } : {}) });
@@ -174,7 +174,7 @@ export function invite(p: Paths, name: string | undefined) {
     if (error instanceof z.ZodError) throw new CliError(t("invalidName", { detail: error.issues.map(issue => issue.message).join("; ") }));
     throw error;
   } finally {
-    store.close();
+    (await store.close());
   }
 }
 

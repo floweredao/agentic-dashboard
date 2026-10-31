@@ -1,6 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 export const APP_ROOT = resolve(import.meta.dir, "..");
 export const INSTALL_URL = "https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh";
@@ -32,14 +33,15 @@ export function launcher(env: NodeJS.ProcessEnv = process.env) {
   return (installed ? [installed] : [process.execPath, join(APP_ROOT, "cli", "main.ts")]).map(shellWord).join(" ");
 }
 
-/** KEY=value lines; values are written JSON-quoted and read back either quoted or bare. */
+/** KEY=value lines; values are written JSON-quoted and read back "double-quoted", 'single-quoted' or bare, where ` # …` is a comment. */
 export function parseEnv(text: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
     const match = /^\s*([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line);
     if (!match?.[1] || match[2] === undefined) continue;
     const raw = match[2].trim();
-    values[match[1]] = raw.startsWith("\"") ? String(JSON.parse(raw)) : raw;
+    const quoted = /^("(?:[^"\\]|\\.)*")|^'([^']*)'/.exec(raw);
+    values[match[1]] = quoted?.[1] !== undefined ? String(JSON.parse(quoted[1])) : quoted?.[2] ?? raw.replace(/(^|\s)#.*$/, "").trim();
   }
   return values;
 }
@@ -47,8 +49,17 @@ export const formatEnv = (header: string, values: Record<string, string>) =>
   `${header}\n${Object.entries(values).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join("\n")}\n`;
 export const readEnvFile = (path: string) => existsSync(path) ? parseEnv(readFileSync(path, "utf8")) : null;
 
-/** Writes a file only its owner can read (mode 0600), also when it already existed with a wider mode. */
+/**
+ * Writes a file only its owner can read (mode 0600): a new file renamed over the old one, so a wider mode, a handle opened
+ * while it was readable or a symlink at the path never sees the text.
+ */
 export function writePrivate(path: string, text: string) {
-  writeFileSync(path, text, { mode: 0o600 });
-  chmodSync(path, 0o600);
+  const temp = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
+  try {
+    writeFileSync(temp, text, { mode: 0o600, flag: "wx" });
+    chmodSync(temp, 0o600);
+    renameSync(temp, path);
+  } finally {
+    rmSync(temp, { force: true });
+  }
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mask, readDenylist, scanRepository } from "./privacy-scan";
@@ -50,6 +50,32 @@ test("a clean repository has no hits, and the denylist skips comments and blank 
     expect(scanRepository(repo, ["Someone Else"])).toEqual([]);
   } finally {
     rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("without PRIVACY_DENYLIST the scan reads no list from the home folder and skips", () => {
+  // Given: a home folder holding a list at a fixed per-user path whose value is in the scanned repository.
+  const home = mkdtempSync(join(tmpdir(), "privacy-scan-home-"));
+  const repo = mkdtempSync(join(tmpdir(), "privacy-scan-"));
+  try {
+    git(repo, "init", "-q");
+    writeFileSync(join(repo, "a.txt"), "Someone Else\n");
+    git(repo, "add", ".");
+    git(repo, "commit", "-qm", "start");
+    mkdirSync(join(home, ".config", "dash-web"), { recursive: true });
+    writeFileSync(join(home, ".config", "dash-web", "denylist.txt"), "Someone Else\n");
+    const env: Record<string, string | undefined> = { ...process.env, HOME: home };
+    delete env.PRIVACY_DENYLIST;
+
+    // When: the scan runs without PRIVACY_DENYLIST.
+    const run = Bun.spawnSync([process.execPath, join(import.meta.dir, "privacy-scan.ts")], { cwd: repo, env, stdout: "pipe" });
+
+    // Then: it reports that no list was given and exits 0.
+    expect(run.stdout.toString()).toContain("privacy-scan: no denylist, skipped");
+    expect(run.exitCode).toBe(0);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

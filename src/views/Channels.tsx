@@ -6,20 +6,24 @@ import { errorMessage, listAgents } from "../api";
 import type { AgentInfo } from "../api";
 import { BackButton, ChannelMark, Dialog, SidebarOpen } from "../components/primitives";
 import { config } from "../config";
+import { useAccount } from "../account-context";
 import { strings } from "../i18n";
 import { channelKeys, channelOf, channelLabel, isRecord, relativeTime } from "../model";
 import type { Channel } from "../model";
 import { formatRoute, viewTitles } from "../router";
 import { useDashboard } from "../state";
 import { useRateLimited } from "../rate-limit";
+import { SignIn } from "./SignIn";
+import { AgentConnections } from "./AgentConnections";
 
 const text = strings({
   en: {
+    signedInGoogle: (email: string) => `Signed in with Google as ${email}`, googleSession: "Signed in with Google",
     savedBy: (name: string) => `Records saved by ${name}`,
     share: "Links saved with the share button",
     manual: "Records you saved in this app",
     lastUsed: "Last used", removed: "Removed",
-    noAgents: "No agents yet. Register one with",
+    noAgents: "No agents yet. Register one with", registerCommand: "bun run agents add <name>",
     noAgentsAfter: "and give it the key that command prints.",
     total: "All", pending: "To review", latest: "Latest", none: "None", view: "View records",
     importSummary: "Advanced · Import JSON",
@@ -36,11 +40,12 @@ const text = strings({
     cancel: "Cancel", connect: "Sign in",
   },
   ko: {
+    signedInGoogle: (email: string) => `Google 계정 ${email}로 로그인했어요`, googleSession: "Google로 로그인했어요",
     savedBy: (name: string) => `${name} 에이전트가 저장한 기록`,
     share: "iPhone 공유 버튼으로 저장한 링크",
     manual: "이 앱에서 직접 저장한 기록",
     lastUsed: "마지막 사용", removed: "연결 해제됨",
-    noAgents: "아직 에이전트가 없어요. 다음 명령으로 등록하고",
+    noAgents: "아직 에이전트가 없어요. 다음 명령으로 등록하고", registerCommand: "bun run agents add <이름>",
     noAgentsAfter: "출력된 키를 에이전트에 넣어 주세요.",
     total: "전체", pending: "미확인", latest: "최근", none: "없음", view: "기록 보기",
     importSummary: "고급 · JSON으로 가져오기",
@@ -68,6 +73,7 @@ export function AgentUsage({ agent }: { readonly agent: AgentInfo | undefined })
 }
 
 export function ChannelsView() {
+  const account = useAccount()?.account;
   const t = text();
   const { records, importJson, logout } = useDashboard();
   const [registered, setRegistered] = useState<readonly AgentInfo[]>([]);
@@ -99,7 +105,8 @@ export function ChannelsView() {
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen /><h1>{viewTitles.channels}</h1></div>
     </header>
-    {agents.length === 0 && <p className="channel-note">{t.noAgents} <code>bun run agents add &lt;name&gt;</code> {t.noAgentsAfter}</p>}
+    {config.authMode === "google" && <AgentConnections />}
+    {config.authMode === "local" && agents.length === 0 && <p className="channel-note">{t.noAgents} <code>{t.registerCommand}</code> {t.noAgentsAfter}</p>}
     <div className="channel-grid">
       {channelKeys.map(channel => {
         const items = live.filter(record => channelOf(record) === channel);
@@ -147,7 +154,7 @@ export function ChannelsView() {
     <section className="channel-section session-section" aria-labelledby="session-title">
       <div className="channel-section-head">
         <h2 id="session-title">{t.session}</h2>
-        <p>{t.signedIn}</p>
+        <p>{config.authMode === "google" ? account?.email ? t.signedInGoogle(account.email) : t.googleSession : t.signedIn}</p>
       </div>
       <button type="button" className="btn btn-outline" onClick={() => { void logout(); }}>
         <LogOut size={16} aria-hidden="true" />{t.logout}
@@ -160,6 +167,7 @@ export function ChannelsView() {
 /** Shown while signed out: the owner signs in with the owner key; with trusted login on, the proxy did not identify them. */
 export function OwnerGate({ onToken }: { readonly onToken: () => void }) {
   const t = text();
+  if (config.authMode === "google") return <SignIn />;
   return <div className="gate">
     <img src="/brand-mark.png" alt="" width={56} height={56} />
     <h1>{config.appName}</h1>

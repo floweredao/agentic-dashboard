@@ -97,7 +97,7 @@ test("the reader lists links by address and names a finished confirmation", () =
   // And: every link is a whole-card block opening in a new tab, followed by the inline 링크 추가 button.
   expect(html.match(/<a class="link-card" href="https:\/\/example\.(com|net)[^"]*" target="_blank" rel="noopener noreferrer">/g)).toHaveLength(2);
   expect(html).toMatch(/<button[^>]*inline-add[^>]*>.*?링크 추가<\/button>/);
-  expect(html).toMatch(/disabled=""[^>]*>.*?확인함<\/button>/);
+  expect(html).toMatch(/disabled=""[^>]*>.*?<span class="btn-label">확인함<\/span><\/button>/);
 });
 
 test("task rows show status and due date without the channel and kind", async () => {
@@ -154,7 +154,7 @@ test("a pending item's primary button reads 확인 for every material kind", () 
   const report = withDashboard(<Reader record={make({ reviewState: "pending" })} />);
   // Then: both use the one vocabulary, with no read/unread wording or check mark.
   for (const html of [link, report]) {
-    expect(html).toMatch(/<button[^>]*btn-primary[^>]*>확인<\/button>/);
+    expect(html).toMatch(/<button[^>]*btn-primary[^>]*><span class="btn-label">확인<\/span><\/button>/);
     expect(html).toContain("미확인</span>");
     expect(html).not.toContain("읽음");
   }
@@ -167,7 +167,7 @@ test("an approved record with a due revisit keeps 확인함 and shows the separa
   expect(html).toContain(">확인함</span>");
   expect(html).toContain(">다시 볼 날</span>");
   expect(html).toMatch(/<button[^>]*>.*?다시 봤어요<\/button>/);
-  expect(html).toMatch(/disabled=""[^>]*>.*?확인함<\/button>/);
+  expect(html).toMatch(/disabled=""[^>]*>.*?<span class="btn-label">확인함<\/span><\/button>/);
 });
 
 test("Full screen shows only its icon, named for assistive tech and the pointer tooltip", () => {

@@ -4,14 +4,19 @@ import { z } from "zod";
 import { SourceSchema } from "../shared/contracts";
 import { hash, secret } from "./agents";
 import { ApiError } from "./errors";
-import type { Principal, Store } from "./store";
+import { Store, type Principal } from "./store";
+import { ControlDb } from "./control-db";
+import { TenantDb } from "./tenant-db";
 
 export { hash, secret };
 export const SESSION_COOKIE = "agentic_session";
-/** The owner's key file. Agent keys are never stored here: they live only as hashes in the database (see Agents). */
-export const CredentialsSchema = z.object({ owner: z.string().min(16).max(512) }).strict();
+/**
+ * The owner's key file. Agent keys are never stored here: they live only as hashes in the database (see Agents), so a file
+ * carried over from the single-user predecessor, which listed one key per agent beside the owner's, is read for its owner key
+ * alone and its other entries are ignored.
+ */
+export const CredentialsSchema = z.object({ owner: z.string().min(16).max(512) }).catchall(z.string());
 const principalSchema = z.object({ id: z.string(), source: SourceSchema });
-const sessionSchema = z.object({ hash: z.string(), principal_id: z.string(), csrf: z.string(), expires_at: z.number() });
 
 /** Creates the owner key file (mode 0600) when it does not exist yet; answers whether it was created. */
 export function ensureCredentials(credentialsPath: string): boolean {
@@ -23,66 +28,94 @@ export function ensureCredentials(credentialsPath: string): boolean {
 }
 export const readCredentials = (credentialsPath: string) => CredentialsSchema.parse(JSON.parse(readFileSync(credentialsPath, "utf8")));
 
-const OWNER: Principal = { id: "owner", source: "manual" };
-
 export class Auth {
+  readonly control: ControlDb;
   /** `demo`: every browser request reads as the owner without a key or session (the app blocks every change in demo mode). */
-  constructor(readonly store: Store, credentialsPath: string, private readonly demo = false) {
+  constructor(readonly store: Store, private readonly demo = false, readonly hostedOrigin?: string) {
+    this.control = new ControlDb(store.db.sql, hostedOrigin === undefined);
+  }
+  async initialize(credentialsPath: string) {
     ensureCredentials(credentialsPath);
     const credentials = readCredentials(credentialsPath);
-    store.db.query(`INSERT INTO principals(id,source,token_hash,created_at) VALUES('owner','manual',?,?)
-      ON CONFLICT(id) DO UPDATE SET token_hash=excluded.token_hash`).run(hash(credentials.owner), new Date(store.now()).toISOString());
+    await this.store.db.run(`INSERT INTO principals(id,source,token_hash,created_at,user_id) VALUES('owner','manual',?,?,?)
+      ON CONFLICT(user_id,id) DO UPDATE SET token_hash=excluded.token_hash`, [hash(credentials.owner), new Date(this.store.now()).toISOString()]);
   }
-  token(value: string): Principal {
-    const row = this.store.db.query("SELECT id,source FROM principals WHERE token_hash=? AND revoked_at IS NULL").get(hash(value));
-    if (!row) throw new ApiError(401, "unauthenticated", "Invalid credentials");
+  async token(value: string): Promise<Principal> {
+    const row = await this.control.principalByToken(hash(value));
+    if (!row || row.user_id !== this.store.db.userId) throw new ApiError(401, "unauthenticated", "Invalid credentials");
     const principal = principalSchema.parse(row);
     if (principal.source !== "manual") {
-      this.store.db.query("UPDATE principals SET last_used_at=? WHERE id=?").run(new Date(this.store.now()).toISOString(), principal.id);
+      await this.store.db.run("UPDATE principals SET last_used_at=? WHERE id=? AND user_id=?", [new Date(this.store.now()).toISOString(), principal.id]);
     }
     return principal;
   }
-  findSession(request: Request) {
-    const prefix = `${SESSION_COOKIE}=`;
+  async findSession(request: Request) {
+    const prefix = `${this.cookieName}=`;
     const cookie = request.headers.get("cookie")?.split(";").map(part => part.trim()).find(part => part.startsWith(prefix))?.slice(prefix.length);
     if (!cookie) return null;
-    const row = this.store.db.query("SELECT * FROM sessions WHERE hash=? AND expires_at>?").get(hash(cookie), this.store.now());
-    return row ? sessionSchema.parse(row) : null;
+    return this.control.sessionByHash(hash(cookie), this.store.now());
   }
-  session(request: Request) {
-    if (this.demo) return { hash: "", principal_id: "owner", csrf: "demo", expires_at: this.store.now() + 7 * 24 * 60 * 60 * 1000 };
-    const session = this.findSession(request);
-    if (!session) throw new ApiError(401, "unauthenticated", "Owner session required or expired");
+  get cookieName() {
+    return this.hostedOrigin ? (this.hostedOrigin.startsWith("https:") ? "__Host-session" : "session") : SESSION_COOKIE;
+  }
+  cookie(value: string, expiresAt: string, secure: boolean) {
+    const https = this.hostedOrigin ? this.hostedOrigin.startsWith("https:") : secure;
+    return `${this.cookieName}=${value}; Path=/; HttpOnly; SameSite=${this.hostedOrigin ? "Lax" : "Strict"}; Expires=${new Date(expiresAt).toUTCString()}${https ? "; Secure" : ""}`;
+  }
+  async resolveUser(request: Request) {
+    const anonymous = this.hostedOrigin ? null : "local";
+    const authorization = request.headers.get("authorization");
+    if (authorization !== null) {
+      if (!authorization.startsWith("Bearer ")) return anonymous;
+      return (await this.control.principalByToken(hash(authorization.slice(7))))?.user_id ?? anonymous;
+    }
+    return (await this.findSession(request))?.user_id ?? anonymous;
+  }
+  async session(request: Request) {
+    if (this.demo) return { user_id: "local", hash: "", principal_id: "owner", csrf: "demo", created_at: this.store.now(),
+      authenticated_at: this.store.now(), expires_at: this.store.now() + 7 * 24 * 60 * 60 * 1000 };
+    const session = await this.findSession(request);
+    if (!session || session.user_id !== this.store.db.userId) throw new ApiError(401, "unauthenticated", "Owner session required or expired");
     return session;
   }
-  authenticate(request: Request, publicOnly: boolean): Principal {
+  async authenticate(request: Request, publicOnly: boolean): Promise<Principal> {
     const authorization = request.headers.get("authorization");
     if (authorization !== null) {
       if (!authorization.startsWith("Bearer ")) throw new ApiError(401, "unauthenticated", "Bearer token required");
-      const principal = this.token(authorization.slice(7));
+      const principal = await this.token(authorization.slice(7));
       if (principal.source === "manual") throw new ApiError(403, "forbidden", "Owner must use a browser session");
       return principal;
     }
     if (publicOnly) throw new ApiError(401, "unauthenticated", "Agent Bearer required");
-    if (this.demo) return OWNER;
-    const session = this.session(request);
-    return principalSchema.parse(this.store.db.query("SELECT id,source FROM principals WHERE id=?").get(session.principal_id));
+    if (this.demo) return { id: "owner", source: "manual" };
+    const session = await this.session(request);
+    return principalSchema.parse(await this.store.db.get("SELECT id,source FROM principals WHERE id=? AND user_id=?", [session.principal_id]));
   }
-  createSession(token: string) {
-    const principal = this.token(token);
+  async createSession(token: string) {
+    if (this.hostedOrigin) throw new ApiError(403, "google_signin_required", "Use Google sign-in.");
+    const principal = await this.control.principalByToken(hash(token));
+    if (!principal) throw new ApiError(401, "unauthenticated", "Invalid credentials");
     if (principal.source !== "manual") throw new ApiError(403, "forbidden", "Only owner credentials create sessions");
-    return this.createOwnerSession();
+    return new Auth(new Store(new TenantDb(this.store.db.sql, principal.user_id), this.store.now)).createOwnerSession();
   }
-  createOwnerSession() {
+  async createOwnerSession(authenticatedAt = this.store.now()) {
     const value = secret();
     const csrfToken = secret();
-    const expires = this.store.now() + 7 * 24 * 60 * 60 * 1000;
-    this.store.db.query("DELETE FROM sessions WHERE expires_at<=?").run(this.store.now());
-    this.store.db.query("INSERT INTO sessions VALUES(?,?,?,?)").run(hash(value), "owner", csrfToken, expires);
+    const expires = this.store.now() + (this.hostedOrigin ? 30 : 7) * 24 * 60 * 60 * 1000;
+    await this.store.db.run("DELETE FROM sessions WHERE expires_at<=? AND user_id=?", [this.store.now()]);
+    await this.store.db.run("INSERT INTO sessions(hash,principal_id,csrf,expires_at,created_at,authenticated_at,user_id) VALUES(?,?,?,?,?,?,?)",
+      [hash(value), "owner", csrfToken, expires, this.store.now(), authenticatedAt]);
     return { value, csrfToken, expiresAt: new Date(expires).toISOString() };
   }
-  csrf(request: Request, origins: ReadonlySet<string>) {
-    const session = this.session(request);
+  async signInUser(userId: string, request: Request, authenticatedAt: number) {
+    const previous = await this.findSession(request);
+    if (previous) {
+      await new TenantDb(this.store.db.sql, previous.user_id).run("DELETE FROM sessions WHERE hash=? AND user_id=?", [previous.hash]);
+    }
+    return new Auth(new Store(new TenantDb(this.store.db.sql, userId), this.store.now, this.control), false, this.hostedOrigin).createOwnerSession(authenticatedAt);
+  }
+  async csrf(request: Request, origins: ReadonlySet<string>) {
+    const session = await this.session(request);
     if (!origins.has(request.headers.get("origin") ?? "") || request.headers.get("x-csrf-token") !== session.csrf) {
       throw new ApiError(403, "csrf", "Allowed Origin and CSRF token required");
     }

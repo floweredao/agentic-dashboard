@@ -4,7 +4,15 @@ Any program that can make an HTTP request can save results to the dashboard: Cod
 
 ## 1. Register the agent
 
-On the machine that runs the dashboard:
+### Hosted accounts
+
+Sign in with Google, then open **Agent connections** in setup or Settings. Create a token for each agent, or choose **Connect a computer** to issue a single-use connection code. You do not need shell access to the host. The token selects your account and the agent's attribution; the same agent name in another account grants no access to yours.
+
+Copy a new token immediately: it is shown once and the server stores only its hash. Prefer the supplied installer command for a different computer; it exchanges the code within 15 minutes and stores the credential in the OS keychain or a private file. Never give an agent your browser session, CSRF token or Google credentials. Details and revocation rules are in [Agents on other machines](#8-agents-on-other-machines).
+
+### Local self-hosting
+
+On the machine that runs a local owner-key dashboard:
 
 ```sh
 bun run agents add codex
@@ -22,8 +30,11 @@ The CLI in this repository reads the key from `DASHBOARD_TOKEN` (or `--token`) a
 
 ```sh
 export DASHBOARD_TOKEN='<key>'
+export DASHBOARD_URL='https://dashboard.example.com' # your hosted origin; omit for local default
 bun run agent --file record.json --request-id research-2026-10-02-sqlite-wal
 ```
+
+Do not put the token in `record.json`, source control or screenshots. A connected installation can use `agentic-dashboard agent --file record.json` without exporting the token. The public CLI takes the source from its bearer; there is no separate `--source` option.
 
 `record.json` holds the record itself:
 
@@ -126,7 +137,7 @@ The server rejects agent records that don't match the shared format with `400 re
 
 ## 4. What an agent can read and change
 
-An agent reads its own records, unarchived research, work reports, notes and links from anyone, and the owner's unarchived tasks and projects. It can PATCH only records it created and can't delete anything. See [CONTRACT.md](../CONTRACT.md) for the details.
+Within its account, an agent reads its own records, unarchived research, work reports, notes and links from other agents, and the owner's unarchived tasks and projects. It can PATCH or move to trash only records it created; only the owner restores or permanently deletes them. Other accounts' IDs return 404. Agent names are attribution, not private compartments within an account. See [CONTRACT.md](../CONTRACT.md) for the details.
 
 ## 5. Tasks and comments
 
@@ -146,15 +157,32 @@ To add posts you picked from a social network, send them as an `articles` sectio
 
 ## 7. MCP for chat apps
 
-Set `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` to open an MCP endpoint at `http://127.0.0.1:4313/mcp` (`MCP_PORT`). It offers `save_record`, `update_record`, `get_record` and `search_records`, and every call is saved as `MCP_AGENT`. It listens on loopback only; put your own authenticated tunnel in front of it if a remote app needs it.
+In Google mode, send an agent bearer to `POST https://<dashboard>/mcp` on the main listener. It offers `save_record`, `update_record`, `get_record` and `search_records`; the bearer selects both the account and saved attribution. Every request requires a bearer, including initialization and notifications. Browser Origins are rejected.
+
+For local mode, `ENABLE_MCP=on` and an active `MCP_AGENT` enable the optional loopback listener at `http://127.0.0.1:4313/mcp`. `MCP_AGENT` no longer grants authority to callers: supply a bearer here too.
+
+A tunnel that needs a loopback target can use:
+
+```sh
+bun scripts/mcp-forward.ts --listen 127.0.0.1:4313 \
+  --to https://dashboard.example.com/mcp --token-file ~/.agentic-dashboard/agent-key
+```
+
+Keep the token file readable only by its owner (`chmod 600`). The forwarder injects the bearer and strips browser credentials. A working bearer transport is not a hosted ChatGPT OAuth connector; ChatGPT remains advanced/unverified.
 
 ## 8. Agents on other machines
 
 Agents reach the dashboard through the same HTTPS address you use (see [deploy.md](deploy.md)).
 
+Hosted users open **Agent connections** rather than running commands on the server. Create a token (copy it once), rotate/revoke an existing token, or choose **Connect a computer** for a 15-minute single-use setup code. The supplied installer command includes the dashboard address and supplies Bun and the CLI on macOS/Linux; Windows is untested. The CLI prefers the OS keychain and otherwise uses its private `~/.agentic-dashboard/agent-key` file. The screen also provides a curl credential-file fallback.
+
+Rotate an active token when replacing its credential. Revocation is permanent for that agent name: rotation returns `agent_revoked` instead of reactivating it, and the old name remains reserved for attribution. To reconnect after revocation, create a token under a new name. This rule applies to both the UI/API and the local agents CLI; saved records remain.
+
+Use **Save a test record** to check token write/read permissions. To complete first-login setup, also save from the connected computer's CLI or bearer MCP client: the server requires an external bearer save without a browser Origin. A manual sample or same-origin browser token test does not satisfy that gate.
+
 The quickest way to connect one is a one-time connection code. On the dashboard host run `agentic-dashboard invite <name>` (from the [one-line install](../README.md#quick-start), or `bun cli/main.ts invite <name>` in a clone). It prints a code and the line to run on the agent's computer, `curl -fsSL .../install.sh | sh -s -- connect --url <address> --code <code>`. That installs the command there, trades the code for the agent's key through `POST /api/v1/agents/connect` (once, within 15 minutes), checks the key, stores it in the system keychain or a `0600` file, and installs the skill below for the agent tools it finds. From then on, `agentic-dashboard agent ...` on that computer takes the same options as `bun run agent` without `DASHBOARD_TOKEN`. `agentic-dashboard connect` without a code asks for an agent name and key instead; `agentic-dashboard status` checks the connection without printing the key.
 
-If you want agents to reach only the record endpoints, turn on `ENABLE_AGENT_INGRESS`: a second loopback listener on `AGENT_PORT` (4312) that accepts only `POST /api/v1/records` and `GET /api/v1/records/:id`. Proxy that port instead of the main one, and set `PUBLIC_API_BASE_URL` to its public address.
+The host-side `invite` command above is for local owner-key installations; hosted users issue their code in Agent connections. In local mode, if you want agents to reach only the record endpoints, turn on `ENABLE_AGENT_INGRESS`: a second loopback listener on `AGENT_PORT` (4312) that accepts only `POST /api/v1/records` and `GET /api/v1/records/:id`. Proxy that port instead of the main one, and set `PUBLIC_API_BASE_URL` to its public address. Google mode uses only the main listener.
 
 ## Skill file
 

@@ -59,6 +59,7 @@ test("공유 shows the record's link and code at once, and 공유 중지 revokes
     "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "Asia/Seoul", locale: "ko", features: { narration: false, push: false, digest: false, trustedLogin: false } }),
     "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
     "/api/v1/records": Response.json({ items: [record], nextCursor: null }),
+    "/api/v1/records/changes": Response.json({ cursor: 0, items: [], deletedIds: [], hasMore: false, reset: false }),
     "/api/v1/records/:id/share": async request => {
       requests.push({ method: request.method, path: new URL(request.url).pathname, csrf: request.headers.get("X-CSRF-Token"), body: await request.text() });
       if (request.method === "POST") { const created = current === null; current = share; return Response.json({ share }, { status: created ? 201 : 200 }); }

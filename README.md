@@ -1,341 +1,209 @@
-<p align="center">
-  <img src="public/icon.svg" width="84" height="84" alt="">
+<p align="center"><img src="public/icon.svg" width="84" height="84" alt=""></p>
+
+# Agentic Dashboard
+
+**One inbox for everything your AI agents finish.** Codex, Claude Code, OmO or any HTTP client saves its research, work reports, notes, links and daily digests here. You read the conclusion first on your desktop or phone, then send the next step back as a comment.
+
+Why it helps:
+
+- **Results stop disappearing into chat logs.** Every save is validated into one record format with a conclusion, summary, sources and next actions, and it stays searchable.
+- **You review instead of re-reading.** New work arrives marked To review; one tap confirms it, stars it or schedules a second look.
+- **Agents keep working while you are away.** Tasks carry a timeline of agent reports and your comments, so an agent can pick up exactly where you left a note.
+- **It is yours.** Run it on your own computer with local SQLite, or deploy accounts with Google sign-in where each account's data is kept apart and can be exported or deleted.
+
+## Key features
+
+- **Home, Digest and Library:** recent records, the morning and evening digests and open tasks on one screen; filters for To review, Favorites and Archived.
+- **Readable on any screen:** Markdown, tables, code and sandboxed HTML documents, full-screen reading, and a phone layout with a bottom tab bar and 44pt touch targets.
+- **Agent connections:** a token per agent, one-time computer invitations, safe retries with request IDs, comments and task reports.
+- **Listen when you want:** optional read-aloud or two-host podcast audio from your own Gemini key.
+- **English and Korean, light and dark:** follows the system language and theme; installable on a phone's home screen with optional push.
+
+[Quick start](#quick-start) · [Hosted accounts](#hosted-accounts) · [Connect agents](#connect-your-agents) · [한국어](README-ko.md)
+
+## Screenshots
+
+English interface with sample records on an isolated local server; light first, then dark.
+
+![Library and a research record on a desktop, light mode](docs/images/en-desktop-light.png)
+![The same desktop view in dark mode](docs/images/en-desktop-dark.png)
+
+<p>
+  <img src="docs/images/en-phone-home-light.png" width="250" alt="Home on a phone, light mode">
+  <img src="docs/images/en-phone-reader-light.png" width="250" alt="A research record on a phone, light mode">
+  <img src="docs/images/en-phone-digest-light.png" width="250" alt="The morning digest on a phone, light mode">
+</p>
+<p>
+  <img src="docs/images/en-phone-home-dark.png" width="250" alt="Home on a phone, dark mode">
+  <img src="docs/images/en-phone-reader-dark.png" width="250" alt="A research record on a phone, dark mode">
+  <img src="docs/images/en-phone-digest-dark.png" width="250" alt="The morning digest on a phone, dark mode">
 </p>
 
-<h1 align="center">Agentic Dashboard</h1>
+## Two ways to run it
 
-<p align="center">
-  <b>A self-hosted inbox for the work your AI agents do.</b><br>
-  Codex, Claude Code or any script files research, work reports, notes, links and digests here.<br>
-  You review them on your desktop or phone, and hand work back with a comment.
-</p>
+| | Local self-hosting | Hosted accounts |
+|---|---|---|
+| Sign-in | One owner's key; optional trusted identity proxy | Google sign-in; each account owns its data |
+| Storage | Local SQLite and audio in `DATA_DIR` | Deployment tooling configures Turso and private Cloud Storage |
+| Agents | Register on the host or issue a connection code | Create tokens or computer invitations in Agent connections |
+| AI features | Optional server provider configuration | Optional encrypted personal Gemini key |
+| Operations | Back up the private data folder | Cloud Tasks, daily maintenance/backups, operator alerts and limits |
+| Get started | The commands below | [Hosted deployment guide](docs/deploy.md#hosted-google-sign-in-deployment-tooling) |
 
-<p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-4a57d6"></a>
-  <img alt="Runtime: Bun 1.3+" src="https://img.shields.io/badge/runtime-Bun%201.3%2B-191918?logo=bun&logoColor=white">
-  <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white">
-  <img alt="Storage: SQLite" src="https://img.shields.io/badge/storage-SQLite-0f80cc?logo=sqlite&logoColor=white">
-  <img alt="UI: English and Korean" src="https://img.shields.io/badge/UI-English%20%C2%B7%20%ED%95%9C%EA%B5%AD%EC%96%B4-16875c">
-  <img alt="No external keys needed" src="https://img.shields.io/badge/external%20keys-none%20needed-6d6c67">
-</p>
-
-<p align="center">
-  <a href="https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app"><b>Live demo</b></a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#connect-your-agents">Connect your agents</a> ·
-  <a href="docs/deploy.md">Deploy</a> ·
-  <a href="#faq">FAQ</a> ·
-  <a href="README-ko.md">한국어</a>
-</p>
-
-<p align="center">
-  <img src="docs/images/hero.png" width="920" alt="The inbox and reader on a desktop in light mode, next to the inbox on a phone in dark mode">
-</p>
-
-## Why
-
-Agents are good at producing work and bad at leaving it somewhere you will actually read. Chat logs scroll away, files pile up in folders, and every agent formats its results differently.
-
-Agentic Dashboard gives each agent its own key and one place to file results:
-
-- **One inbox for every agent.** Research, work reports, notes and links arrive newest first and stay unread until you open them.
-- **One record format.** The server checks every save and answers with a list of what to fix, so a Codex report and a cron script's report look the same.
-- **Your data stays on your machine.** One SQLite file, one process, no cloud account. A default install needs no API keys.
-
-## Features
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/images/desktop-light.png" alt="Inbox with a research report open in the reader"></td>
-    <td>
-      <h3>Inbox and reader</h3>
-      Conclusion and summary first, then the full body with tables, code and links. An agent can attach the research as an HTML page: the record opens on that full document in a script-free frame, with a switch to the summary and a full-screen view. Confirm, star, set a revisit date, archive, or delete to a 30-day trash. Search covers titles, bodies, summaries and tags.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <h3>Tasks with a timeline</h3>
-      Agents post progress and move a task to <i>Needs review</i>. You comment, they see it, answer and carry on. <code>bun run agent --comments --wait</code> lets an agent block until you reply.
-    </td>
-    <td width="50%"><img src="docs/images/feature-tasks.png" alt="A task timeline with agent reports and an owner comment"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/images/feature-digest.png" alt="A morning digest with mail and news sections"></td>
-    <td>
-      <h3>Digests</h3>
-      Agents upload news, mail or alert round-ups by date and time slot. Sections are whatever the agent sends: articles or messages with an importance level. A digest reads as one list: the title first, a section bar that sticks while you scroll and marks the section you are in, a titles-only view and an end line. Its push alert fits a lock screen, one line per item with the most important first.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <h3>Agents as channels</h3>
-      Every registered agent gets its own channel with counts, its latest activity and when its key was last used or removed. Agents read each other's reports, but only the owner can confirm, archive or delete.
-    </td>
-    <td width="50%"><img src="docs/images/feature-channels.png" alt="Channel cards for three agents"></td>
-  </tr>
-</table>
-
-### On your phone, in light or dark
-
-Mobile-first layout with a bottom tab bar, safe-area aware, installable as a home-screen web app with push notifications. The theme follows your system. The language does too, and Settings offers Follow the system, English or 한국어, remembered on each device. Every inbox row starts with a tile for its category, and the sidebar can be hidden at any width.
-
-<p align="center">
-  <img src="docs/images/phone-light.png" width="240" alt="Phone inbox in light mode">
-  <img src="docs/images/phone-dark.png" width="240" alt="Phone inbox in dark mode">
-  <img src="docs/images/phone-reader-dark.png" width="240" alt="Phone reader in dark mode">
-</p>
-
-<details>
-<summary><b>Desktop in dark mode</b></summary>
-<br>
-<img src="docs/images/desktop-dark.png" alt="Desktop inbox and reader in dark mode">
-</details>
-
-### Also included
-
-- **Share links:** give one record a read-only link and code that an agent can fetch as Markdown or JSON.
-- **Listen (optional):** turn a report into audio with a text-to-speech provider (Gemini example included). The script covers the whole body, part by part, leaving out code, tables and source lists. Pick Read aloud for one voice or Podcast for a two-host talk. A digest can be read in full or one part at a time. Jobs show a progress bar, busy providers are retried with backoff across the configured script routes, and a trash button beside the player removes only that audio.
-- **Web push (optional):** get notified when a digest arrives or an agent asks for review. VAPID keys are generated for you.
-- **MCP endpoint (optional):** chat apps can save and search records through a loopback MCP server.
-- **English and Korean UI**, with every string in a small dictionary next to the component that uses it, and a checker (`bun scripts/i18n-check.ts`) that fails on a missing translation.
+**There is no public multi-user instance yet.** Hosted mode is deployable with the included tooling; it is not a sign-up service operated by this repository. The separate [read-only demo](docs/demo.md) cannot create accounts or save work. Cloud tooling has local tests and dry-run verification, not a live production acceptance claim.
 
 ## Quick start
 
-**One line** on macOS or Linux. It installs Bun when it's missing, puts the app in `~/.agentic-dashboard` and an `agentic-dashboard` command in `~/.local/bin`, then asks what this computer is for:
+### One-line local install
+
+On macOS or Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh
 ```
 
-- **Host the dashboard here**: choose the port, the data folder and how you'll open it (only this computer, Tailscale, or your own HTTPS proxy), get the owner key, and optionally start it at login (launchd or `systemd --user`).
-- **Connect this computer's agents** to a dashboard elsewhere: enter its address and a one-time connection code. The key goes into the system keychain (or a file only you can read), and the agent skill is installed for Claude Code, Codex, OmO or `~/.agents`, whichever this computer has.
+Setup installs Bun if needed, puts the app in `~/.agentic-dashboard` and the command in `~/.local/bin`, then asks whether to host the dashboard here or connect this computer's agents to an existing host.
 
-Setup appears only the first time; later `agentic-dashboard` starts the dashboard or shows what's connected. Open it again with `agentic-dashboard setup`, `agentic-dashboard connect` or `agentic-dashboard onboard`, and see `agentic-dashboard help` for the rest. Running the line again updates the app and keeps your settings and data. Without a terminal, pass flags instead: `... | sh -s -- setup --yes --port 4310 --no-service`. The line installs the latest `main`; to install a release instead, name its tag: `curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.4.0/install.sh | AGENTIC_DASHBOARD_REF=v0.4.0 sh`.
+Hosting creates a local owner key and can install a user service. Connecting asks for the dashboard address and one-time connection code, stores the agent credential in the system keychain or a private file, and installs the agent skill. Run `agentic-dashboard setup`, `agentic-dashboard connect` or `agentic-dashboard help` later. Running the installer again updates the app without replacing your data.
 
-**From a clone** you need [Bun](https://bun.sh) 1.3 or later.
+### From a clone
+
+Requires [Bun](https://bun.sh) 1.3 or later and git, on macOS or Linux. ffmpeg is optional (smaller audio files):
 
 ```sh
 git clone https://github.com/floweredao/agentic-dashboard.git
 cd agentic-dashboard
 bun install
-bun run setup      # builds the web app, creates data/credentials.json and prints the owner key
-bun start          # http://127.0.0.1:4310
+bun run setup
+bun start
 ```
 
-Open http://127.0.0.1:4310 and sign in with the owner key.
+Open `http://127.0.0.1:4310` and sign in with the owner key printed by setup. Default local reading and saving need no cloud account or external API key. Keep `data/` private and back it up.
 
-Prebuilt binaries are on the [Releases](https://github.com/floweredao/agentic-dashboard/releases) page, and [CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
+Prebuilt binaries and Docker instructions are in [Deploying](docs/deploy.md); changes by release are in [CHANGELOG.md](CHANGELOG.md). The installer follows `main` by default; [installation](docs/install.md) covers release pinning and portable setup.
 
-**Want to look around first?** Open the [live demo](https://agentic-dashboard-demo-xqxzo67aea-uc.a.run.app). No sign-in needed. It's read-only with sample data, so nothing you click is saved, and it starts over from the same data whenever the server restarts (it sleeps when nobody is using it). How it's set up: [docs/demo.md](docs/demo.md).
+## Hosted accounts
 
-Or load the demo data into a separate folder on your machine:
+Operators use the existing [Cloud Run deployment workflow](docs/deploy.md#hosted-google-sign-in-deployment-tooling): provision resources, configure secrets, then deploy. It requires your own billing-enabled Google Cloud project, Turso account/group and Google OAuth client. Inspect all three tooling entrypoints with `--dry-run` before execution. Low idle usage and budget alerts do not guarantee a zero bill.
 
-```sh
-DATA_DIR=demo-data bun run seed
-DATA_DIR=demo-data bun start
-```
+### Google sign-in
 
-The owner key for the demo is in `demo-data/credentials.json`. The seed refuses a database that already holds records, so it never mixes into real data.
+Create the OAuth client once in the Google Cloud console under **Google Auth Platform**:
+
+1. **Branding:** app name, support email and developer contact; **Audience:** External. While the app is in Testing, only the test users you add can sign in; publish it before opening sign-up. Basic scopes (`openid`, `email`, `profile`) need no Google verification.
+2. **Clients → Create client → Web application:** add your origin to *Authorized JavaScript origins* and `<APP_ORIGIN>/auth/google/callback` to *Authorized redirect URIs*. For a loopback test, `http://localhost:<port>` and its callback work.
+3. Download the client JSON and keep it outside the checkout; put its `client_id` and `client_secret` into `APP_SECRETS.google` (`bun scripts/set-secret.ts` stores them in Secret Manager for Cloud Run).
+
+`AUTH_MODE=google` uses one HTTPS origin and the main listener. Register `<APP_ORIGIN>/auth/google/callback` as the Google redirect URI. Set the public contact and actual database region, and keep Google, signing, encryption and push secrets outside the checkout. Start with [.env.example](.env.example); the [runtime reference](docs/hosted-auth.md#runtime-environment-reference) also covers advanced overrides.
+
+After sign-in, setup guides each user through language/time zone, agent connection, digests, an optional Gemini key and phone/push setup. Finish requires a real save from the connected external agent. Settings can replay setup.
+
+Each account has its own records, agents, keys, settings and background work. Other accounts' IDs return 404; agent names within one account are attribution, not separate privacy boundaries. A shared link deliberately makes its record projection readable to anyone holding the code.
+
+Settings offers a credential-free `.tar.gz` export and account deletion. Exports are bounded to 64 MiB per tar/gzip, one per account and two per instance, with a 60-second idle timeout. Deletion requires exact email confirmation and fresh provider authentication, revokes credentials, and removes tenant content and audio; backups expire after 14 days. The [real Google reauthentication caveat](docs/hosted-auth.md#deletion-reauthentication) must be verified before launch.
+
+Default hosted limits are 50 active accounts, 10 narration jobs per account/day and 60 service-wide. Existing users can sign in at capacity. Reading and saving work without a Gemini key; adding one does not guarantee model permission or quota. See [hosted accounts](docs/hosted-auth.md) and [security](docs/security.md) for the operational model.
 
 ## Connect your agents
 
-**An agent on another computer:** on the dashboard host, issue a one-time connection code. It prints the line to run on the other computer:
+**Hosted:** open **Agent connections**, create a token or choose **Connect a computer**, and follow its installer command. Tokens appear once; invitations expire after 15 minutes and work once. No host shell is needed.
+
+**Local:** register on the dashboard host:
 
 ```sh
+bun run agents add codex
+# Or issue a one-time installer connection:
 agentic-dashboard invite laptop-codex
-# On the agent's computer:
-curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/main/install.sh | sh -s -- connect --url https://dashboard.example.com --code 7K2Q-M9XA-0C4D-PT3V
 ```
 
-The code works once, for 15 minutes, and registers the agent when it is used. After that, `agentic-dashboard agent` on that computer takes every option of `bun run agent` below and needs no `DASHBOARD_TOKEN`.
-
-**Or register a key yourself.** It's printed only this one time; the dashboard keeps a hash.
+Use the connected command:
 
 ```sh
-bun run agents add claude-code          # or: agentic-dashboard agents add claude-code
-export DASHBOARD_TOKEN='<the key it printed>'
+agentic-dashboard agent --file record.json --request-id wiki-search-1
 ```
 
-**Save a result with the bundled CLI.** `record.json` holds one record:
-
-```json
-{
-  "kind": "research",
-  "title": "Search engines for a small wiki",
-  "body": "## Candidates\n\nSQLite FTS5, Meilisearch and OpenSearch ...",
-  "tags": ["search", "wiki"],
-  "links": [{ "label": "SQLite FTS5", "url": "https://sqlite.org/fts5.html" }],
-  "fields": {
-    "summary": "Compared three engines for about 5,000 pages.",
-    "conclusion": "Start with SQLite FTS5.",
-    "nextActions": "- Prototype FTS5 on the current export"
-  }
-}
-```
+Or, from a clone, set `DASHBOARD_URL` to your own host and `DASHBOARD_TOKEN` to the agent's token, then run:
 
 ```sh
 bun run agent --file record.json --request-id wiki-search-1
 ```
 
-**Or use plain HTTP** from any language:
+`record.json` is the record itself, without credentials:
 
-```sh
-curl -X POST http://127.0.0.1:4310/api/v1/records \
-  -H "Authorization: Bearer $DASHBOARD_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"requestId":"note-1","record":{"kind":"note","title":"Release checklist","body":"Tag, build, publish.","tags":["release"]}}'
+```json
+{
+  "kind": "research",
+  "title": "Search for a small team wiki",
+  "body": "## Findings\n\nSQLite FTS5 keeps the index beside the content.",
+  "tags": ["search", "wiki"],
+  "fields": {
+    "summary": "Compared search engines for 5,000 pages.",
+    "conclusion": "Start with SQLite FTS5.",
+    "nextActions": "- Prototype prefix search"
+  }
+}
 ```
 
-**Work on a task with the owner:**
+The same request ID and content is a safe retry; different content returns 409. The server derives attribution from the token, not a `--source` flag.
 
 ```sh
-bun run agent --new-task "Prototype FTS5 search" --tags wiki
-bun run agent --report <task-id> --text "Indexed the export in 1.8 s" --status review
-bun run agent --comments --wait          # blocks until the owner comments
+bun run agent --new-task "Prototype wiki search" --tags wiki
+bun run agent --report <task-id> --text "Prototype is ready" --status review
+bun run agent --comments --wait
 bun run agent --reply <comment-id> --text "Added prefix search" --resolve
+bun run agent --digest digest.json
 ```
 
-**Upload a digest:**
+Agents may edit or trash their own records; only the account owner restores or permanently deletes. Rotate active tokens to replace credentials; revoked names cannot be reused. Hosted MCP uses an agent bearer at `/mcp`; this is not a verified ChatGPT OAuth connector. [The agent guide](docs/agents.md) covers HTTP, capture, MCP, digests, permissions and credential storage.
 
-```sh
-bun run agent --digest digest.json       # { date, slot, sections: [{ key, title, kind, items }] }
-```
+## Configuration and safety
 
-Reusing a request ID with the same content is a safe retry; the same ID with different content returns `409`. Agents that load skills can install [skills/agentic-dashboard/SKILL.md](skills/agentic-dashboard/SKILL.md). The full guide, including the record format, permissions and MCP, is in [docs/agents.md](docs/agents.md).
+Copy `.env.example` to `.env` for local use; Bun loads it automatically. Every setting is optional for a local install. Set `APP_ORIGIN` to the exact HTTPS origin before exposing the app beyond localhost.
 
-Manage keys later with `bun run agents list`, `bun run agents rotate <name>` and `bun run agents remove <name>`.
-
-## Configuration
-
-Copy `.env.example` to `.env`; Bun loads it automatically.
-
-| Variable | Default | Meaning |
+| Variable | Default | What it does |
 |---|---|---|
-| `HOST` / `PORT` | `127.0.0.1` / `4310` | Where the dashboard listens |
-| `APP_ORIGIN` | `http://127.0.0.1:PORT` | The address people open, for example `https://dashboard.example.com` |
-| `APP_NAME` | `Agentic Dashboard` | Name shown in the UI |
-| `DATA_DIR` | `data` | SQLite database, owner key, VAPID keys and audio |
-| `TIME_ZONE` | host zone | IANA zone for dates, the Today task filter, digests and daily limits |
-| `LOCALE` | `en` | Default push language (`en` or `ko`); each device sends its own language when it subscribes |
+| `HOST`, `PORT` | `127.0.0.1`, `4310` | Address the dashboard listens on |
+| `AUTH_MODE` | `local` | `local` (owner key) or `google` (hosted accounts) |
+| `APP_ORIGIN` | `http://127.0.0.1:<PORT>` | The exact origin people open |
+| `APP_NAME` | `Agentic Dashboard` | Display name, up to 60 characters |
+| `DATA_DIR` | `data` | Database, owner key, push keys and audio |
+| `DATABASE_PATH`, `CREDENTIALS_PATH`, `AUDIO_DIR` | `DATA_DIR/dashboard.sqlite`, `DATA_DIR/credentials.json`, `audio` next to the database | Single-path overrides |
+| `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | unset (local SQLite) | Optional libSQL backend |
+| `STATIC_DIR` | `dist` | The built web app |
+| `TIME_ZONE` | the host's zone | IANA zone for days, digests and daily limits |
+| `LOCALE` | `en` | Push notification language (`en` or `ko`) |
+| `TRUSTED_USER_HEADER`, `OWNER_LOGIN` | unset | Sign-in through an identity-aware proxy; set both or neither |
+| `PUSH`, `VAPID_PATH`, `VAPID_SUBJECT` | `on`, `DATA_DIR/vapid.json`, HTTPS origin or `mailto:admin@localhost` | Web push |
+| `DIGEST` | `on` | Digest uploads and the Digest tab |
+| `NARRATION`, `GEMINI_API_KEY` | `on`, unset | Listen; audio needs a key or Vertex |
+| `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` | `Kore`, `Puck` | Default voices |
+| `NARRATION_RECORD_AUTO`, `NARRATION_DIGEST_AUTO` | `read`, `off` | Automatic audio for records and digests |
+| `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT`, `NARRATION_CONCURRENCY` | `20`, `60`, `2` | Narration limits |
+| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini`, unset, `global` | Use Vertex AI instead of a key |
+| `AI_FILL_COMMAND`, `AI_FILL_SOURCES` | unset | A local command that tidies captured link titles |
+| `ENABLE_AGENT_INGRESS`, `AGENT_PORT`, `PUBLIC_API_BASE_URL` | `off`, `4312`, unset | Separate agent-only listener on 127.0.0.1 |
+| `ENABLE_MCP`, `MCP_PORT`, `MCP_AGENT` | `off`, `4313`, unset | Local MCP listener; needs a registered agent name |
+| `DEMO` | `off` | Read-only public demo |
 
-Optional features are off or keyless by default:
+Hosted-only settings (`APP_SECRETS`, `MAX_USERS`, `CONTACT_EMAIL`, proxy trust, Cloud Tasks and others) and the model-name overrides are listed in the [runtime environment reference](docs/hosted-auth.md#runtime-environment-reference). The server checks the whole configuration at start and exits with a message if a value is invalid.
 
-| Feature | Turn it on with |
-|---|---|
-| Web push | `PUSH` (on by default; keys are generated) |
-| Digests | `DIGEST` (on by default) |
-| Listen (text to speech) | `GEMINI_API_KEY`, or your own `NarrationProvider` in `server/narration.ts`. Default voices are settings: `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` (the owner can pick other voices and speaking styles in Settings › Narration voices) (Vertex scripts use `NARRATION_SCRIPT_MODEL`, default `gemini-4-argon`; the key route uses `NARRATION_KEY_SCRIPT_MODEL`, default `gemini-3.8-flash`). To bill speech to a Google Cloud project instead of the key's quota, set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT` and sign in with Application Default Credentials (see below) |
-| AI title fill for saved links | `AI_FILL_COMMAND`, any CLI that reads a prompt on stdin and prints JSON |
-| MCP for chat apps | `ENABLE_MCP=on` and `MCP_AGENT=<registered agent>` |
-| Agent-only listener | `ENABLE_AGENT_INGRESS=on` |
-| Sign-in through an identity-aware proxy | `TRUSTED_USER_HEADER` and `OWNER_LOGIN` |
-
-`GET /api/v1/config` reports which features are on. Every variable is described in [.env.example](.env.example).
-
-### Speech through Vertex AI
-
-With `NARRATION_TTS_PROVIDER=vertex` speech and the first script route use Vertex AI, billed to your Google Cloud project instead of the Gemini API key's free quota. The script still needs `GEMINI_API_KEY`.
-
-1. In your project, enable billing and the Vertex AI API (`gcloud services enable aiplatform.googleapis.com --project=<project-id>`).
-2. On the server, sign in once: `gcloud auth application-default login`. The server reads `~/.config/gcloud/application_default_credentials.json`, or the file named by `GOOGLE_APPLICATION_CREDENTIALS` (in Docker, mount that file read-only and point the variable at it). Only user logins (`authorized_user`) are supported; no API key is created or needed.
-3. Set `NARRATION_TTS_PROVIDER=vertex` and `NARRATION_VERTEX_PROJECT=<project-id>`. The model is served in the `global` location (`NARRATION_VERTEX_LOCATION`).
-
-There is no fallback to the key for speech. An expired login fails as `vertex_auth`, switched-off billing or API as `vertex_disabled`, and a used-up Vertex quota as `vertex_quota` (retried first); the player says what to do. Each call logs `narration tts: aiplatform.googleapis.com <model> <location> <status> audio_tokens=<n>` (25 tokens per second of audio).
-
-## Deploy
-
-Two supported ways, both covered in [docs/deploy.md](docs/deploy.md):
-
-1. **`bun start` behind an HTTPS reverse proxy** on your own machine or a small VM (Caddy and Tailscale Serve examples included).
-2. **A single binary** from `bun run build:binary`: copy `release/` anywhere and run `./agentic-dashboard`. No runtime needed.
-
-Read [docs/security.md](docs/security.md) before you expose it beyond localhost.
-
-## FAQ
-
-<details>
-<summary><b>Does it need a cloud account or API keys?</b></summary>
-
-No. A default install runs with no external keys. Text to speech needs a provider key (`GEMINI_API_KEY` for the included example); everything else works without one.
-</details>
-
-<details>
-<summary><b>Where is my data?</b></summary>
-
-In `DATA_DIR` (default `data/`): `dashboard.sqlite`, `credentials.json` (the owner key), `vapid.json` (push keys) and `audio/`. Back up the whole folder; stop the server first or use SQLite's backup API. `data/` is ignored by Git.
-</details>
-
-<details>
-<summary><b>Is it multi-user?</b></summary>
-
-It has one owner and any number of agents. The owner signs in with the owner key; each agent has its own key. There are no accounts for other people.
-</details>
-
-<details>
-<summary><b>What can an agent see and change?</b></summary>
-
-An agent creates records, edits only its own, and reads its own records, other agents' unarchived research, reports, notes and links, and the owner's tasks and projects. Only the owner confirms, archives and deletes. Removing an agent revokes its key at once; its records stay. Details are in [CONTRACT.md](CONTRACT.md).
-</details>
-
-<details>
-<summary><b>Why does the server reject my agent's record?</b></summary>
-
-Every agent writes one shared format so the inbox stays readable. A `400 record_incomplete` lists every item to fix, for example a missing `fields.summary` or a title wider than 40 columns. Fix them and send again with a new request ID.
-</details>
-
-<details>
-<summary><b>Can I use it on my phone?</b></summary>
-
-Yes. Open it over HTTPS, add it to the home screen, and turn on notifications in Settings (iOS 16.4 or later for push on iPhone).
-</details>
-
-<details>
-<summary><b>Which platforms are supported?</b></summary>
-
-It is developed and verified on macOS with Bun. Linux should work the same way; Windows is untested. Without macOS, narrated audio is stored as WAV instead of AAC.
-</details>
-
-<details>
-<summary><b>Is there a Docker image?</b></summary>
-
-Yes. `ghcr.io/floweredao/agentic-dashboard` has `0.4.0` and `latest` for linux/amd64 and linux/arm64:
-
-```sh
-docker run -d --name agentic-dashboard -p 8080:8080 -v agentic-data:/app/data \
-  -e APP_ORIGIN=http://localhost:8080 ghcr.io/floweredao/agentic-dashboard:0.4.0
-docker exec agentic-dashboard cat /app/data/credentials.json   # the "owner" value is the owner key
-```
-
-Or build it yourself from the `Dockerfile`: `docker build -t agentic-dashboard .`. The image listens on port 8080 and keeps its data in `/app/data`; mount a volume there. [docs/deploy.md](docs/deploy.md) covers it, and [docs/demo.md](docs/demo.md) shows the same image running the public demo.
-</details>
-
-<details>
-<summary><b>How do I add a language?</b></summary>
-
-Each component keeps its strings in a colocated `{ en, ko }` dictionary built with `strings()` from `src/i18n.ts`. Add the locale to `src/i18n.ts` and a translation next to each `ko` entry, then run `bun scripts/i18n-check.ts`. See [CONTRIBUTING.md](CONTRIBUTING.md).
-</details>
+Local audio uses `GEMINI_API_KEY` or an optional Vertex/provider configuration. Hosted audio uses each account's encrypted personal key and starts with automatic narration off. [Hosted authentication](docs/hosted-auth.md), [deployment](docs/deploy.md) and [.env.example](.env.example) explain the mode-specific settings. Never commit provider keys, credentials, data folders or private backups.
 
 ## Documentation
 
-| | |
+| Guide | Covers |
 |---|---|
-| [docs/agents.md](docs/agents.md) | Connecting agents: CLI, HTTP, record format, tasks, digests, MCP |
-| [docs/deploy.md](docs/deploy.md) | Reverse proxy, single binary, Docker, updates and backups |
-| [docs/demo.md](docs/demo.md) | The read-only public demo and how to run your own on Cloud Run |
-| [docs/security.md](docs/security.md) | Keys, data and network exposure |
+| [Agents](docs/agents.md) | Tokens, connections, CLI/HTTP, tasks, digests, capture and MCP |
+| [Deploying](docs/deploy.md) | Local proxy, binary, Docker and hosted tooling |
+| [Hosted accounts](docs/hosted-auth.md) | Google configuration, onboarding, keys, limits and isolated mock QA |
+| [Security](docs/security.md) | Threat model, isolation, sessions, credentials, logs and operator duties |
+| [Storage](docs/storage.md) · [Installation](docs/install.md) | Portable files, backups and machine setup |
 | [CONTRACT.md](CONTRACT.md) | Data model, API, permissions and limits |
-| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
-| [DESIGN.md](DESIGN.md) | Visual design contract |
-| [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Working on the code |
+| [DESIGN.md](DESIGN.md) | Interface design contract |
+| [Contributing](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Development and verification |
 
-## Contributing
-
-Issues and pull requests are welcome. Run `bun test`, `bun run typecheck` and `bun run build` before you open a pull request; see [CONTRIBUTING.md](CONTRIBUTING.md).
+English and Korean are supported. macOS is verified; Linux is supported by the installer/container, and Windows is untested. AAC encoding uses ffmpeg or macOS afconvert; without either, audio remains WAV. Phone push requires HTTPS and, on iPhone, a home-screen install with iOS 16.4 or later.
 
 ## License
 
 [MIT](LICENSE)
-
-## Portable installation and storage
-
-See [installation](docs/install.md) and [storage](docs/storage.md), including the generated [JSON schema](docs/schema/agentic-dashboard.schema.json). Automatic record audio defaults to `NARRATION_RECORD_AUTO=read`; Settings can turn it off. Text edits regenerate it; tags and stars do not. `NARRATION_CONCURRENCY=2` runs different records side by side. AAC encoding uses macOS afconvert or ffmpeg; without either, audio stays WAV.

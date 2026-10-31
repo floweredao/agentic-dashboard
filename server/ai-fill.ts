@@ -5,9 +5,13 @@ import type { DashboardRecord } from "../shared/contracts";
 import { captureSource } from "./capture-enrichment";
 import { ApiError } from "./errors";
 import type { Store } from "./store";
+import type { Jobs, JobPayload } from "./jobs";
+import { accountActive, assertWorkActive } from "./work-guard";
 
 export type ModelRunner = (system: string, prompt: string, signal: AbortSignal) => Promise<string>;
 export interface AiFillOptions {
+  readonly jobs?: Jobs;
+  readonly available?: () => Promise<boolean>;
   readonly store: Store;
   readonly run: ModelRunner;
   /** Agents whose records are filled too (for example a chat assistant that saves untitled conversations); captured links always are. */
@@ -16,7 +20,7 @@ export interface AiFillOptions {
   readonly model?: string;
   readonly timeoutMs?: number;
   /** Called once a queued record's fill has ended, whether it filled, changed nothing or failed. */
-  readonly onSettled?: (id: string) => void;
+  readonly onSettled?: (id: string) => void | Promise<void>;
 }
 export type AiFill = ReturnType<typeof createAiFill>;
 type Candidate = Pick<DashboardRecord, "kind" | "source" | "title" | "body"> & {
@@ -105,7 +109,9 @@ export function createAiFill(options: AiFillOptions) {
   }
 
   async function fill(id: string) {
-    const before = store.get(id);
+    if (!await accountActive(store)) return;
+    if (options.available && !await options.available()) return;
+    const before = (await store.get(id));
     if (!weakness(before, sources)) return;
     const attempts = (stateSchema.safeParse(before.fields.aiFill).data?.attempts ?? 0) + 1;
     const signal = AbortSignal.timeout(options.timeoutMs ?? 60000);
@@ -116,13 +122,15 @@ export function createAiFill(options: AiFillOptions) {
       const url = before.links[0]?.url;
       const prompt = ["[Record]", `Kind: ${before.kind}`, ...(url ? [`URL: ${url}`] : []), `Current title: ${before.title}`,
         `Current summary: ${summaryOf(before) || "(none)"}`, "", "[Source]", source].join("\n");
+      await assertWorkActive(store);
       output = parseOutput(await options.run(SYSTEM_PROMPT, prompt, signal));
     } catch (error) {
       if (!(error instanceof Error)) throw error;
       reason = signal.aborted ? "timeout" : "model";
     }
     // Re-read after the model call: an owner edit made meanwhile is no longer weak and wins.
-    const latest = store.get(id);
+    if (!await accountActive(store)) return;
+    const latest = (await store.get(id));
     const weak = weakness(latest, sources);
     if (!weak) return;
     const state = { model, at: new Date(store.now()).toISOString(), attempts };
@@ -132,37 +140,63 @@ export function createAiFill(options: AiFillOptions) {
     const aiFill = !output ? { status: "failed", ...state, reason }
       : filled.length ? { status: "filled", ...state, filled, original: { title: latest.title, summary: summaryOf(latest) } }
         : { status: "unchanged", ...state };
-    store.patch(id, { expectedVersion: latest.version, changes: {
+    (await store.patch(id, { expectedVersion: latest.version, changes: {
       ...(title === null ? {} : { title }),
       fields: { ...latest.fields, ...(summary === null ? {} : { summary }), aiFill },
-    } });
+    } }));
   }
 
-  function enqueue(id: string) {
+  async function enqueue(id: string) {
+    if (options.jobs) {
+      const record = await store.get(id);
+      await options.jobs.enqueue("ai-fill", { userId: store.db.userId, id, revision: String(record.version) });
+      return;
+    }
     if (queued.has(id)) return;
     queued.add(id);
-    chain = chain.then(() => fill(id)).catch((error: unknown) => {
+    chain = chain.then(async () => (await fill(id))).catch((error: unknown) => {
       // The owner deleted the record before or during the fill: nothing is left to fill.
       if (error instanceof ApiError && error.status === 404) return;
       // Record content and model output never reach logs; only the failure class does.
       console.error(`ai-fill ${id} failed: ${error instanceof Error ? error.name : "unknown"}`);
-    }).finally(() => { queued.delete(id); options.onSettled?.(id); });
+    }).finally(async () => { queued.delete(id); await options.onSettled?.(id); });
   }
-  function sweep() {
+  async function deliver(payload: JobPayload) {
+    if (payload.userId !== store.db.userId || !await accountActive(store)) return;
+    const lease = crypto.randomUUID();
+    const claimed = await store.db.tx(async () => {
+      await store.db.run("INSERT OR IGNORE INTO background_jobs(kind,id,revision,leased_until,user_id) VALUES('ai-fill',?,?,0,?)",
+        [payload.id, payload.revision]);
+      return store.db.run(`UPDATE background_jobs SET leased_until=?,leased_by=?
+        WHERE kind='ai-fill' AND id=? AND revision=? AND completed_at IS NULL AND leased_until<=? AND user_id=?`,
+      [store.now() + 15 * 60 * 1000, lease, payload.id, payload.revision, store.now()]);
+    });
+    if (!claimed.changes) return;
+    try {
+      await fill(payload.id);
+      await options.onSettled?.(payload.id);
+      await store.db.run("UPDATE background_jobs SET completed_at=? WHERE kind='ai-fill' AND id=? AND revision=? AND leased_by=? AND user_id=?",
+        [new Date(store.now()).toISOString(), payload.id, payload.revision, lease]);
+    } finally {
+      await store.db.run("UPDATE background_jobs SET leased_until=0 WHERE kind='ai-fill' AND id=? AND revision=? AND leased_by=? AND user_id=?",
+        [payload.id, payload.revision, lease]);
+    }
+  }
+  async function sweep() {
     const listed = [...sources];
-    const rows = store.db.query(`SELECT id FROM records WHERE json_extract(data,'$.kind')='social'
-      OR json_extract(data,'$.source') IN (${listed.length ? listed.map(() => "?").join(",") : "NULL"})
-      ORDER BY json_extract(data,'$.createdAt')`).all(...listed);
+    const rows = (await store.db.all(`SELECT id FROM records WHERE (json_extract(data,'$.kind')='social'
+      OR json_extract(data,'$.source') IN (${listed.length ? listed.map(() => "?").join(",") : "NULL"})) AND user_id=?
+      ORDER BY json_extract(data,'$.createdAt')`, [...listed]));
     for (const row of rows) {
       const { id } = z.object({ id: z.string() }).parse(row);
-      if (weakness(store.get(id), sources)) enqueue(id);
+      if (weakness((await store.get(id)), sources)) await enqueue(id);
     }
   }
   async function idle() {
     let current: Promise<void>;
     do { current = chain; await current; } while (current !== chain);
   }
-  return { enqueue, sweep, idle };
+  return { enqueue, sweep, idle, deliver };
 }
 
 /**
