@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add deployable hosted Google accounts alongside local self-hosting: account-scoped records and agent tokens, encrypted personal Gemini keys, first-login setup, configurable limits, data export/deletion and public privacy/terms pages.
+- Include hosted Cloud Run/Turso deployment tooling with private audio/backups, authenticated background jobs, daily maintenance and operator alerts; local dry runs do not claim a live service launch.
+- Document both hosting modes, per-account connections and security boundaries, and replace README examples with language-matched synthetic hosted screenshots in light and dark themes.
+- Port operational reading and accessibility fixes: equal phone tabs, two recent digests, full-screen digest reading, scalable text, touch targets and clearer states.
+- Narrate every new narratable record and meaningful text edit, defer temporary failures, and run independent jobs concurrently.
+- Separate Vertex and key script models, improve listening scripts, remove work logs and source lists, and add ffmpeg encoding plus portable storage documentation.
+- Call the app Agentic Dashboard everywhere users see a name (push titles, export file and its README, terms), and fix phone layout: tab badges on the glyph corner, one-line digest filter, a one-row reader toolbar, the full sidebar name and settings cards on the page gutter.
+- Rewrite both READMEs around what the app does and why, with fresh desktop and phone screenshots of the fixed layout, and add the Google OAuth client steps.
+
 All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -8,7 +19,13 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
-On first start the server adds the `narration_auto` and `digest_reactions` tables and two columns to `narrations`; back up the data folder before you upgrade.
+### Added
+
+- Briefing-folder uploads in the agent CLI: `--briefing <dir>` converts `news.json`, `mail.json` and AI-edition `x.json` to public digest sections, including null AI shortfalls, input titles and English/Korean defaults. `--briefing-file` uploads a converted digest body; both support `--sections` and `--quiet`. `--briefings` and `--briefing-reactions` alias the existing digest commands, using the same connected key or `DASHBOARD_TOKEN`.
+
+## [0.4.0] - 2026-10-24
+
+A Home tab and one Library, reactions and pictures on digest articles, audio made without asking, agents that can trash their own records, and digest audio read like a newscast. On first start the server adds the `narration_auto` and `digest_reactions` tables and two columns to `narrations`; back up the data folder before you upgrade.
 
 ### Added
 
@@ -24,7 +41,11 @@ On first start the server adds the `narration_auto` and `digest_reactions` table
 - A record's audio opens with a two- or three-sentence overview of what it covers and in what order, and tells a fact, figure or definition the document repeats only once in full. Saved scripts are written again under the new rules the next time audio is made.
 - Narration scripts always come from the script model: the lighter fallback model and `NARRATION_SCRIPT_FALLBACK_MODEL` are gone. With Vertex AI speech configured, the script is also streamed from the same model on Vertex AI first and then through the key; a try that stalls or times out is followed at once by the next, up to five tries, and when every try fails the audio fails with Retry instead of being made from a weaker script. While a script is tried again, the progress reads "Writing the script · attempt 2".
 - Digests are listed only in the Digest tab: the inbox shows records alone, and its badge, filter chips and title count only records.
-- The app opens on Today, and the tabs are Today, Digest, Library and More. Today shows today's digests (else the latest), up to five records to review, the audio you are listening to and tasks to check. The Inbox, Library and Archive merge into the Library, filtered by All, To review, Favorites and Archived, with continued records folded under their latest record; the kind and channel chips and the sidebar's channel list are gone, and Tasks moves under More. Old `#/inbox` and `#/archive` addresses redirect.
+- The app opens on Home (`#/home`), and the tabs are Home, Digest, Library and More. Home has no date title or day boundary: it shows the latest digest, the five newest records with how many are left to review and See all, the audio you are listening to and open tasks, with records to review first. The Inbox, Library and Archive merge into the Library, filtered by All, To review, Favorites and Archived, with continued records folded under their latest record; the kind and channel chips and the sidebar's channel list are gone, and Tasks moves under More. Old `#/today`, `#home`, `#/inbox` and `#/archive` addresses redirect.
+
+### Fixed
+
+- Each sentence line of a record or digest is its own paragraph, and paragraphs and lists on the reading screens have more room between them.
 
 ### Fixed
 
@@ -115,7 +136,8 @@ The first public release.
 - Escape closes a dialog without the macOS alert sound.
 - The app name keeps its full width beside the sidebar's hide button.
 
-[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/floweredao/agentic-dashboard/releases/tag/v0.1.0
