@@ -44,3 +44,16 @@ CREATE INDEX digests_scheduled ON digests(scheduled_at);
 CREATE INDEX digest_reactions_updated ON digest_reactions(updated_at);
 CREATE INDEX narration_runs_started ON narration_runs(started_at);
 `;
+/** The single-user predecessor's news and mail briefings, kept beside LEGACY_EXTRA's other tables instead of digests. */
+export const LEGACY_BRIEFINGS = LEGACY_EXTRA.replace(/CREATE TABLE digests[\s\S]*?UNIQUE\(date,slot\)\);\n/, "")
+  .replace(/CREATE TABLE digest_reactions[\s\S]*?PRIMARY KEY\(digest_id,section,article_key\)\);\n/, "")
+  .replace(/CREATE INDEX digest[^\n]*\n/g, "") + `
+CREATE TABLE briefings(id TEXT PRIMARY KEY, date TEXT NOT NULL, slot TEXT NOT NULL, scheduled_at TEXT NOT NULL,
+ sections TEXT NOT NULL CHECK(json_valid(sections)), created_by TEXT NOT NULL REFERENCES principals(id), created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL, version INTEGER NOT NULL, news_read_at TEXT, mail_read_at TEXT, UNIQUE(date, slot));
+CREATE INDEX briefings_scheduled ON briefings(scheduled_at);
+CREATE TABLE briefing_reactions(briefing_id TEXT NOT NULL REFERENCES briefings(id), section TEXT NOT NULL, article_key TEXT NOT NULL,
+ reaction TEXT NOT NULL CHECK(reaction IN ('like','dislike','seen')), title TEXT NOT NULL, source TEXT NOT NULL, url TEXT NOT NULL,
+ updated_at TEXT NOT NULL, PRIMARY KEY(briefing_id, section, article_key));
+CREATE INDEX briefing_reactions_updated ON briefing_reactions(updated_at);
+`;
