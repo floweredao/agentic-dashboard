@@ -15,7 +15,7 @@ export function narrationFiles(options: NarrationOptions, rows: ReturnType<typeo
     storage, userId, removeFile,
     async audioFile(id: string) {
       const current = await rows.row(id);
-      if (!current?.audio_file || !current.audio_mime) throw new ApiError(404, "not_found", "No narration audio for this record");
+      if (!current?.audio_file || !current.audio_mime || !await rows.audioPresent(current)) throw new ApiError(404, "not_found", "No narration audio for this record");
       return { path: await storage.url(userId, current.audio_file), mime: current.audio_mime, remote: storage.remote };
     },
     async prune() {
