@@ -21,10 +21,11 @@ const origin = `http://127.0.0.1:${port}`;
 const timeZone = process.env["TIME_ZONE"] ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 const agentNames = ["research-bot", "claude-code", "codex"] as const;
 
-const probe = new Store(databasePath, Date.now);
-const count = z.object({ n: z.number() }).parse(probe.db.query("SELECT count(*) AS n FROM records").get()).n;
-const taken = agentNames.filter(name => probe.db.query("SELECT id FROM principals WHERE id=?").get(name));
-probe.close();
+const probe = await Store.open(databasePath, Date.now);
+const count = z.object({ n: z.number() }).parse((await probe.db.get("SELECT count(*) AS n FROM records WHERE user_id=?", []))).n;
+const taken: string[] = [];
+for (const name of agentNames) if (await probe.db.get("SELECT id FROM principals WHERE id=? AND user_id=?", [name])) taken.push(name);
+(await probe.close());
 if (count > 0 || taken.length) {
   console.error(count > 0
     ? `${databasePath} already has ${count} records; demo data goes into an empty database (for example DATA_DIR=demo-data bun run seed).`
@@ -36,13 +37,13 @@ if (count > 0 || taken.length) {
 let clock = Date.now();
 const at = (hoursAgo: number) => { clock = Date.now() - hoursAgo * 3_600_000; };
 at(80);
-const app = createApp({ databasePath, credentialsPath, port, timeZone, now: () => clock });
-const keys = Object.fromEntries(agentNames.map(name => [name, app.agents.add(name)])) as Record<(typeof agentNames)[number], string>;
+const app = (await createApp({ databasePath, credentialsPath, port, timeZone, now: () => clock }));
+const keys = Object.fromEntries(await Promise.all(agentNames.map(async name => [name, await app.agents.add(name)] as const)));
 const idOf = z.object({ record: z.object({ id: z.string(), version: z.number() }) });
-async function call(path: string, method: string, body: unknown, headers: Record<string, string>) {
+async function call(path: string, method: string, body: unknown, headers: Record<string, string>): Promise<unknown> {
   const response = await app.fetch(new Request(`${origin}${path}`, { method, headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) }));
   if (!response.ok) throw new Error(`${method} ${path} -> ${response.status} ${await response.text()}`);
-  return await response.json() as unknown;
+  return await response.json();
 }
 const login = await app.fetch(new Request(`${origin}/api/v1/auth/session`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" },
   body: JSON.stringify({ token: readCredentials(credentialsPath).owner }) }));
@@ -125,6 +126,6 @@ await call("/api/v1/digests", "POST", { date: yesterday, slot: "evening", notify
   { key: "alerts", title: "Alerts", kind: "messages", items: [
     { key: "x1", importance: "todo", from: "Uptime monitor", subject: "Wiki staging was down for 4 minutes", summary: "It recovered on its own at 18:12.", action: "Check the staging logs" } ] },
 ] }, as("research-bot"));
-app.close();
+(await app.close());
 console.log(`Added demo agents (${agentNames.join(", ")}), ${records} records, ${comments} task comments and two digests to ${databasePath}.
 The demo agents' keys were not saved; add your own agents with bun run agents add <name>.`);

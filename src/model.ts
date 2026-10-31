@@ -105,7 +105,7 @@ export const isMaterialKind = (value: string): value is MaterialKind => (recordK
 /** Items waiting for the owner: unconfirmed or revisit-due material, newest first. */
 export function inboxItems(records: readonly DashboardRecord[], today = localDate()) {
   return records.filter(record => isRecord(record) && inQueue(record, today))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 }
 /**
  * The Library's state filter (`?state=`): all (every unarchived material) is the default; pending is the queue above;
@@ -121,7 +121,7 @@ export function libraryView(records: readonly DashboardRecord[], state: LibraryS
   if (state === "pending") return inboxItems(records, today);
   if (state === "archived") return archivedItems(records);
   return records.filter(record => isRecord(record) && record.archivedAt === null && (state === "all" || record.fields.starred === true))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 }
 /**
  * Case-insensitive match over the text a person remembers: title, body, summary, conclusion, tags, host. Both sides are
@@ -194,7 +194,7 @@ export function listedFor(route: Route, records: readonly DashboardRecord[], tod
     // not lose its place until another one is opened.
     const opened = state !== "all" && state !== "archived" && route.id !== null && !listed.some(record => record.id === route.id)
       ? records.find(record => record.id === route.id && isRecord(record) && record.archivedAt === null) : undefined;
-    return (opened ? [...listed, opened].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : listed)
+    return (opened ? [...listed, opened].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)) : listed)
       .filter(record => matchesQuery(record, params.q ?? ""));
   }
   if (route.view === "work") {
