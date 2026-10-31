@@ -44,11 +44,13 @@ export function registerDigests(app: Hono, runtime: TenantRuntime) {
 
       /** Like · Not for me · Seen it on one article: owner only, with CSRF. */
       app.put("/api/v1/digests/:id/reactions", async c => {
+        digestRoute();
         (await owner(c.req.raw, true));
         return c.json({ reactions: (await digests.react(c.req.param("id"), await json(c.req.raw))) });
       });
 
       app.post("/api/v1/digests/:id/read", async c => {
+        digestRoute();
         (await owner(c.req.raw, true));
         const input = z.object({ read: z.boolean(), part: DigestPartSchema.optional() }).strict().parse(await json(c.req.raw));
         return c.json({ digest: (await digests.markRead(c.req.param("id"), input.read, input.part)) });

@@ -26,6 +26,7 @@ export function registerSharing(app: Hono, runtime: TenantRuntime) {
       });
 
       app.delete("/api/v1/push/subscription", async c => {
+        pushRoute();
         (await owner(c.req.raw, true));
         (await push.unsubscribe(z.object({ endpoint: z.string().max(2048) }).strict().parse(await json(c.req.raw)).endpoint));
         return c.body(null, 204);
