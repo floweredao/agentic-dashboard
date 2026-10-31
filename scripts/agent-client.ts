@@ -92,7 +92,7 @@ export async function getDocument(connection: AgentConnection, id: string): Prom
     .json<unknown>();
 }
 
-/** GET /api/v1/comments: the owner's comments in this agent's queue (state new|open|all), or one item's whole timeline. */
+/** GET /api/v1/comments: the owner's comments in this agent's queue (state new|open|all), or one item's timeline (its newest 2000 entries). */
 export async function listComments(
   connection: AgentConnection,
   query: { state?: string; recordId?: string },

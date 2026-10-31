@@ -146,6 +146,8 @@ export const DashboardRecordSchema = z.object({
 export type DashboardRecord = z.infer<typeof DashboardRecordSchema>;
 /** Deleted records wait in the owner's trash this many days, then are removed for good. */
 export const TRASH_RETENTION_DAYS = 30;
+/** The trash list answers at most this many records, the most recently deleted first; older ones stay until purged. */
+export const TRASH_LIST_LIMIT = 200;
 /** One trashed record as it was when deleted; `purgeAt` = `deletedAt` + TRASH_RETENTION_DAYS. */
 export const TrashItemSchema = z.object({ record: DashboardRecordSchema, deletedAt: z.iso.datetime(), purgeAt: z.iso.datetime() }).strict();
 export type TrashItem = z.infer<typeof TrashItemSchema>;
@@ -176,6 +178,8 @@ export type Comment = z.infer<typeof CommentSchema>;
 export const QueuedCommentSchema = CommentSchema.extend({ recordTitle: z.string() }).strict();
 export type QueuedComment = z.infer<typeof QueuedCommentSchema>;
 export const COMMENT_MAX_LENGTH = 4000;
+/** One item's timeline answers at most this many entries: the newest ones, oldest first. */
+export const COMMENT_TIMELINE_LIMIT = 2000;
 /** new: not seen and not done; open: not done; all. */
 export const CommentStateSchema = z.enum(["new", "open", "all"]);
 export const CommentInputSchema = z.object({
@@ -305,7 +309,8 @@ export const MESSAGE_IMPORTANCE = ["urgent", "todo", "check", "info"] as const;
 export type MessageImportance = (typeof MESSAGE_IMPORTANCE)[number];
 /** A digest's slot within its day: morning (08:00), evening (21:00) or another time as HH:MM. */
 export const DigestSlotSchema = z.string().regex(/^(?:morning|evening|(?:[01]\d|2[0-3]):[0-5]\d)$/, "morning, evening or HH:MM");
-export const DIGEST_LIMITS = { items: 60, sections: 12, bodyBytes: 256 * 1024, rangeDays: 92 } as const;
+/** `searchDigests`: digest search reads at most this many digests, newest scheduled first. */
+export const DIGEST_LIMITS = { items: 60, sections: 12, bodyBytes: 256 * 1024, rangeDays: 92, searchDigests: 500 } as const;
 const digestUrl = z.url({ protocol: /^https?$/ }).max(2048);
 const itemKey = z.string().trim().min(1).max(200);
 export const DigestArticleSchema = z.object({
