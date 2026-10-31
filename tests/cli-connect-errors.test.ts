@@ -7,17 +7,17 @@ import { createApp } from "../server/app";
 
 const main = join(import.meta.dir, "..", "cli", "main.ts");
 let dir = "";
-let app: ReturnType<typeof createApp> | null = null;
+let app: Awaited<ReturnType<typeof createApp>> | null = null;
 let server: ReturnType<typeof Bun.serve> | null = null;
 // The connect route answers from the real app, or with the body the server's rate limiter or error handler sends.
 let connectReply: "app" | "rate-limited" | "internal" = "app";
 
-beforeAll(() => {
+beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "agentic-cli-connect-"));
   const probe = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
   const port = probe.port;
   probe.stop(true);
-  app = createApp({ databasePath: join(dir, "data", "dashboard.sqlite"), credentialsPath: join(dir, "data", "credentials.json"), port });
+  app = await createApp({ databasePath: join(dir, "data", "dashboard.sqlite"), credentialsPath: join(dir, "data", "credentials.json"), port });
   server = Bun.serve({ hostname: "127.0.0.1", port, fetch: request => {
     if (new URL(request.url).pathname === "/api/v1/agents/connect" && connectReply !== "app") {
       return connectReply === "rate-limited"
@@ -27,7 +27,7 @@ beforeAll(() => {
     return app?.fetch(request) ?? new Response(null, { status: 503 });
   } });
 });
-afterAll(() => { server?.stop(true); app?.close(); rmSync(dir, { recursive: true, force: true }); });
+afterAll(async () => { server?.stop(true); await app?.close(); rmSync(dir, { recursive: true, force: true }); });
 
 async function connect(lang: "en" | "ko", code: string) {
   const home = join(dir, `${lang}-${Math.random().toString(36).slice(2)}`);
