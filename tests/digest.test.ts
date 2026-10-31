@@ -3,9 +3,9 @@ import { z } from "zod";
 import { DigestSchema, DigestSummarySchema } from "../shared/contracts";
 import { bearer, fixture } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 const article = (key: string, title: string, extra: Record<string, unknown> = {}) => ({
   key, title, source: "Newswire", summary: `${title} 요약.`, url: `https://news.example.com/${key}`, ...extra,
@@ -41,7 +41,7 @@ test("An agent uploads a digest; the same upload again changes nothing and keeps
   expect(first.digest.sections.map(section => [section.key, section.title, section.kind])).toEqual([["domestic", "Domestic", "articles"], ["world", "World", "articles"]]);
   // When: the same body is sent again (a retry), and again after a restart.
   const replay = await upload(body, 200);
-  f.restart();
+  (await f.restart());
   const afterRestart = await upload(body, 200);
   // Then: nothing changed and the stored digest is the first one.
   for (const result of [replay, afterRestart]) {
@@ -81,7 +81,7 @@ test("Any registered agent uploads and reads digests; the owner gets 403, no cre
 });
 
 test("With DIGEST off every digest route answers 404", async () => {
-  const off = fixture(10000, Date.now, { digestEnabled: false });
+  const off = (await fixture(10000, Date.now, { digestEnabled: false }));
   try {
     const owner = await off.login();
     const id = crypto.randomUUID();
@@ -91,7 +91,29 @@ test("With DIGEST off every digest route answers 404", async () => {
       expect(response.status).toBe(404);
       expect(await errorCode(response)).toBe("feature_disabled");
     }
-  } finally { off.close(); }
+    // And: the owner's own writes report the feature as off instead of looking a digest up.
+    for (const [path, method, body] of [[`/api/v1/digests/${id}/read`, "POST", { read: true }],
+      [`/api/v1/digests/${id}/reactions`, "PUT", { section: "domestic", key: "a", reaction: "like" }]] as const) {
+      const response = await off.call(path, method, body, owner);
+      expect(response.status).toBe(404);
+      expect(await errorCode(response)).toBe("feature_disabled");
+    }
+  } finally { (await off.close()); }
+});
+
+test("The digest list counts both ends of its range: 92 days is served and 93 refused", async () => {
+  // Given: the documented maximum is 92 days, counted like the default 14-day range.
+  const owner = await f.login();
+  // When: the owner asks for exactly 92 days.
+  const widest = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-02", "GET", undefined, owner);
+  // Then: that range is served.
+  expect(widest.status).toBe(200);
+  expect(await widest.json()).toMatchObject({ from: "2026-01-01", to: "2026-04-02" });
+  // When: one more day is asked for.
+  const tooWide = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-03", "GET", undefined, owner);
+  // Then: the query is refused instead of serving a wider range than documented.
+  expect(tooWide.status).toBe(400);
+  expect(await errorCode(tooWide)).toBe("invalid_query");
 });
 
 test("Malformed digests are refused before anything is written: unknown kind, duplicate or bad keys, empty sections", async () => {
@@ -116,6 +138,22 @@ test("Malformed digests are refused before anything is written: unknown kind, du
   expect(list.parse(await (await f.call("/api/v1/digests?from=2026-09-01&to=2026-10-31", "GET", undefined, await f.login())).json()).items).toEqual([]);
 });
 
+test("Uploads with new section keys cannot grow a digest past 12 sections", async () => {
+  // Given: a morning digest that already has the most sections a digest may have.
+  const full = await upload(morning(Array.from({ length: 12 }, (_, index) => articles(`a${index}`, `A${index}`, [article("x", "소식")]))));
+  // When: a later upload adds one more key.
+  const response = await f.call("/api/v1/digests", "POST", morning([articles("extra", "Extra", [article("y", "추가 소식")])]), bearer("omo"));
+  // Then: it is refused and the stored digest keeps its 12 sections and version.
+  expect(response.status).toBe(400);
+  expect(await errorCode(response)).toBe("invalid_input");
+  const stored = detailOf.parse(await (await f.call(`/api/v1/digests/${full.digest.id}`, "GET", undefined, bearer("omo"))).json()).digest;
+  expect(stored.sections.map(section => section.key)).toEqual(full.digest.sections.map(section => section.key));
+  expect(stored.version).toBe(full.digest.version);
+  // And: an upload that replaces existing keys still works.
+  const replaced = await upload(morning([articles("a0", "A0", [article("z", "고친 소식")])]), 200);
+  expect(replaced.digest.sections).toHaveLength(12);
+});
+
 test("A digest larger than the 32 KiB record limit is accepted", async () => {
   const items = Array.from({ length: 50 }, (_, index) => article(`k${index}`, `긴 소식 ${index}`, { summary: "가".repeat(400) }));
   const body = morning([articles("domestic", "Domestic", items)]);
@@ -125,14 +163,14 @@ test("A digest larger than the 32 KiB record limit is accepted", async () => {
 });
 
 test("The default scheduled time is the slot's time in the dashboard's time zone", async () => {
-  const york = fixture(10000, Date.now, { timeZone: "America/New_York" });
+  const york = (await fixture(10000, Date.now, { timeZone: "America/New_York" }));
   try {
     const post = async (slot: string) => saved.parse(await (await york.call("/api/v1/digests", "POST",
       { date: "2026-10-01", slot, sections: [articles("a", "A", [article("a", "소식")])] }, bearer("omo"))).json()).digest.scheduledAt;
     expect(await post("morning")).toBe("2026-10-01T12:00:00.000Z");
     expect(await post("evening")).toBe("2026-10-02T01:00:00.000Z");
     expect(await post("06:15")).toBe("2026-10-01T10:15:00.000Z");
-  } finally { york.close(); }
+  } finally { (await york.close()); }
 });
 
 test("The owner lists digests newest first, reads one, and marks it read until a new section arrives", async () => {
@@ -228,6 +266,11 @@ test("Search finds articles and messages across digests, newest first, and keeps
   ]);
   expect(await search("&part=articles")).toEqual([["2026-10-01", "world", "World", "articles", "b"], ["2026-09-30", "domestic", "Domestic", "articles", "a"]]);
   expect(await search("&part=messages")).toEqual([["2026-10-01", "inbox", "Inbox", "messages", "m"]]);
+  // A decomposed query (as macOS may hand over Hangul) and capitals beyond ASCII find the same items.
+  const found = async (q: string) => hits.parse(await (await f.call(`/api/v1/digests/search?q=${encodeURIComponent(q)}`, "GET", undefined, owner)).json()).items.map(hit => hit.item.key);
+  expect(await found("반도체 수출".normalize("NFD"))).toEqual(["a"]);
+  await upload(morning([articles("europe", "Europe", [article("e", "Économie française")])], { date: "2026-10-03" }));
+  expect(await found("éCONOMIE")).toEqual(["e"]);
   expect((await f.call("/api/v1/digests/search?q=", "GET", undefined, owner)).status).toBe(400);
   expect((await f.call("/api/v1/digests/search?q=a&part=all", "GET", undefined, owner)).status).toBe(400);
 });
@@ -265,4 +308,35 @@ test("The owner marks an article liked, not for them or seen; the digest reads b
     reaction: z.string(), title: z.string(), source: z.string(), url: z.string(), updatedAt: z.string() }).strict()), from: z.string() }).strict().parse(await recent.json());
   expect(body.items).toEqual([expect.objectContaining({ digestId: id, section: "domestic", key: "a", reaction: "dislike", title: "First story", source: "Newswire", url: "https://news.example.com/a" })]);
   expect((await f.call("/api/v1/digests/reactions?days=0", "GET", undefined, bearer("omo"))).status).toBe(400);
+});
+
+test("Two items with one key in a section are refused, since a reaction names its article by section and key", async () => {
+  // Given: the same article key twice in one section, of either kind.
+  const twice = [
+    morning([articles("domestic", "Domestic", [article("a", "First story"), article("a", "Second story")])]),
+    morning([messages("inbox", "Inbox", [message("m", "첫 메일"), message("m", "둘째 메일")])]),
+  ];
+  // Then: each upload is refused and nothing is stored.
+  for (const body of twice) {
+    const response = await f.call("/api/v1/digests", "POST", body, bearer("omo"));
+    expect([response.status, await errorCode(response)]).toEqual([400, "invalid_input"]);
+  }
+  expect(list.parse(await (await f.call("/api/v1/digests?from=2026-09-01&to=2026-10-31", "GET", undefined, await f.login())).json()).items).toEqual([]);
+  // And: one key in two different sections is still fine.
+  await upload(morning([articles("domestic", "Domestic", [article("a", "국내 소식")]), articles("world", "World", [article("a", "해외 소식")])]));
+});
+
+test("A section sent again under another kind is new to read in that part", async () => {
+  // Given: a section first sent as articles, which the owner reads.
+  const am = await upload(morning([articles("inbox", "Inbox", [article("a", "잘못 보낸 소식")])]));
+  const owner = await f.login();
+  await f.call(`/api/v1/digests/${am.digest.id}/read`, "POST", { read: true }, owner);
+  // When: the agent sends the same key again as the messages it should have been.
+  const fixed = await upload(morning([messages("inbox", "Inbox", [message("m1", "새 기기 접속 알림")])]), 200);
+  // Then: the messages are unread, and the articles part, now empty, stays read.
+  expect(fixed.changed).toEqual(["inbox"]);
+  expect(fixed.digest.messagesReadAt).toBeNull();
+  expect(fixed.digest.articlesReadAt).not.toBeNull();
+  const listed = list.parse(await (await f.call("/api/v1/digests?from=2026-10-01&to=2026-10-01", "GET", undefined, owner)).json());
+  expect(listed.parts).toMatchObject({ articles: { unread: 0 }, messages: { unread: 1 } });
 });

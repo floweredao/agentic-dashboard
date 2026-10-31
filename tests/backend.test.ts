@@ -4,9 +4,9 @@ import { z } from "zod";
 import { RECORD_LIMITS } from "../shared/contracts";
 import { agentRecord, bearer, fixture, origin, payload, recordResult, tokens } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 test("health and schema expose private metadata only", async () => {
   expect((await f.call("/api/health")).status).toBe(200);
@@ -33,7 +33,7 @@ test("identical concurrent requests persist once, conflict on different payload 
   const records = await Promise.all(responses.map(async r => recordResult.parse(await r.json()).record));
   expect(new Set(records.map(r => r.id)).size).toBe(1);
   expect((await f.call("/api/v1/records", "POST", payload({ kind: "note", title: "Different" }, p.requestId), bearer("codex"))).status).toBe(409);
-  f.restart();
+  (await f.restart());
   const replay = await f.call("/api/v1/records", "POST", p, bearer("codex"));
   expect(replay.status).toBe(200);
   expect(recordResult.parse(await replay.json()).record).toEqual(recordResult.shape.record.parse(records[0]));
@@ -42,7 +42,7 @@ test("identical concurrent requests persist once, conflict on different payload 
 test("owner session survives restart, has protected cookie and logout revokes", async () => {
   const session = await f.login();
   expect(session.Cookie).toContain("=");
-  f.restart();
+  (await f.restart());
   expect((await f.call("/api/v1/auth/session", "GET", undefined, session)).status).toBe(200);
   expect((await f.call("/api/v1/auth/session", "DELETE", undefined, session)).status).toBe(204);
   expect((await f.call("/api/v1/auth/session", "GET", undefined, session)).status).toBe(401);
@@ -59,9 +59,9 @@ test("browser origin, CSRF and failed bearer never permit cookie fallback", asyn
   expect((await f.call("/api/v1/records", "POST", payload(), bearer("owner"))).status).toBe(403);
 });
 test("expired sessions fail without timing waits", async () => {
-  f.close();
+  (await f.close());
   let now = Date.now();
-  f = fixture(10000, () => now);
+  f = (await fixture(10000, () => now));
   const session = await f.login();
   now += 8 * 24 * 60 * 60 * 1000;
   expect((await f.call("/api/v1/auth/session", "GET", undefined, session)).status).toBe(401);
@@ -217,6 +217,33 @@ test("pagination filters avoid duplicates and reject invalid query/cursor", asyn
     expect((await f.call(`/api/v1/records?${query}`, "GET", undefined, session)).status).toBe(400);
   }
 });
+test("search ignores case beyond ASCII, decomposed Hangul and surrounding spaces, and pages with filters", async () => {
+  // Given: notes saved a second apart, so newest first is one order.
+  let clock = Date.parse("2026-10-01T00:00:00Z");
+  (await f.close()); f = (await fixture(10000, () => clock += 1000));
+  const session = await f.login();
+  const titles = ["CAFÉ guide", "Über notes", "한글 검색 노트", "plain words", "검색 둘째", "검색 셋째"];
+  for (const title of titles) expect((await f.call("/api/v1/records", "POST", payload({ kind: "note", title, body: "본문" }), session)).status).toBe(201);
+  const titlesOf = async (query: string) => {
+    const response = await f.call(`/api/v1/records?${query}`, "GET", undefined, session);
+    expect(response.status).toBe(200);
+    return z.object({ items: z.array(z.object({ title: z.string() })), nextCursor: z.string().nullable() }).parse(await response.json());
+  };
+  const q = (value: string) => `q=${encodeURIComponent(value)}`;
+  // When/Then: case beyond ASCII, a decomposed query and surrounding spaces still match.
+  expect((await titlesOf(q("café"))).items.map(item => item.title)).toEqual(["CAFÉ guide"]);
+  expect((await titlesOf(q("ÜBER"))).items.map(item => item.title)).toEqual(["Über notes"]);
+  expect((await titlesOf(q("한글 검색".normalize("NFD")))).items.map(item => item.title)).toEqual(["한글 검색 노트"]);
+  expect((await titlesOf(q("  plain  "))).items.map(item => item.title)).toEqual(["plain words"]);
+  expect((await titlesOf(q("   "))).items).toHaveLength(titles.length);
+  expect((await f.call(`/api/v1/records?${q("가".repeat(201))}`, "GET", undefined, session)).status).toBe(400);
+  // And: a search pages newest first like a plain list, and a filter that excludes every match leaves an empty last page.
+  const first = await titlesOf(`${q("검색")}&kind=note&limit=2`);
+  expect(first.items.map(item => item.title)).toEqual(["검색 셋째", "검색 둘째"]);
+  const second = await titlesOf(`${q("검색")}&kind=note&limit=2&cursor=${encodeURIComponent(first.nextCursor ?? "")}`);
+  expect(second).toEqual({ items: [expect.objectContaining({ title: "한글 검색 노트" })], nextCursor: null });
+  expect(await titlesOf(`${q("검색")}&kind=task`)).toEqual({ items: [], nextCursor: null });
+});
 test("transport rejects Host, media type, malformed JSON, oversized body and unauthenticated access", async () => {
   expect((await f.call("/api/health", "GET", undefined, { Host: "evil.example" })).status).toBe(421);
   expect((await f.call("/api/v1/records")).status).toBe(401);
@@ -226,7 +253,7 @@ test("transport rejects Host, media type, malformed JSON, oversized body and una
   }
 });
 test("request rate limit produces 429", async () => {
-  f.close(); f = fixture(2);
+  (await f.close()); f = (await fixture(2));
   const statuses = [];
   for (let index = 0; index < 3; index++) statuses.push((await f.call("/api/v1/records", "POST", payload(), bearer("omo"))).status);
   expect(statuses).toEqual([201, 201, 429]);
