@@ -23,6 +23,11 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 - Briefing-folder uploads in the agent CLI: `--briefing <dir>` converts `news.json`, `mail.json` and AI-edition `x.json` to public digest sections, including null AI shortfalls, input titles and English/Korean defaults. `--briefing-file` uploads a converted digest body; both support `--sections` and `--quiet`. `--briefings` and `--briefing-reactions` alias the existing digest commands, using the same connected key or `DASHBOARD_TOKEN`.
 
+### Fixed
+
+- Markdown in the reader: a heading keeps a `#` that ends a word (`# C#`), an ordered list that starts at 0 keeps its start, a fence line with a language (```` ```js ````) inside a code block stays code, and link addresses with balanced parentheses (`…/wiki/Bun_(software)`) stay whole.
+- New record: a first line longer than the 200-character title is kept whole in the body instead of losing what follows character 200, and a title cut at 200 no longer ends in half an emoji.
+
 ## [0.4.0] - 2026-10-24
 
 A Home tab and one Library, reactions and pictures on digest articles, audio made without asking, agents that can trash their own records, and digest audio read like a newscast. On first start the server adds the `narration_auto` and `digest_reactions` tables and two columns to `narrations`; back up the data folder before you upgrade.
@@ -46,11 +51,6 @@ A Home tab and one Library, reactions and pictures on digest articles, audio mad
 ### Fixed
 
 - Each sentence line of a record or digest is its own paragraph, and paragraphs and lists on the reading screens have more room between them.
-
-### Fixed
-
-- Markdown in the reader: a heading keeps a `#` that ends a word (`# C#`), an ordered list that starts at 0 keeps its start, a fence line with a language (```` ```js ````) inside a code block stays code, and link addresses with balanced parentheses (`…/wiki/Bun_(software)`) stay whole.
-- New record: a first line longer than the 200-character title is kept whole in the body instead of losing what follows character 200, and a title cut at 200 no longer ends in half an emoji.
 
 ## [0.3.0] - 2026-10-07
 
