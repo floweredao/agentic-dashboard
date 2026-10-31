@@ -1,10 +1,10 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { z } from "zod";
-import { agentRecord, fixture, payload, recordResult } from "./backend-helper";
+import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 const mcpUrl = "http://127.0.0.1:4313/mcp";
 const legacy = "2025-06-18";
@@ -16,7 +16,7 @@ const toolResult = z.object({ isError: z.boolean().optional(), structuredContent
   content: z.array(z.object({ type: z.literal("text"), text: z.string() })) });
 
 async function post(body: unknown, headers: HeadersInit = {}) {
-  const h = new Headers({ "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...Object.fromEntries(new Headers(headers)) });
+  const h = new Headers({ "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...bearer("chatgpt"), ...Object.fromEntries(new Headers(headers)) });
   return await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: h, body: JSON.stringify(body) }));
 }
 let nextId = 1;
@@ -86,8 +86,8 @@ for (const version of [legacy, stateless]) test(`save_record (${version}) attrib
 test("save_record merges an identical ChatGPT save sent again with a new requestId within ten minutes", async () => {
   // Given: a controllable clock, and ChatGPT already saved a note.
   let clock = Date.parse("2026-09-27T11:58:33Z");
-  f.close();
-  f = fixture(10000, () => clock);
+  (await f.close());
+  f = (await fixture(10000, () => clock));
   const record = agentRecord({ kind: "note", title: "연결 시험" });
   const first = z.object({ id: z.string().uuid() }).parse((await call("save_record", { requestId: "connection-test-b79c", record })).structuredContent);
   // When: a second run sends the same record 23 seconds later under a fresh requestId, then again after the window.
@@ -210,9 +210,9 @@ test("transport rejects foreign hosts, browser origins, bad versions and non-POS
   expect(get.status).toBe(405);
   expect(get.headers.get("allow")).toBe("POST");
   expect((await f.app.mcpFetch(new Request("http://127.0.0.1:4313/other", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }))).status).toBe(404);
-  const text = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { "Content-Type": "text/plain" }, body: "{}" }));
+  const text = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { ...bearer("chatgpt"), "Content-Type": "text/plain" }, body: "{}" }));
   expect(text.status).toBe(415);
-  const malformed = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" }));
+  const malformed = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST", headers: { ...bearer("chatgpt"), "Content-Type": "application/json" }, body: "{" }));
   expect(malformed.status).toBe(400);
   expect(rpcError.parse(await malformed.json()).error.code).toBe(-32700);
   const batch = await post([body]);
@@ -225,4 +225,10 @@ test("transport rejects foreign hosts, browser origins, bad versions and non-POS
 
 test("existing listeners never serve the MCP endpoint", async () => {
   expect((await f.call("/mcp", "POST", { jsonrpc: "2.0", id: 1, method: "tools/list" }, {}, true)).status).toBe(404);
+});
+
+test("local MCP never falls back to the configured agent without a bearer", async () => {
+  const response = await f.app.mcpFetch(new Request(mcpUrl, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) }));
+  expect(response.status).toBe(401);
 });
