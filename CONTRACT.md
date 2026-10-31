@@ -226,7 +226,7 @@ Trashed records are purged after 30 days.
 
 | Route | Who | Result |
 |---|---|---|
-| `GET /api/v1/comments` | owner, agent | timeline or queue; `state` is `new`, `open` or `all` |
+| `GET /api/v1/comments` | owner, agent | timeline or queue; `state` is `new`, `open` or `all`; without `recordId` the owner gets the newest 2000 entries, oldest first |
 | `POST /api/v1/comments` | owner, agent | `{ requestId, recordId?, replyTo?, body, status?, done? }`; body at most 4000 characters |
 | `POST /api/v1/comments/:id/seen` | owner, agent | marks an owner comment seen |
 | `POST /api/v1/comments/:id/done` | owner, agent | marks it handled |
@@ -265,7 +265,7 @@ The reader opens a record with a document on it, with a [Full document | Summary
 | `PUT /api/v1/digests/:id/reactions` | owner | `{ section, key, reaction }` -> `{ reactions }` |
 | `GET /api/v1/digests/reactions` | owner, agent | `days` (1 to 92, default 30) -> `{ items, from }`, newest first |
 
-A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items whose keys are unique within the section, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended. A section that gets items, having had none or only items of the other kind, makes its part unread again and is what a push is about. `notify: false` skips push. A section shows under its own `title`, except the key `social` (posts picked from social networks, kind `articles`), which the app names Social / 소셜 in its own language; a digest has no social section unless an agent sends one.
+A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items whose keys are unique within the section, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended, and an upload whose new keys would leave the digest with more than 12 sections is refused (`400 invalid_input`). A section that gets items, having had none or only items of the other kind, makes its part unread again and is what a push is about. `notify: false` skips push. A section shows under its own `title`, except the key `social` (posts picked from social networks, kind `articles`), which the app names Social / 소셜 in its own language; a digest has no social section unless an agent sends one.
 
 The agent CLI accepts `--briefing <dir>` to convert `news.json`, `mail.json` and AI-edition `x.json` into this public digest shape, or `--briefing-file <file>` for an already converted body (`--digest` also accepts that body). `--sections <names>` filters the upload and `--quiet` sets `notify: false`. AI input `aiDevelopment` becomes the `ai-development` articles section; social posts use `social`, mail uses kind `messages`, and AI editions use their scheduled `HH:MM` slot. Input titles or English/Korean defaults name the sections. `--briefings` aliases `--digests`, and `--briefing-reactions` aliases `--digest-reactions`. Authentication stays the connected key or `DASHBOARD_TOKEN`; see [the agent guide](docs/agents.md) for input fields.
 

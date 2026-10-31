@@ -57,9 +57,10 @@ export class Comments {
       return { items: rows.map(toComment) };
     }
     if (principal.source === "manual") {
+      // The newest 2000 entries, oldest first: past the cap the oldest ones drop out, never the latest.
       const rows = (await db.all(`SELECT ${COLUMNS} FROM comments c JOIN records r ON r.id=c.record_id AND r.user_id=c.user_id WHERE (1=1${stateCondition(query.state ?? "all")}) AND c.user_id=?
-        ORDER BY c.created_at,c.rowid LIMIT 2000`, []));
-      return { items: rows.map(toComment) };
+        ORDER BY c.created_at DESC,c.rowid DESC LIMIT 2000`, []));
+      return { items: rows.map(toComment).reverse() };
     }
     const rows = (await db.all(`SELECT ${COLUMNS},json_extract(r.data,'$.title') AS title FROM comments c JOIN records r ON r.id=c.record_id AND r.user_id=c.user_id
       WHERE (c.source='manual' AND json_extract(r.data,'$.kind') IN ('task','project') AND json_extract(r.data,'$.archivedAt') IS NULL
