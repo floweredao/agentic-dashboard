@@ -10,8 +10,12 @@ import { TenantDb } from "./tenant-db";
 
 export { hash, secret };
 export const SESSION_COOKIE = "agentic_session";
-/** The owner's key file. Agent keys are never stored here: they live only as hashes in the database (see Agents). */
-export const CredentialsSchema = z.object({ owner: z.string().min(16).max(512) }).strict();
+/**
+ * The owner's key file. Agent keys are never stored here: they live only as hashes in the database (see Agents), so a file
+ * carried over from the single-user predecessor, which listed one key per agent beside the owner's, is read for its owner key
+ * alone and its other entries are ignored.
+ */
+export const CredentialsSchema = z.object({ owner: z.string().min(16).max(512) }).catchall(z.string());
 const principalSchema = z.object({ id: z.string(), source: SourceSchema });
 
 /** Creates the owner key file (mode 0600) when it does not exist yet; answers whether it was created. */

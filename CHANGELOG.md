@@ -25,6 +25,7 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ### Fixed
 
+- A database from the single-user predecessor opens instead of stopping the server at startup: its `briefings` and `briefing_reactions` tables were left behind by the tenant upgrade with foreign keys into the tables it had replaced, which failed the deferred foreign-key check at commit. Each briefing now becomes a digest with its sections in upload order, `ai-morning` and `ai-evening` as `08:10` and `19:10`, article reactions kept, and the briefing push switch and automatic-audio setting read back under their digest names. An owner key file that still lists one key per agent is read for its owner key instead of being rejected.
 - Markdown in the reader: a heading keeps a `#` that ends a word (`# C#`), an ordered list that starts at 0 keeps its start, a fence line with a language (```` ```js ````) inside a code block stays code, and link addresses with balanced parentheses (`…/wiki/Bun_(software)`) stay whole.
 - New record: a first line longer than the 200-character title is kept whole in the body instead of losing what follows character 200, and a title cut at 200 no longer ends in half an emoji.
 - The `systemd --user` service that `agentic-dashboard setup` installs on Linux loads again: its working folder was written in quotes, which systemd reads as a relative path and refuses the whole unit, and its log path now also keeps a `%` in the home folder.
