@@ -236,7 +236,9 @@ export function geminiProvider(options: {
   const scriptRoutes = options.vertex ? ["vertex", "gemini"] as const : ["gemini"] as const;
   const log = (line: string) => (options.vertex?.log ?? console.log)(line);
   const voice = options.voice ?? GEMINI_VOICE;
-  const hosts = [voice, options.podcastVoice ?? GEMINI_PODCAST_VOICE] as const;
+  const podcastVoice = options.podcastVoice ?? GEMINI_PODCAST_VOICE;
+  // The two hosts must differ (NarrationVoicesSchema), so host B set or left equal to host A falls back to a default voice that is not host A.
+  const hosts = [voice, podcastVoice !== voice ? podcastVoice : voice !== GEMINI_PODCAST_VOICE ? GEMINI_PODCAST_VOICE : GEMINI_VOICE] as const;
   const firstByteMs = options.firstByteMs ?? SCRIPT_FIRST_BYTE_MS;
   const idleMs = options.idleMs ?? SCRIPT_IDLE_MS;
   /** `stall` aborts the request early when the response has not started by then (script calls; speech may take longer). */
