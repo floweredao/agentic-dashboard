@@ -46,7 +46,7 @@ test("names are validated, unique and never the owner's", async () => {
 test("config needs no sign-in and turned-off features answer 404", async () => {
   const off = (await fixture(10000, Date.now, { pushEnabled: false, digestEnabled: false, appName: "Team Desk" }));
   try {
-    expect(await (await off.call("/api/v1/config")).json()).toEqual({ appName: "Team Desk", version: "0.4.0", timeZone: "Asia/Seoul", locale: "en", authMode: "local",
+    expect(await (await off.call("/api/v1/config")).json()).toEqual({ appName: "Team Desk", version: "0.5.0", timeZone: "Asia/Seoul", locale: "en", authMode: "local",
       contactEmail: null, databaseRegion: null, demoHostedUrl: null,
       features: { narration: false, push: false, digest: false, trustedLogin: false, demo: false } });
     expect((await off.call("/api/v1/push", "GET", undefined, await off.login())).status).toBe(404);
