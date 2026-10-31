@@ -68,7 +68,7 @@ Hosting creates a local owner key and can install a user service. Connecting ask
 
 ### From a clone
 
-Requires Bun 1.3 or later:
+Requires [Bun](https://bun.sh) 1.3 or later and git, on macOS or Linux. ffmpeg is optional (smaller audio files):
 
 ```sh
 git clone https://github.com/floweredao/agentic-dashboard.git
@@ -158,7 +158,34 @@ Agents may edit or trash their own records; only the account owner restores or p
 
 ## Configuration and safety
 
-Copy `.env.example` to `.env` for local use; Bun loads it automatically. Local defaults are `AUTH_MODE=local`, `HOST=127.0.0.1`, `PORT=4310`, and `DATA_DIR=data`. Set `APP_ORIGIN` to the exact HTTPS origin before exposing the app beyond localhost.
+Copy `.env.example` to `.env` for local use; Bun loads it automatically. Every setting is optional for a local install. Set `APP_ORIGIN` to the exact HTTPS origin before exposing the app beyond localhost.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `HOST`, `PORT` | `127.0.0.1`, `4310` | Address the dashboard listens on |
+| `AUTH_MODE` | `local` | `local` (owner key) or `google` (hosted accounts) |
+| `APP_ORIGIN` | `http://127.0.0.1:<PORT>` | The exact origin people open |
+| `APP_NAME` | `Agentic Dashboard` | Display name, up to 60 characters |
+| `DATA_DIR` | `data` | Database, owner key, push keys and audio |
+| `DATABASE_PATH`, `CREDENTIALS_PATH`, `AUDIO_DIR` | `DATA_DIR/dashboard.sqlite`, `DATA_DIR/credentials.json`, `audio` next to the database | Single-path overrides |
+| `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | unset (local SQLite) | Optional libSQL backend |
+| `STATIC_DIR` | `dist` | The built web app |
+| `TIME_ZONE` | the host's zone | IANA zone for days, digests and daily limits |
+| `LOCALE` | `en` | Push notification language (`en` or `ko`) |
+| `TRUSTED_USER_HEADER`, `OWNER_LOGIN` | unset | Sign-in through an identity-aware proxy; set both or neither |
+| `PUSH`, `VAPID_PATH`, `VAPID_SUBJECT` | `on`, `DATA_DIR/vapid.json`, HTTPS origin or `mailto:admin@localhost` | Web push |
+| `DIGEST` | `on` | Digest uploads and the Digest tab |
+| `NARRATION`, `GEMINI_API_KEY` | `on`, unset | Listen; audio needs a key or Vertex |
+| `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` | `Kore`, `Puck` | Default voices |
+| `NARRATION_RECORD_AUTO`, `NARRATION_DIGEST_AUTO` | `read`, `off` | Automatic audio for records and digests |
+| `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT`, `NARRATION_CONCURRENCY` | `20`, `60`, `2` | Narration limits |
+| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini`, unset, `global` | Use Vertex AI instead of a key |
+| `AI_FILL_COMMAND`, `AI_FILL_SOURCES` | unset | A local command that tidies captured link titles |
+| `ENABLE_AGENT_INGRESS`, `AGENT_PORT`, `PUBLIC_API_BASE_URL` | `off`, `4312`, unset | Separate agent-only listener on 127.0.0.1 |
+| `ENABLE_MCP`, `MCP_PORT`, `MCP_AGENT` | `off`, `4313`, unset | Local MCP listener; needs a registered agent name |
+| `DEMO` | `off` | Read-only public demo |
+
+Hosted-only settings (`APP_SECRETS`, `MAX_USERS`, `CONTACT_EMAIL`, proxy trust, Cloud Tasks and others) and the model-name overrides are listed in the [runtime environment reference](docs/hosted-auth.md#runtime-environment-reference). The server checks the whole configuration at start and exits with a message if a value is invalid.
 
 Local audio uses `GEMINI_API_KEY` or an optional Vertex/provider configuration. Hosted audio uses each account's encrypted personal key and starts with automatic narration off. [Hosted authentication](docs/hosted-auth.md), [deployment](docs/deploy.md) and [.env.example](.env.example) explain the mode-specific settings. Never commit provider keys, credentials, data folders or private backups.
 
