@@ -83,6 +83,7 @@ try {
       digest: { type: "string" },
       briefing: { type: "string" },
       "briefing-file": { type: "string" },
+      "time-zone": { type: "string" },
       sections: { type: "string" },
       quiet: { type: "boolean" },
       digests: { type: "boolean" },
@@ -137,7 +138,7 @@ try {
         "Narrate:     bun run agent --narrate <record-id> [--style read|podcast] [--force] [--wait] [--interval 5] [--timeout 900]   (done 0, failed 1, timeout 2; without --style the last style, read at first)\n" +
         "Narration:   bun run agent --narration <record-id>\n" +
         "Digest:      bun run agent --digest digest.json [--quiet]   (the POST /api/v1/digests body)\n" +
-        "Briefing:    bun run agent --briefing <dir> [--sections mail,domestic,international] [--quiet]   (news.json, mail.json; AI editions also read x.json, sections ai-development,social)\n" +
+        "Briefing:    bun run agent --briefing <dir> [--sections mail,domestic,international] [--quiet] [--time-zone Europe/Berlin]   (news.json, mail.json; AI editions also read x.json, sections ai-development,social; date and slot in TIME_ZONE or the host zone)\n" +
         "Digest body: bun run agent --briefing-file digest.json [--sections <names>] [--quiet]   (alias for --digest)\n" +
         "Digests:     bun run agent --digests (or --briefings) [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n" +
         "Reactions:   bun run agent --digest-reactions (or --briefing-reactions) [--days 30]   (the owner's Like · Not for me · Seen it, newest first: {items, from})",
@@ -160,7 +161,8 @@ try {
         return await entry.exists() ? await entry.json() : undefined;
       };
       const [news, mail, x] = await Promise.all([read("news.json"), read("mail.json"), read("x.json")]);
-      input = digestFromFiles({ news, mail, x }, { ...(sections ? { sections } : {}), notify: values.quiet !== true });
+      input = digestFromFiles({ news, mail, x }, { ...(sections ? { sections } : {}), notify: values.quiet !== true,
+        ...(values["time-zone"] ? { timeZone: values["time-zone"] } : {}) });
     }
     const result = z.object({ digest: z.object({ id: z.string(), date: z.string(), slot: z.string(), version: z.number(),
       sections: z.array(z.object({ key: z.string(), items: z.array(z.unknown()) }).passthrough()) }).passthrough(),

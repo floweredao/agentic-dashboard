@@ -70,7 +70,7 @@ Other CLI commands, from `bun run agent --help`:
 | `--timeline <task-id>` | Show a task's timeline |
 | `--narrate <record-id> [--style read\|podcast] [--force] [--wait]`, `--narration <record-id>` | Request or check Listen audio. `--style read` is one voice, `podcast` two hosts; without it the record's last style is used (read at first). Digests are always read aloud. |
 | `--digest digest.json [--quiet]`, `--digests [--from] [--to]` | Upload or list digests |
-| `--briefing <dir> [--sections mail,domestic,international] [--quiet]` | Convert a briefing folder and upload it as a digest |
+| `--briefing <dir> [--sections mail,domestic,international] [--quiet] [--time-zone <zone>]` | Convert a briefing folder and upload it as a digest |
 | `--briefing-file digest.json [--sections <names>] [--quiet]` | Upload a public digest body, like `--digest` |
 | `--briefings [--from YYYY-MM-DD] [--to YYYY-MM-DD]` | Alias for `--digests` |
 | `--digest-reactions [--days 30]`, `--briefing-reactions [--days 30]` | Read recent article reactions (the two flags are aliases) |
@@ -85,7 +85,7 @@ bun run agent --briefing ./ai-briefing --sections ai-development,social
 bun run agent --briefings --from 2026-10-01 --to 2026-10-02
 ```
 
-The folder needs `news.json` or `mail.json`. Each has `targetScheduledAt` (an ISO timestamp with an offset). The converter uses its Korean time (UTC+09:00) for the date and slot: `morning` at 08:00, `evening` at 21:00, otherwise `HH:MM`; a news edition of `morning` or `evening` takes precedence.
+The folder needs `news.json` or `mail.json`. Each has `targetScheduledAt` (an ISO timestamp with an offset). The converter reads the date and slot in `--time-zone <IANA name>`, else `TIME_ZONE`, else the computer's own time zone: `morning` at 08:00, `evening` at 21:00, otherwise `HH:MM`; a news edition of `morning` or `evening` takes precedence.
 
 - `news.json`: `articles.domestic` and `articles.international` are arrays of `{ eventKey, title, url, source?, summary?, originalUrl?, publishedAt?, publishedDate?, imageUrl? }`. Optional `shortfalls` maps section names to a string or `null`. A timestamp takes precedence over a date-only publication value.
 - AI editions (`edition: "ai-morning"` or `"ai-evening"`) upload only `articles.aiDevelopment` and, when present, `x.json`. They use the scheduled `HH:MM` slot, since the public API has no AI-named slots. The public section key is `ai-development`; `--sections` also accepts the input name `aiDevelopment`.

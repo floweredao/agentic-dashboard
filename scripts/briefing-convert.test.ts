@@ -2,6 +2,10 @@ import { expect, test } from "bun:test";
 import { DigestInputSchema } from "../shared/contracts";
 import { digestFromFiles, parseMailDigest } from "./briefing-convert";
 
+// The fixtures are written for UTC+09:00; pin the zone so the host's own zone doesn't matter.
+const convert = (files: Parameters<typeof digestFromFiles>[0], options: Parameters<typeof digestFromFiles>[1] = {}) =>
+  digestFromFiles(files, { timeZone: "Asia/Seoul", ...options });
+
 const news = {
   edition: "morning", targetScheduledAt: "2026-10-01T08:00:00+09:00",
   articles: {
@@ -45,7 +49,7 @@ test("rejects mail that announces items in an unreadable format", () => {
 });
 
 test("converts ordinary news and mail into public digest sections", () => {
-  const input = DigestInputSchema.parse(digestFromFiles({ news, mail }));
+  const input = DigestInputSchema.parse(convert({ news, mail }));
   expect(input).toMatchObject({ date: "2026-10-01", slot: "morning", scheduledAt: news.targetScheduledAt, notify: true });
   expect(input.sections.map(section => [section.key, section.kind])).toEqual([
     ["mail", "messages"], ["domestic", "articles"], ["international", "articles"],
@@ -60,7 +64,7 @@ test("converts ordinary news and mail into public digest sections", () => {
 
 test.each(["ai-morning", "ai-evening"])("maps %s to its scheduled time with AI and social articles only", edition => {
   const scheduledAt = edition === "ai-morning" ? x.targetScheduledAt : "2026-10-01T21:10:00+09:00";
-  const input = DigestInputSchema.parse(digestFromFiles({
+  const input = DigestInputSchema.parse(convert({
     news: { ...news, edition, targetScheduledAt: scheduledAt, shortfalls: { aiDevelopment: null } }, mail, x,
   }));
   expect(input.slot).toBe(edition === "ai-morning" ? "08:10" : "21:10");
@@ -74,29 +78,37 @@ test.each(["ai-morning", "ai-evening"])("maps %s to its scheduled time with AI a
 });
 
 test("ignores social input outside AI editions", () => {
-  expect(digestFromFiles({ news, x }).sections.some(section => section.key === "social")).toBe(false);
+  expect(convert({ news, x }).sections.some(section => section.key === "social")).toBe(false);
 });
 
 test("uses input section titles before locale defaults", () => {
-  const input = digestFromFiles({ news: { ...news, locale: "ko", sectionTitles: { domestic: "지역 기사" } },
+  const input = convert({ news: { ...news, locale: "ko", sectionTitles: { domestic: "지역 기사" } },
     mail: { ...mail, title: "받은 소식" } });
   expect(input.sections.map(section => section.title)).toEqual(["받은 소식", "지역 기사", "해외"]);
-  expect(digestFromFiles({ news: { ...news, edition: "ai-morning" }, x: { ...x, title: "Community picks" } })
+  expect(convert({ news: { ...news, edition: "ai-morning" }, x: { ...x, title: "Community picks" } })
     .sections.find(section => section.key === "social")?.title).toBe("Community picks");
 });
 
 test("filters public keys, applies quiet mode and handles off-schedule mail", () => {
-  const input = digestFromFiles({ mail: { ...mail, targetScheduledAt: "2026-10-01T23:30:00Z" } },
+  const input = convert({ mail: { ...mail, targetScheduledAt: "2026-10-01T23:30:00Z" } },
     { sections: ["mail"], notify: false, locale: "ko" });
   expect(input).toMatchObject({ date: "2026-10-02", slot: "08:30", notify: false });
   expect(input.sections.map(section => section.key)).toEqual(["mail"]);
   expect(input.sections[0]?.title).toBe("메일");
-  expect(digestFromFiles({ news: { ...news, edition: "evening" } }).slot).toBe("evening");
-  expect(digestFromFiles({ news, mail }, { sections: ["domestic"] }).sections).toHaveLength(1);
+  expect(convert({ news: { ...news, edition: "evening" } }).slot).toBe("evening");
+  expect(convert({ news, mail }, { sections: ["domestic"] }).sections).toHaveLength(1);
 });
 
 test("rejects missing files, invalid scheduled times and empty section selections", () => {
-  expect(() => digestFromFiles({})).toThrow();
-  expect(() => digestFromFiles({ news: { ...news, targetScheduledAt: "not-a-date" } })).toThrow();
-  expect(() => digestFromFiles({ news }, { sections: ["social"] })).toThrow();
+  expect(() => convert({})).toThrow();
+  expect(() => convert({ news: { ...news, targetScheduledAt: "not-a-date" } })).toThrow();
+  expect(() => convert({ news }, { sections: ["social"] })).toThrow();
+});
+
+test("reads the date and slot in the chosen time zone, not a fixed UTC+09:00", () => {
+  const utc = { ...mail, targetScheduledAt: "2026-10-01T06:00:00Z" };
+  expect(digestFromFiles({ mail: utc }, { timeZone: "Europe/Berlin" })).toMatchObject({ date: "2026-10-01", slot: "morning" });
+  expect(digestFromFiles({ mail: utc }, { timeZone: "America/New_York" })).toMatchObject({ date: "2026-10-01", slot: "02:00" });
+  expect(digestFromFiles({ mail: utc }, { timeZone: "Asia/Seoul" })).toMatchObject({ date: "2026-10-01", slot: "15:00" });
+  expect(() => digestFromFiles({ mail: utc }, { timeZone: "Not/AZone" })).toThrow();
 });
