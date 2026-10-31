@@ -12,6 +12,28 @@ login service uses launchd on macOS and `systemd --user` on Linux. Choose **Conn
 this computer's agents** on another computer, then enter the dashboard URL and a
 one-time connection code.
 
+## Installer settings
+
+`install.sh` reads these variables:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `AGENTIC_DASHBOARD_HOME` | `~/.agentic-dashboard` | App, `server.env`, `client.json` and the default data folder |
+| `AGENTIC_DASHBOARD_BIN_DIR` | `~/.local/bin` | Where the `agentic-dashboard` command is written |
+| `AGENTIC_DASHBOARD_REF` | `main` | Branch or tag to install |
+| `AGENTIC_DASHBOARD_SOURCE` | the GitHub archive of `AGENTIC_DASHBOARD_REF` | An HTTP(S) URL or local path of a `.tar.gz` to install instead |
+
+To install a release, name its tag in both places:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.4.0/install.sh | AGENTIC_DASHBOARD_REF=v0.4.0 sh
+```
+
+Without a terminal, pass setup flags after `sh -s --`, for example
+`... | sh -s -- setup --yes --port 4310 --data-dir ~/dashboard-data --origin https://dashboard.example.com --no-service`.
+`setup` accepts `--yes`, `--port`, `--data-dir`, `--origin`, `--service` and `--no-service`;
+`connect` accepts `--url`, `--code`, `--agent`, `--key-stdin`, `--key-store keychain|file`, `--skills` and `--yes`.
+
 The CLI fills the installed skill with that computer's command path, dashboard
 address and agent identity. `agentic-dashboard skills install` installs it later.
 Each agent uses its own registered key; never copy the owner's key into a skill.
