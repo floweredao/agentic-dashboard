@@ -175,11 +175,11 @@ Copy `.env.example` to `.env` for local use; Bun loads it automatically. Every s
 | `TRUSTED_USER_HEADER`, `OWNER_LOGIN` | unset | Sign-in through an identity-aware proxy; set both or neither |
 | `PUSH`, `VAPID_PATH`, `VAPID_SUBJECT` | `on`, `DATA_DIR/vapid.json`, HTTPS origin or `mailto:admin@localhost` | Web push |
 | `DIGEST` | `on` | Digest uploads and the Digest tab |
-| `NARRATION`, `GEMINI_API_KEY` | `on`, unset | Listen; audio needs a key or Vertex |
+| `NARRATION`, `GEMINI_API_KEY` | `on`, unset | Listen; audio needs the key, also with Vertex |
 | `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` | `Kore`, `Puck` | Default voices |
 | `NARRATION_RECORD_AUTO`, `NARRATION_DIGEST_AUTO` | `read`, `off` | Automatic audio for records and digests |
 | `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT`, `NARRATION_CONCURRENCY` | `20`, `60`, `2` | Narration limits |
-| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini`, unset, `global` | Use Vertex AI instead of a key |
+| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini`, unset, `global` | Make speech and scripts on Vertex AI; the key stays the script fallback |
 | `AI_FILL_COMMAND`, `AI_FILL_SOURCES` | unset | A local command that tidies captured link titles |
 | `ENABLE_AGENT_INGRESS`, `AGENT_PORT`, `PUBLIC_API_BASE_URL` | `off`, `4312`, unset | Separate agent-only listener on 127.0.0.1 |
 | `ENABLE_MCP`, `MCP_PORT`, `MCP_AGENT` | `off`, `4313`, unset | Local MCP listener; needs a registered agent name |

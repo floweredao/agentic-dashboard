@@ -175,11 +175,11 @@ bun run agent --digest digest.json
 | `TRUSTED_USER_HEADER`, `OWNER_LOGIN` | 없음 | 신원 확인 프록시를 통한 로그인, 둘 다 설정하거나 둘 다 비움 |
 | `PUSH`, `VAPID_PATH`, `VAPID_SUBJECT` | `on`, `DATA_DIR/vapid.json`, HTTPS origin 또는 `mailto:admin@localhost` | 웹 푸시 |
 | `DIGEST` | `on` | 다이제스트 업로드와 다이제스트 탭 |
-| `NARRATION`, `GEMINI_API_KEY` | `on`, 없음 | 듣기, 오디오를 만들려면 키나 Vertex가 필요 |
+| `NARRATION`, `GEMINI_API_KEY` | `on`, 없음 | 듣기, 오디오를 만들려면 키가 필요(Vertex를 써도 필요) |
 | `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` | `Kore`, `Puck` | 기본 음성 |
 | `NARRATION_RECORD_AUTO`, `NARRATION_DIGEST_AUTO` | `read`, `off` | 기록과 다이제스트 자동 오디오 |
 | `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT`, `NARRATION_CONCURRENCY` | `20`, `60`, `2` | 오디오 생성 한도 |
-| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini`, 없음, `global` | 키 대신 Vertex AI 사용 |
+| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini`, 없음, `global` | 음성과 대본을 Vertex AI로 만들고, 키는 대본의 예비 경로로 사용 |
 | `AI_FILL_COMMAND`, `AI_FILL_SOURCES` | 없음 | 수집한 링크 제목을 다듬는 로컬 명령 |
 | `ENABLE_AGENT_INGRESS`, `AGENT_PORT`, `PUBLIC_API_BASE_URL` | `off`, `4312`, 없음 | 127.0.0.1의 에이전트 전용 리스너 |
 | `ENABLE_MCP`, `MCP_PORT`, `MCP_AGENT` | `off`, `4313`, 없음 | 로컬 MCP 리스너, 등록된 에이전트 이름 필요 |
