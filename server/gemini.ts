@@ -7,10 +7,11 @@ import type { AdcSource } from "./vertex";
 /** Gemini 3.8 Flash TTS (stable): https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts */
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
 /**
- * Writes every script. There is deliberately no lighter model to fall back to: a lighter model writes a worse script; a
- * failed try is retried with this model, on Vertex AI and on the key.
+ * Writes scripts on Vertex AI. The AI Studio key route has its own independently configured script model.
  */
-export const GEMINI_SCRIPT_MODEL = "gemini-3.8-flash";
+export const GEMINI_SCRIPT_MODEL = "gemini-4-argon";
+/** AI Studio key route, configured independently of Vertex. */
+export const GEMINI_KEY_SCRIPT_MODEL = "gemini-3.8-flash";
 export const GEMINI_VOICE = "Kore";
 /** Podcast host B, a prebuilt voice that is easy to tell apart from host A; multi-speaker requests take at most two prebuilt voices. */
 export const GEMINI_PODCAST_VOICE = "Puck";
@@ -197,7 +198,7 @@ const vertexResponseSchema = z.object({
 
 /**
  * Speech, and the script's first route, through Vertex AI (billed to the Google Cloud project) instead of the AI Studio key. The
- * script tries the key, with the same model, when Vertex fails.
+ * script tries the independently configured key model when Vertex fails.
  */
 export interface VertexSpeech {
   readonly project: string;
@@ -221,7 +222,7 @@ export function pcmOf(bytes: Uint8Array): Uint8Array {
 
 /** Interactions API with `store: false`; the key goes only in the x-goog-api-key header and never into errors. */
 export function geminiProvider(options: {
-  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string;
+  readonly key: KeySource; readonly ttsModel?: string; readonly scriptModel?: string; readonly keyScriptModel?: string;
   readonly voice?: string; readonly podcastVoice?: string; readonly vertex?: VertexSpeech;
   readonly fetch?: (input: string, init: RequestInit) => Promise<Response>;
   /** Script calls only: the wait for the response to start and the longest quiet gap in its stream before it fails as `stalled`. */
@@ -230,7 +231,8 @@ export function geminiProvider(options: {
   const send = options.fetch ?? ((input: string, init: RequestInit) => fetch(input, init));
   const ttsModel = options.ttsModel ?? GEMINI_TTS_MODEL;
   const scriptModel = options.scriptModel ?? GEMINI_SCRIPT_MODEL;
-  /** The ways to reach the script model, tried in turn: Vertex AI when configured, then the key. Never another model. */
+  const keyScriptModel = options.keyScriptModel ?? GEMINI_KEY_SCRIPT_MODEL;
+  /** The ways to the script, tried in turn: `scriptModel` on Vertex AI when configured, then `keyScriptModel` on the key. */
   const scriptRoutes = options.vertex ? ["vertex", "gemini"] as const : ["gemini"] as const;
   const log = (line: string) => (options.vertex?.log ?? console.log)(line);
   const voice = options.voice ?? GEMINI_VOICE;
@@ -388,7 +390,7 @@ export function geminiProvider(options: {
         if (!script.trim()) throw new ProviderError("empty_script", false);
         return script;
       }
-      const model = scriptModel;
+      const model = keyScriptModel;
       const controller = new AbortController();
       const response = await post({ model, system_instruction: system, input: prompt, stream: true, store: false }, signal, { ms: firstByteMs, controller });
       const streamed = response.body !== null && (response.headers.get("content-type") ?? "").includes("text/event-stream");
