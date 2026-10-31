@@ -284,3 +284,22 @@ test("The real sender encrypts the payload for the device and signs it with the 
     expect(message).toMatchObject({ kind: "test", url: "/#/settings" });
   } finally { (await real.close()); }
 });
+
+test("With PUSH off every push route answers 404 feature_disabled, unsubscribe included", async () => {
+  // Given: a dashboard that runs with web push turned off.
+  const off = (await fixture(10000, Date.now, { ...stub, pushEnabled: false }));
+  try {
+    const owner = await off.login();
+    const { subscription } = device();
+    for (const [path, method, body] of [["/api/v1/push", "GET", undefined],
+      ["/api/v1/push/subscription", "PUT", { subscription }],
+      ["/api/v1/push/subscription", "DELETE", { endpoint: subscription.endpoint }],
+      ["/api/v1/push/test", "POST", { endpoint: subscription.endpoint }]] as const) {
+      // When: the owner calls a push route.
+      const response = await off.call(path, method, body, owner);
+      // Then: it reports the feature as off instead of acting on the subscription.
+      expect(response.status).toBe(404);
+      expect(z.object({ error: z.object({ code: z.string() }) }).parse(await response.json()).error.code).toBe("feature_disabled");
+    }
+  } finally { (await off.close()); }
+});

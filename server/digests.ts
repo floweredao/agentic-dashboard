@@ -127,7 +127,8 @@ export class Digests {
     const to = query.to ?? zonedDate(new Date(this.store.now()), this.timeZone);
     const from = query.from ?? shiftDay(to, -13);
     if (from > to) throw new ApiError(400, "invalid_query", "from must not follow to");
-    if (Date.parse(to) - Date.parse(from) > DIGEST_LIMITS.rangeDays * DAY_MS) throw new ApiError(400, "invalid_query", `Ask for at most ${DIGEST_LIMITS.rangeDays} days`);
+    // Both ends count, like the default range: 92 days leaves at most 91 days between them.
+    if (Date.parse(to) - Date.parse(from) >= DIGEST_LIMITS.rangeDays * DAY_MS) throw new ApiError(400, "invalid_query", `Ask for at most ${DIGEST_LIMITS.rangeDays} days`);
     const db = this.store.db;
     const items = (await db.all("SELECT * FROM digests WHERE (date>=? AND date<=?) AND user_id=? ORDER BY scheduled_at DESC, id DESC", [from, to])).map(row => summarize(toDigest(row)));
     const totals = z.object({ articles: z.number(), messages: z.number(), articlesEarliest: z.string().nullable(), messagesEarliest: z.string().nullable(),
