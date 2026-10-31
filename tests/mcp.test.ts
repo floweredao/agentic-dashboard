@@ -124,6 +124,23 @@ test("save_record rejects invalid input without persisting", async () => {
   expect(z.object({ items: z.array(z.unknown()) }).parse(await list.json()).items).toHaveLength(0);
 });
 
+test("save_record and update_record take a body as long as the REST record routes do, up to the same 512 KiB request", async () => {
+  // Given: a Korean report of 40,000 characters, about 120 KB of JSON, which POST and PATCH /api/v1/records accept.
+  const long = "가".repeat(40000);
+  expect((await f.call("/api/v1/records", "POST", payload(agentRecord({ body: long })), bearer("codex"))).status).toBe(201);
+  // When: ChatGPT saves and then edits the same report through MCP.
+  const saved = await call("save_record", { requestId: "long-report", record: agentRecord({ body: long }) });
+  // Then: both succeed instead of failing at a smaller transport cap.
+  expect(saved.isError).toBe(false);
+  const id = z.object({ id: z.string() }).parse(saved.structuredContent).id;
+  const updated = await call("update_record", { id, expectedVersion: 1, changes: { body: `${long}\n추가` } });
+  expect(updated.structuredContent).toMatchObject({ id, version: 2 });
+  // And: a request past 512 KiB is still refused as too large.
+  const tooLarge = await post({ jsonrpc: "2.0", id: nextId++, method: "tools/call",
+    params: { name: "save_record", arguments: { requestId: "too-long", record: agentRecord({ body: "가".repeat(180000) }) } } }, { "MCP-Protocol-Version": legacy });
+  expect(tooLarge.status).toBe(413);
+});
+
 test("get_record reads own records, unarchived reports, memos and links, and the owner's tasks and projects", async () => {
   const saved = await call("save_record", { requestId: "own-note", record: agentRecord({ kind: "note", title: "ChatGPT note" }) });
   const ownId = z.object({ id: z.string() }).parse(saved.structuredContent).id;
