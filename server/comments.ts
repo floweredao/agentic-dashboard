@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CommentSchema, CommentStateSchema, WORK_STATUSES } from "../shared/contracts";
+import { COMMENT_TIMELINE_LIMIT, CommentSchema, CommentStateSchema, WORK_STATUSES } from "../shared/contracts";
 import type { Comment, CommentInput, DashboardRecord, QueuedComment } from "../shared/contracts";
 import { ApiError } from "./errors";
 import { agentCanRead, canonical, SHARED_WORK_KINDS, type Principal, type Store } from "./store";
@@ -53,8 +53,10 @@ export class Comments {
     const db = this.store.db;
     if (query.recordId !== undefined) {
       (await this.item(principal, query.recordId));
-      const rows = (await db.all(`SELECT ${COLUMNS} FROM comments c WHERE (c.record_id=?${stateCondition(query.state ?? "all")}) AND c.user_id=? ORDER BY c.created_at,c.rowid`, [query.recordId]));
-      return { items: rows.map(toComment) };
+      // The newest entries, oldest first: an agent can post without end, so past the cap the oldest ones drop out.
+      const rows = (await db.all(`SELECT ${COLUMNS} FROM comments c WHERE (c.record_id=?${stateCondition(query.state ?? "all")}) AND c.user_id=?
+        ORDER BY c.created_at DESC,c.rowid DESC LIMIT ${COMMENT_TIMELINE_LIMIT}`, [query.recordId]));
+      return { items: rows.map(toComment).reverse() };
     }
     if (principal.source === "manual") {
       // The newest 2000 entries, oldest first: past the cap the oldest ones drop out, never the latest.
