@@ -78,7 +78,7 @@ export class Digests {
 
   /**
    * `changed`: section keys whose content (title, items, shortfall) differs from what was stored. `added`: sections that had
-   * no items before and have some now, which is what a notification is about. A part gets unread again when one of its
+   * no items before, or had them under another kind, and have some now, which is what a notification is about. A part gets unread again when one of its
    * sections is added; a part with nothing to read counts as read.
    */
   async upsert(principal: Principal, input: DigestInput): Promise<{ digest: Digest; created: boolean; changed: string[]; added: string[] }> {
@@ -94,7 +94,8 @@ export class Digests {
         const index = sections.findIndex(section => section.key === next.key);
         const previous = index >= 0 ? sections[index] : undefined;
         if (previous && canonical({ key: previous.key, title: previous.title, kind: previous.kind, items: previous.items, shortfall: previous.shortfall }) === canonical(next)) continue;
-        if ((previous?.items.length ?? 0) === 0 && next.items.length > 0) added.push(next.key);
+        // A key sent again under another kind brings new items to that part, whatever the old section held.
+        if ((previous?.kind !== next.kind || previous.items.length === 0) && next.items.length > 0) added.push(next.key);
         changed.push(next.key);
         const section = { ...next, updatedAt: timestamp } as DigestSection;
         if (index >= 0) sections[index] = section; else sections.push(section);
@@ -127,7 +128,8 @@ export class Digests {
     const to = query.to ?? zonedDate(new Date(this.store.now()), this.timeZone);
     const from = query.from ?? shiftDay(to, -13);
     if (from > to) throw new ApiError(400, "invalid_query", "from must not follow to");
-    if (Date.parse(to) - Date.parse(from) > DIGEST_LIMITS.rangeDays * DAY_MS) throw new ApiError(400, "invalid_query", `Ask for at most ${DIGEST_LIMITS.rangeDays} days`);
+    // Both ends count, like the default range: 92 days leaves at most 91 days between them.
+    if (Date.parse(to) - Date.parse(from) >= DIGEST_LIMITS.rangeDays * DAY_MS) throw new ApiError(400, "invalid_query", `Ask for at most ${DIGEST_LIMITS.rangeDays} days`);
     const db = this.store.db;
     const items = (await db.all("SELECT * FROM digests WHERE (date>=? AND date<=?) AND user_id=? ORDER BY scheduled_at DESC, id DESC", [from, to])).map(row => summarize(toDigest(row)));
     const totals = z.object({ articles: z.number(), messages: z.number(), articlesEarliest: z.string().nullable(), messagesEarliest: z.string().nullable(),
@@ -217,7 +219,7 @@ export class Digests {
 
   /**
    * One part of a digest, or all of it (the articles, then the messages), as a note-shaped record for narration, with its
-   * label: the sections in order under their titles, each item as one line. `narrationId` is the part's id (`digestPartId`); null when there is no such digest or part.
+   * label: the sections in order under their titles, each item as one line. `narrationId` is the part's id (`digestPartId`); null when there is no such digest or part, or the part has no items to read.
    */
   async narrationSource(narrationId: string): Promise<{ record: DashboardRecord; label: string } | null> {
     const { id, part } = digestOfPartId(narrationId);
@@ -226,7 +228,7 @@ export class Digests {
     const sections = part === "all"
       ? DIGEST_PARTS.flatMap(kind => digest.sections.filter(section => section.kind === kind))
       : digest.sections.filter(section => section.kind === part);
-    if (sections.length === 0) return null;
+    if (!sections.some(section => section.items.length > 0)) return null;
     const lines: string[] = [];
     const message = (item: DigestMessage) => `- [${item.importance}] ${item.from}: ${item.subject}. ${item.summary}`;
     const article = (item: DigestArticle) => `- ${item.title}${item.source ? ` (${item.source})` : ""}: ${item.summary}`;

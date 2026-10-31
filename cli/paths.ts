@@ -33,14 +33,15 @@ export function launcher(env: NodeJS.ProcessEnv = process.env) {
   return (installed ? [installed] : [process.execPath, join(APP_ROOT, "cli", "main.ts")]).map(shellWord).join(" ");
 }
 
-/** KEY=value lines; values are written JSON-quoted and read back either quoted or bare. */
+/** KEY=value lines; values are written JSON-quoted and read back "double-quoted", 'single-quoted' or bare, where ` # …` is a comment. */
 export function parseEnv(text: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
     const match = /^\s*([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line);
     if (!match?.[1] || match[2] === undefined) continue;
     const raw = match[2].trim();
-    values[match[1]] = raw.startsWith("\"") ? String(JSON.parse(raw)) : raw;
+    const quoted = /^("(?:[^"\\]|\\.)*")|^'([^']*)'/.exec(raw);
+    values[match[1]] = quoted?.[1] !== undefined ? String(JSON.parse(quoted[1])) : quoted?.[2] ?? raw.replace(/(^|\s)#.*$/, "").trim();
   }
   return values;
 }

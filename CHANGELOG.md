@@ -27,6 +27,13 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 - Markdown in the reader: a heading keeps a `#` that ends a word (`# C#`), an ordered list that starts at 0 keeps its start, a fence line with a language (```` ```js ````) inside a code block stays code, and link addresses with balanced parentheses (`…/wiki/Bun_(software)`) stay whole.
 - New record: a first line longer than the 200-character title is kept whole in the body instead of losing what follows character 200, and a title cut at 200 no longer ends in half an emoji.
+- The `systemd --user` service that `agentic-dashboard setup` installs on Linux loads again: its working folder was written in quotes, which systemd reads as a relative path and refuses the whole unit, and its log path now also keeps a `%` in the home folder.
+- `server.env` reads a line copied from `.env.example` the way `.env` does: a ` # comment` after a value and 'single quotes' around it are no longer part of the value, so `PUSH=on   # web push` no longer stops the dashboard from starting and `GEMINI_API_KEY=   # turns on "Listen"` no longer sets the comment as the key.
+- `agentic-dashboard connect --skills` with an unknown target fails before it contacts the dashboard. It used to spend the one-time code and save the connection, then exit with an error, so running it again with the target fixed answered that the code was already used.
+- `agentic-dashboard service`, `setup --service` and `status` report a `launchctl` or `systemctl` that fails or is missing (a container, WSL without systemd) in one line instead of crashing with a stack trace; `status` then shows the service as installed, not running.
+- `install.sh` makes a relative `AGENTIC_DASHBOARD_HOME` or `AGENTIC_DASHBOARD_BIN_DIR` absolute. The `agentic-dashboard` command it wrote pointed at the app by the relative path and failed when run from any other folder, and setup saved the relative home for the service and the agent skills.
+- `bun run agent` (and `agentic-dashboard agent`) reports a missing option value or an unknown option as such with a pointer to `--help`, instead of "Save failed: …" whatever the command was, and invalid input to `--trash`, `--digest-reactions`, `--seen`/`--done` and `--timeline` names that command's options instead of `--file and --request-id`.
+- `agentic-dashboard agents` (installed command and single binary) names its own commands in its help and hints, such as `agentic-dashboard agents rotate <name>`, instead of `bun run agents`, which works only inside the repository.
 
 ## [0.4.0] - 2026-10-24
 
