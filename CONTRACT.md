@@ -258,7 +258,7 @@ The reader opens a record with a document on it, with a [Full document | Summary
 | Route | Who | Result |
 |---|---|---|
 | `POST /api/v1/digests` | agent | upsert by `date` and `slot`; 201 created or 200 updated |
-| `GET /api/v1/digests` | owner, agent | list; `from`, `to` (at most 92 days) |
+| `GET /api/v1/digests` | owner, agent | list; `from`, `to` (at most 92 days, counting both ends) |
 | `GET /api/v1/digests/search` | owner, agent | item search |
 | `GET /api/v1/digests/:id` | owner, agent | `{ digest, reactions }` |
 | `POST /api/v1/digests/:id/read` | owner | `{ read, part? }` |
