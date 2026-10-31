@@ -204,7 +204,7 @@ export class Digests {
     const query = searchSchema.parse(raw);
     const needle = searchable(query.q);
     const hits: DigestHit[] = [];
-    for (const row of (await this.store.db.all("SELECT * FROM digests WHERE user_id=? ORDER BY scheduled_at DESC, id DESC", []))) {
+    for (const row of (await this.store.db.all(`SELECT * FROM digests WHERE user_id=? ORDER BY scheduled_at DESC, id DESC LIMIT ${DIGEST_LIMITS.searchDigests}`, []))) {
       const digest = toDigest(row);
       const base = { digestId: digest.id, date: digest.date, slot: digest.slot, scheduledAt: digest.scheduledAt };
       for (const section of digest.sections) {
