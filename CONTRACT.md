@@ -29,7 +29,7 @@ Rotation only updates an active principal. A revoked agent returns `409 agent_re
 
 A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`). `invite` prints when the code expires in `TIME_ZONE` from server.env (the host's zone when it is unset or unknown).
 
-Local owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
+Local owner sessions last 7 days; replacing the owner key in `credentials.json` ends every session the old key opened on the next start. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
 
 ### Optional hosted Google authentication
 
@@ -436,7 +436,7 @@ With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](doc
 
 ## Limits and checks
 
-- 300 requests per minute per credential; unknown credentials share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
+- 300 requests per minute per credential (an agent key, or the signed-in owner); unknown credentials, a cookie that names no session among them, share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
 - Requests must carry an allowed `Host` (else `421 invalid_host`) and, when present, an allowed `Origin` (else `403 origin`).
 - JSON bodies only (`415 unsupported_media_type`), size-capped (`413 too_large`).
 - Lists a client can grow have a cap: one item's timeline (`GET /api/v1/comments?recordId=`) answers its newest 2000 entries, oldest first (`COMMENT_TIMELINE_LIMIT`); `GET /api/v1/trash` the 200 most recently deleted records (`TRASH_LIST_LIMIT`; older ones stay restorable and are purged as usual); `GET /api/v1/digests/search` reads only the newest 500 digests by scheduled time (`DIGEST_LIMITS.searchDigests`).
