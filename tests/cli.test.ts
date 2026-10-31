@@ -24,6 +24,17 @@ test("server.env values survive a write and read, quotes and spaces included", (
   expect(parseEnv("# note\nPORT=4310\nEMPTY=\nbad line\n")).toEqual({ PORT: "4310", EMPTY: "" });
 });
 
+test("server.env reads lines copied from .env.example: a comment after a value and single quotes are not part of it", () => {
+  const example = readFileSync(join(import.meta.dir, "..", ".env.example"), "utf8").split("\n")
+    .filter(line => /^# [A-Z_]+=/.test(line)).map(line => line.slice(2)).join("\n");
+  const values = parseEnv(example);
+  expect([values["PUSH"], values["DIGEST"], values["GEMINI_API_KEY"], values["NARRATION_PODCAST_VOICE"], values["AI_FILL_COMMAND"]])
+    .toEqual(["on", "on", "", "Puck", "llm -m gpt-4o-mini"]);
+  expect(Object.entries(values).filter(([, value]) => value.includes("#"))).toEqual([]);
+  expect(parseEnv("GEMINI_API_KEY='a b#c'\nOWNER_LOGIN=\"you@example.com\"  # me\nAPP_NAME=Desk#2\n"))
+    .toEqual({ GEMINI_API_KEY: "a b#c", OWNER_LOGIN: "you@example.com", APP_NAME: "Desk#2" });
+});
+
 test("the launchd and systemd definitions run `start` with the home folder and escape what needs it", () => {
   const spec = { bun: "/opt/b&n/bun", main: "/app/cli/main.ts", home: "/home/u/<dash>", log: "/home/u/logs/server.log", path: "/usr/bin:/bin" };
   const plist = renderPlist(spec);
@@ -33,6 +44,25 @@ test("the launchd and systemd definitions run `start` with the home folder and e
   const unit = renderUnit({ ...spec, home: "/home/u/50%\"q\"" });
   expect(unit).toContain("ExecStart=\"/opt/b&n/bun\" \"/app/cli/main.ts\" start");
   expect(unit).toContain("Environment=\"AGENTIC_DASHBOARD_HOME=/home/u/50%%\\\"q\\\"\"");
+});
+
+test("the systemd unit names its working folder and log as plain paths, so systemd loads it with spaces and % in the home", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentic-unit-"));
+  try {
+    const home = join(dir, "my 50% home", ".agentic-dashboard");
+    const unit = renderUnit({ bun: process.execPath, main: "/app/cli/main.ts", home, log: join(home, "logs", "server.log"), path: "/usr/bin:/bin" });
+    const escaped = home.replace(/%/g, "%%");
+    expect(unit).toContain(`\nWorkingDirectory=${escaped}\n`);
+    expect(unit).toContain(`\nStandardOutput=append:${escaped}/logs/server.log\n`);
+    expect(unit).toContain(`\nStandardError=append:${escaped}/logs/server.log\n`);
+    // systemd-analyze is on most Linux hosts (not macOS); there it checks the unit the way `systemctl --user` loads it.
+    const analyze = Bun.which("systemd-analyze");
+    if (analyze) {
+      writeFileSync(join(dir, "agentic-dashboard.service"), unit);
+      const verified = Bun.spawnSync([analyze, "verify", "--man=no", join(dir, "agentic-dashboard.service")], { stdout: "pipe", stderr: "pipe" });
+      expect([verified.exitCode, verified.stderr.toString()]).toEqual([0, ""]);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("the shipped skill is rewritten for this computer and never replaces a file someone else wrote", () => {
@@ -56,6 +86,43 @@ test("the shipped skill is rewritten for this computer and never replaces a file
     expect(readFileSync(target.file, "utf8")).toBe("someone else's skill");
     expect(writeSkill(target, rendered, true)).toBe("written");
   } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test("a service manager that is missing or refuses answers with a message, not a crash", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentic-service-"));
+  try {
+    const home = join(dir, "home");
+    const appHome = join(home, ".agentic-dashboard");
+    mkdirSync(appHome, { recursive: true });
+    writeFileSync(join(appHome, "server.env"), formatEnv("# test", { PORT: "4399", DATA_DIR: join(appHome, "data") }));
+    // An installed service on either system: the launch agent on macOS, the user unit on Linux.
+    for (const file of [join(home, "Library", "LaunchAgents", "dev.agentic-dashboard.server.plist"), join(home, ".config", "systemd", "user", "agentic-dashboard.service")]) {
+      mkdirSync(join(file, ".."), { recursive: true });
+      writeFileSync(file, "installed");
+    }
+    const refusing = join(dir, "refusing");
+    mkdirSync(refusing);
+    for (const name of ["launchctl", "systemctl"]) {
+      writeFileSync(join(refusing, name), "#!/bin/sh\necho 'Failed to connect to bus: No medium found' >&2\nexit 1\n", { mode: 0o755 });
+    }
+    const missing = join(dir, "missing");
+    mkdirSync(missing);
+    const cli = async (path: string, args: string[]) => {
+      const child = Bun.spawn([process.execPath, main, ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe",
+        env: { ...process.env, HOME: home, AGENTIC_DASHBOARD_HOME: appHome, AGENTIC_DASHBOARD_LANG: "en", XDG_CONFIG_HOME: "", PATH: path } });
+      const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+      return { code: await child.exited, stdout, stderr };
+    };
+    for (const path of [refusing, missing]) {
+      const status = await cli(path, ["status"]);
+      expect([status.code, status.stderr]).toEqual([0, ""]);
+      expect(status.stdout).toContain("background service installed, not running");
+      const restart = await cli(path, ["service", "restart"]);
+      expect(restart.code).toBe(1);
+      expect(restart.stderr).toContain(path === refusing ? "Failed to connect to bus" : "failed");
+      expect(restart.stderr).not.toMatch(/^\s+at /m);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 describeConnect();
@@ -129,6 +196,27 @@ function describeConnect() {
     const ok = await cli(desk, ["connect", "--url", `http://127.0.0.1:${port}`, "--agent", "desk-agent", "--key-stdin", "--key-store", "file", "--skills", "agents"], `${key}\n`);
     expect([ok.code, ok.stderr]).toEqual([0, ""]);
     expect(existsSync(join(desk, ".agents", "skills", "agentic-dashboard", "SKILL.md"))).toBe(true);
+  });
+
+  test("agentic-dashboard agents names its own commands, not the repository's bun run agents", async () => {
+    const added = await cli(join(dir, "host"), ["agents", "add", "cli-bot"]);
+    expect([added.code, added.stderr]).toEqual([0, ""]);
+    expect(added.stdout).toContain("Lost it? Run: agentic-dashboard agents rotate cli-bot");
+    const usage = await cli(join(dir, "host"), ["agents", "help"]);
+    expect(usage.stdout).toContain("  agentic-dashboard agents add <name>");
+    expect(`${added.stdout}${usage.stdout}`).not.toContain("bun run");
+  });
+
+  test("a mistyped --skills target fails before the one-time code is spent, so the same code still connects", async () => {
+    const issued = await cli(join(dir, "host"), ["invite", "typo-laptop"]);
+    const code = /code for the agent "typo-laptop": (\S+)/.exec(issued.stdout)?.[1] ?? "";
+    const typo = join(dir, "typo");
+    const failed = await cli(typo, ["connect", "--url", `http://127.0.0.1:${port}`, "--code", code, "--key-store", "file", "--skills", "claude"]);
+    expect([failed.code, failed.stderr.trim()]).toEqual([1, "Unknown target claude; use claude-code, codex, omo or agents."]);
+    expect(existsSync(join(typo, ".agentic-dashboard", "client.json"))).toBe(false);
+    const fixed = await cli(typo, ["connect", "--url", `http://127.0.0.1:${port}`, "--code", code, "--key-store", "file", "--skills", "claude-code"]);
+    expect([fixed.code, fixed.stderr]).toEqual([0, ""]);
+    expect(existsSync(join(typo, ".claude", "skills", "agentic-dashboard", "SKILL.md"))).toBe(true);
   });
 
   test("without a terminal the first run neither prompts nor hangs, and setup asks for --yes", async () => {
