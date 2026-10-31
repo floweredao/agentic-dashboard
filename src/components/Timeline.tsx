@@ -66,8 +66,14 @@ export function Timeline({ record }: { readonly record: DashboardRecord }) {
   const d = useDashboard();
   const [draft, setDraft] = useState("");
   const entries = timelineOf(d.comments, record.id);
-  const ids = new Set(entries.map(entry => entry.id));
-  const top = entries.filter(entry => entry.replyTo === null || !ids.has(entry.replyTo));
+  const byId = new Map(entries.map(entry => [entry.id, entry]));
+  // A reply to a reply (the server allows any comment on the item) joins the thread its chain starts from.
+  const rootOf = (entry: Comment) => {
+    let root = entry;
+    for (let parent = byId.get(root.replyTo ?? ""), steps = 0; parent && steps < entries.length; parent = byId.get(parent.replyTo ?? ""), steps += 1) root = parent;
+    return root;
+  };
+  const top = entries.filter(entry => rootOf(entry) === entry);
   const addressee = record.source === "manual" ? t.agent : channelLabel(record.source);
   const send = async () => {
     const body = draft.trim();
@@ -82,7 +88,7 @@ export function Timeline({ record }: { readonly record: DashboardRecord }) {
     <h3 id="timeline-title">{t.heading}</h3>
     {top.length === 0 ? <p className="timeline-empty">{t.empty}</p>
       : <ol className="timeline-list">{top.map(entry =>
-        <Entry key={entry.id} record={record} comment={entry} replies={entries.filter(reply => reply.replyTo === entry.id)} />)}
+        <Entry key={entry.id} record={record} comment={entry} replies={entries.filter(reply => reply !== entry && rootOf(reply) === entry)} />)}
       </ol>}
     <form className="comment-form" onSubmit={submit}>
       <label className="visually-hidden" htmlFor="comment-draft">{t.comment}</label>

@@ -41,9 +41,13 @@ const FieldsSchema = z.record(z.string().max(100), JSONValueSchema).superRefine(
 export const RECORD_LIMITS = { bodyChars: 120000, requestBytes: 512 * 1024 } as const;
 export const TITLE_MAX_WIDTH = 40;
 const pictographic = /^\p{Extended_Pictographic}$/u;
+/** Combining marks (accents, an emoji's variation selector) take no column of their own. */
+const combining = /^\p{M}$/u;
 export function titleWidth(title: string): number {
   let width = 0;
-  for (const char of title) {
+  // Composed first, so decomposed Hangul (as macOS file names write it) measures as the syllables it shows.
+  for (const char of title.normalize("NFC")) {
+    if (combining.test(char)) continue;
     const c = char.codePointAt(0) ?? 0;
     const wide = (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3)
       || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60)

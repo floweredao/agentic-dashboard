@@ -7,7 +7,11 @@ const spoken = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
   return text().spoken(Math.floor(total / 60), total % 60);
 };
-const minutesLabel = (ms: number) => ms < 60_000 ? text().seconds(Math.max(1, Math.round(ms / 1000))) : text().minutes(Math.round(ms / 60_000));
+// Seconds are rounded before choosing the unit, so 59.6 s reads as 1 min rather than 60 sec.
+const minutesLabel = (ms: number) => {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return seconds < 60 ? text().seconds(seconds) : text().minutes(Math.round(ms / 60_000));
+};
 const stored = (key: string) => typeof localStorage === "undefined" ? null : localStorage.getItem(key);
 
 export function Player({ recordId, title, src, durationMs, stale, podcast, part, open, playNonce, pending, onOpen, onFold, onRemove }: {
