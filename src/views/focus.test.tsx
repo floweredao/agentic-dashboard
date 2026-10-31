@@ -45,14 +45,19 @@ async function serveApp({ records = [] as ReturnType<typeof make>[], trash = [] 
   let bin = [...trash];
   const page = { items: [], from: "2026-09-20", to: "2026-10-03", unread: 0, earliestDate: null, latestDate: null,
     parts: { articles: { unread: 0, earliestDate: null }, messages: { unread: 0, earliestDate: null } } };
-  return Bun.serve({ port: 0, hostname: "127.0.0.1", routes: {
+  // An onboarded account, so the app opens straight on its screens.
+  const account = { id: "test-user", email: "reader@example.test", locale: "ko", timeZone: "Asia/Seoul", timeZoneSaved: true,
+    onboardedAt: "2026-09-01T00:00:00.000Z", agentSaveVerified: true, agentSaveRecordId: null, features: { digest: digests, push: false } };
+  return Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => Response.json({ items: [] }), routes: {
     "/": new Response(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><script>localStorage.setItem("agentic:locale", "ko")</script><div id="root"></div><script type="module" src="/app.js"></script></body></html>`,
       { headers: { "Content-Type": "text/html; charset=utf-8" } }),
     "/app.js": new Response(script, { headers: { "Content-Type": "text/javascript; charset=utf-8" } }),
     "/app.css": new Response(styles, { headers: { "Content-Type": "text/css; charset=utf-8" } }),
     "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "Asia/Seoul", locale: "ko", features: { narration: false, push: false, digest: digests, trustedLogin: false } }),
-    "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
+    "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z", account }),
+    "/api/v1/account": Response.json({ account }),
     "/api/v1/records": () => Response.json({ items, nextCursor: null }),
+    "/api/v1/records/changes": Response.json({ cursor: 0, items: [], deletedIds: [], hasMore: false, reset: false }),
     "/api/v1/records/:id": request => {
       const record = items.find(item => item.id === request.params.id);
       if (!record) return Response.json({ error: { code: "not_found", message: "not found" } }, { status: 404 });
