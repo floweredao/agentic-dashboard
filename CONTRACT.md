@@ -439,6 +439,7 @@ With `DEMO=on` the server is a public read-only showcase (see [docs/demo.md](doc
 - 300 requests per minute per credential; unknown credentials share one bucket. Over the limit: `429 rate_limited` with `Retry-After: 60`.
 - Requests must carry an allowed `Host` (else `421 invalid_host`) and, when present, an allowed `Origin` (else `403 origin`).
 - JSON bodies only (`415 unsupported_media_type`), size-capped (`413 too_large`).
+- Lists a client can grow have a cap: one item's timeline (`GET /api/v1/comments?recordId=`) answers its newest 2000 entries, oldest first (`COMMENT_TIMELINE_LIMIT`); `GET /api/v1/trash` the 200 most recently deleted records (`TRASH_LIST_LIMIT`; older ones stay restorable and are purged as usual); `GET /api/v1/digests/search` reads only the newest 500 digests by scheduled time (`DIGEST_LIMITS.searchDigests`).
 - Every response sets a strict Content-Security-Policy (scripts from the app only; images and media also from `data:` and `blob:`), `X-Frame-Options: DENY` and `nosniff`. Existing content-hashed static files under `/assets/` use `Cache-Control: public, max-age=31536000, immutable`; HTML, API data, stable filenames and missing-file fallbacks stay `no-store`.
 
 ## Time
