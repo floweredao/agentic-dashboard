@@ -19,7 +19,7 @@ In Google mode, unauthenticated requests use a non-persisted public service scop
 | Owner | `manual` | Local mode: owner key from `data/credentials.json` or trusted proxy. Google mode: Google sign-in. Session cookie plus CSRF token; authority is limited to the selected account |
 | Agent | its registered name, for example `codex` | `Authorization: Bearer <agent key>` |
 
-Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key.
+Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key. Only `owner` is read from the key file; other entries, such as the per-agent keys the predecessor kept there, are ignored.
 
 Browser sessions can also create an agent with `POST /api/v1/agents { name, capture? }`, rotate with `POST /api/v1/agents/:name/rotate`, or revoke with `DELETE /api/v1/agents/:name`. All require CSRF. New keys are `fd_` followed by 32 random bytes in base64url, returned once as `{ agent, key }` on create/rotate; list/get never expose keys or hashes. `capture` defaults false and is shown in agent metadata. Revocation and rotation invalidate the previous key immediately. Agent names are attribution within an account, not separate privacy boundaries.
 
