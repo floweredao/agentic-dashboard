@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CommentSchema, CommentStateSchema, WORK_STATUSES } from "../shared/contracts";
+import { COMMENT_TIMELINE_LIMIT, CommentSchema, CommentStateSchema, WORK_STATUSES } from "../shared/contracts";
 import type { Comment, CommentInput, DashboardRecord, QueuedComment } from "../shared/contracts";
 import { ApiError } from "./errors";
 import { agentCanRead, canonical, SHARED_WORK_KINDS, type Principal, type Store } from "./store";
@@ -31,14 +31,14 @@ const stateCondition = (state: "new" | "open" | "all") =>
 export class Comments {
   constructor(readonly store: Store) {}
 
-  private find(id: string): Comment {
-    const row = this.store.db.query(`SELECT ${COLUMNS} FROM comments c WHERE c.id=?`).get(id);
+  private async find(id: string): Promise<Comment> {
+    const row = (await this.store.db.get(`SELECT ${COLUMNS} FROM comments c WHERE (c.id=?) AND c.user_id=?`, [id]));
     if (!row) throw new ApiError(404, "not_found", "Comment not found");
     return toComment(row);
   }
   /** The item a comment is on, as the principal may see it (404 otherwise). */
-  private item(principal: Principal, id: string): DashboardRecord {
-    const record = this.store.get(id);
+  private async item(principal: Principal, id: string): Promise<DashboardRecord> {
+    const record = (await this.store.get(id));
     if (principal.source !== "manual" && !agentCanRead(principal, record)) throw new ApiError(404, "not_found", "Record not found");
     if (!isWork(record)) throw new ApiError(400, "invalid_target", "Comments and reports go on a task or project");
     return record;
@@ -48,39 +48,42 @@ export class Comments {
     return comment.source === "manual" && record.archivedAt === null && (record.createdBy === principal.id || record.createdBy === "owner");
   }
 
-  list(principal: Principal, raw: Record<string, string>): { items: (Comment | QueuedComment)[] } {
+  async list(principal: Principal, raw: Record<string, string>): Promise<{ items: (Comment | QueuedComment)[] }> {
     const query = querySchema.parse(raw);
     const db = this.store.db;
     if (query.recordId !== undefined) {
-      this.item(principal, query.recordId);
-      const rows = db.query(`SELECT ${COLUMNS} FROM comments c WHERE c.record_id=?${stateCondition(query.state ?? "all")} ORDER BY c.created_at,c.rowid`).all(query.recordId);
-      return { items: rows.map(toComment) };
+      (await this.item(principal, query.recordId));
+      // The newest entries, oldest first: an agent can post without end, so past the cap the oldest ones drop out.
+      const rows = (await db.all(`SELECT ${COLUMNS} FROM comments c WHERE (c.record_id=?${stateCondition(query.state ?? "all")}) AND c.user_id=?
+        ORDER BY c.created_at DESC,c.rowid DESC LIMIT ${COMMENT_TIMELINE_LIMIT}`, [query.recordId]));
+      return { items: rows.map(toComment).reverse() };
     }
     if (principal.source === "manual") {
-      const rows = db.query(`SELECT ${COLUMNS} FROM comments c JOIN records r ON r.id=c.record_id WHERE 1=1${stateCondition(query.state ?? "all")}
-        ORDER BY c.created_at,c.rowid LIMIT 2000`).all();
-      return { items: rows.map(toComment) };
+      // The newest 2000 entries, oldest first: past the cap the oldest ones drop out, never the latest.
+      const rows = (await db.all(`SELECT ${COLUMNS} FROM comments c JOIN records r ON r.id=c.record_id AND r.user_id=c.user_id WHERE (1=1${stateCondition(query.state ?? "all")}) AND c.user_id=?
+        ORDER BY c.created_at DESC,c.rowid DESC LIMIT 2000`, []));
+      return { items: rows.map(toComment).reverse() };
     }
-    const rows = db.query(`SELECT ${COLUMNS},json_extract(r.data,'$.title') AS title FROM comments c JOIN records r ON r.id=c.record_id
-      WHERE c.source='manual' AND json_extract(r.data,'$.kind') IN ('task','project') AND json_extract(r.data,'$.archivedAt') IS NULL
-      AND (r.created_by=? OR r.created_by='owner')${stateCondition(query.state ?? "open")} ORDER BY c.created_at,c.rowid LIMIT 200`).all(principal.id);
+    const rows = (await db.all(`SELECT ${COLUMNS},json_extract(r.data,'$.title') AS title FROM comments c JOIN records r ON r.id=c.record_id AND r.user_id=c.user_id
+      WHERE (c.source='manual' AND json_extract(r.data,'$.kind') IN ('task','project') AND json_extract(r.data,'$.archivedAt') IS NULL
+      AND (r.created_by=? OR r.created_by='owner')${stateCondition(query.state ?? "open")}) AND c.user_id=? ORDER BY c.created_at,c.rowid LIMIT 200`, [principal.id]));
     return { items: rows.map(value => ({ ...toComment(value), recordTitle: queuedRow.parse(value).title })) };
   }
 
-  create(principal: Principal, input: CommentInput): { comment: Comment; record: DashboardRecord | null; replayed: boolean } {
-    return this.store.db.transaction(() => {
+  async create(principal: Principal, input: CommentInput): Promise<{ comment: Comment; record: DashboardRecord | null; replayed: boolean }> {
+    return await this.store.db.tx(async () => {
       const db = this.store.db;
       const encoded = canonical(input);
-      const previous = db.query(`SELECT ${COLUMNS} FROM comments c WHERE c.author=? AND c.request_id=?`).get(principal.id, input.requestId);
+      const previous = (await db.get(`SELECT ${COLUMNS} FROM comments c WHERE (c.author=? AND c.request_id=?) AND c.user_id=?`, [principal.id, input.requestId]));
       if (previous) {
         if (rowSchema.parse(previous).payload !== encoded) throw new ApiError(409, "idempotency_conflict", "Request ID was already used with different content");
         return { comment: toComment(previous), record: null, replayed: true };
       }
-      const parent = input.replyTo === undefined ? null : this.find(input.replyTo);
+      const parent = input.replyTo === undefined ? null : (await this.find(input.replyTo));
       const recordId = input.recordId ?? parent?.recordId;
       if (recordId === undefined) throw new ApiError(400, "invalid_input", "recordId or replyTo is required");
       if (parent && parent.recordId !== recordId) throw new ApiError(400, "invalid_relationship", "replyTo must be a comment on the same item");
-      const record = this.item(principal, recordId);
+      const record = (await this.item(principal, recordId));
       const agent = principal.source !== "manual";
       if (input.status !== undefined) {
         const statuses: readonly string[] = record.kind === "project" ? WORK_STATUSES.project : WORK_STATUSES.task;
@@ -91,29 +94,28 @@ export class Comments {
       if (input.done && !answers) throw new ApiError(403, "forbidden", "done marks an owner comment the agent answers for; reply to it with replyTo");
       const timestamp = new Date(this.store.now()).toISOString();
       const id = crypto.randomUUID();
-      db.query(`INSERT INTO comments(id,record_id,author,source,body,reply_to,status,created_at,request_id,payload) VALUES(?,?,?,?,?,?,?,?,?,?)`)
-        .run(id, recordId, principal.id, principal.source, input.body, parent?.id ?? null, input.status ?? null, timestamp, input.requestId, encoded);
+      (await db.run(`INSERT INTO comments(id,record_id,author,source,body,reply_to,status,created_at,request_id,payload,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, [id, recordId, principal.id, principal.source, input.body, parent?.id ?? null, input.status ?? null, timestamp, input.requestId, encoded]));
       if (parent && answers) {
-        db.query("UPDATE comments SET seen_at=COALESCE(seen_at,?),seen_by=COALESCE(seen_by,?) WHERE id=?").run(timestamp, principal.id, parent.id);
-        if (input.done) db.query("UPDATE comments SET done_at=COALESCE(done_at,?),done_by=COALESCE(done_by,?) WHERE id=?").run(timestamp, principal.id, parent.id);
+        (await db.run("UPDATE comments SET seen_at=COALESCE(seen_at,?),seen_by=COALESCE(seen_by,?) WHERE (id=?) AND user_id=?", [timestamp, principal.id, parent.id]));
+        if (input.done) (await db.run("UPDATE comments SET done_at=COALESCE(done_at,?),done_by=COALESCE(done_by,?) WHERE (id=?) AND user_id=?", [timestamp, principal.id, parent.id]));
       }
-      const updated = input.status !== undefined && input.status !== record.status ? this.store.setStatus(record.id, input.status) : null;
-      return { comment: this.find(id), record: updated, replayed: false };
-    }).immediate();
+      const updated = input.status !== undefined && input.status !== record.status ? (await this.store.setStatus(record.id, input.status)) : null;
+      return { comment: (await this.find(id)), record: updated, replayed: false };
+    });
   }
 
   /** An agent marks an owner comment in its queue as seen or done (done implies seen). Repeating it keeps the first mark. */
-  mark(principal: Principal, id: string, mark: "seen" | "done"): { comment: Comment } {
+  async mark(principal: Principal, id: string, mark: "seen" | "done"): Promise<{ comment: Comment }> {
     if (principal.source === "manual") throw new ApiError(403, "forbidden", "Agents mark the owner's comments");
-    return this.store.db.transaction(() => {
-      const comment = this.find(id);
-      const record = this.item(principal, comment.recordId);
+    return await this.store.db.tx(async () => {
+      const comment = (await this.find(id));
+      const record = (await this.item(principal, comment.recordId));
       if (comment.source !== "manual") throw new ApiError(403, "forbidden", "Only the owner's comments are marked seen or done");
       if (!this.queued(principal, comment, record)) throw new ApiError(403, "forbidden", "This comment is not in this agent's queue");
       const timestamp = new Date(this.store.now()).toISOString();
-      this.store.db.query("UPDATE comments SET seen_at=COALESCE(seen_at,?),seen_by=COALESCE(seen_by,?) WHERE id=?").run(timestamp, principal.id, id);
-      if (mark === "done") this.store.db.query("UPDATE comments SET done_at=COALESCE(done_at,?),done_by=COALESCE(done_by,?) WHERE id=?").run(timestamp, principal.id, id);
-      return { comment: this.find(id) };
-    }).immediate();
+      (await this.store.db.run("UPDATE comments SET seen_at=COALESCE(seen_at,?),seen_by=COALESCE(seen_by,?) WHERE (id=?) AND user_id=?", [timestamp, principal.id, id]));
+      if (mark === "done") (await this.store.db.run("UPDATE comments SET done_at=COALESCE(done_at,?),done_by=COALESCE(done_by,?) WHERE (id=?) AND user_id=?", [timestamp, principal.id, id]));
+      return { comment: (await this.find(id)) };
+    });
   }
 }

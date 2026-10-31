@@ -15,9 +15,15 @@ REF="${AGENTIC_DASHBOARD_REF:-main}"
 APP_HOME="${AGENTIC_DASHBOARD_HOME:-$HOME/.agentic-dashboard}"
 BIN_DIR="${AGENTIC_DASHBOARD_BIN_DIR:-$HOME/.local/bin}"
 SOURCE="${AGENTIC_DASHBOARD_SOURCE:-https://codeload.github.com/floweredao/agentic-dashboard/tar.gz/$REF}"
+# The command and the service run from other folders, so relative settings are made absolute here.
+case "$APP_HOME" in /*) ;; *) APP_HOME="$PWD/$APP_HOME" ;; esac
+case "$BIN_DIR" in /*) ;; *) BIN_DIR="$PWD/$BIN_DIR" ;; esac
+export AGENTIC_DASHBOARD_HOME="$APP_HOME"
 COMMAND="$BIN_DIR/agentic-dashboard"
 
 say() { printf '%s\n' "$*"; }
+# Single-quotes a value for the command written below, so quotes, $ and ` in a folder name stay part of the name.
+quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 fail() { printf 'agentic-dashboard install: %s\n' "$*" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || fail "curl is required"
 command -v tar >/dev/null 2>&1 || fail "tar is required"
@@ -57,9 +63,10 @@ rm -rf "$APP_HOME/app.previous"
 mkdir -p "$BIN_DIR"
 cat >"$COMMAND" <<EOF
 #!/bin/sh
-export AGENTIC_DASHBOARD_HOME="\${AGENTIC_DASHBOARD_HOME:-$APP_HOME}"
-export AGENTIC_DASHBOARD_LAUNCHER="$COMMAND"
-exec "$BUN" "$APP_HOME/app/cli/main.ts" "\$@"
+[ -n "\${AGENTIC_DASHBOARD_HOME:-}" ] || AGENTIC_DASHBOARD_HOME=$(quote "$APP_HOME")
+export AGENTIC_DASHBOARD_HOME
+export AGENTIC_DASHBOARD_LAUNCHER=$(quote "$COMMAND")
+exec $(quote "$BUN") $(quote "$APP_HOME/app/cli/main.ts") "\$@"
 EOF
 chmod 755 "$COMMAND"
 say "Installed $COMMAND"

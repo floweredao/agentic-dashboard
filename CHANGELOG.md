@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add deployable hosted Google accounts alongside local self-hosting: account-scoped records and agent tokens, encrypted personal Gemini keys, first-login setup, configurable limits, data export/deletion and public privacy/terms pages.
+- Include hosted Cloud Run/Turso deployment tooling with private audio/backups, authenticated background jobs, daily maintenance and operator alerts; local dry runs do not claim a live service launch.
+- Document both hosting modes, per-account connections and security boundaries, and replace README examples with language-matched synthetic hosted screenshots in light and dark themes.
+- Port operational reading and accessibility fixes: equal phone tabs, two recent digests, full-screen digest reading, scalable text, touch targets and clearer states.
+- Narrate every new narratable record and meaningful text edit, defer temporary failures, and run independent jobs concurrently.
+- Separate Vertex and key script models, improve listening scripts, remove work logs and source lists, and add ffmpeg encoding plus portable storage documentation.
+- Call the app Agentic Dashboard everywhere users see a name (push titles, export file and its README, terms), and fix phone layout: tab badges on the glyph corner, one-line digest filter, a one-row reader toolbar, the full sidebar name and settings cards on the page gutter.
+- Rewrite both READMEs around what the app does and why, with fresh desktop and phone screenshots of the fixed layout, and add the Google OAuth client steps.
+
 All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -8,7 +19,26 @@ Until 1.0.0, the agent API and the database format can still change between mino
 
 ## [Unreleased]
 
-On first start the server adds the `narration_auto` and `digest_reactions` tables and two columns to `narrations`; back up the data folder before you upgrade.
+### Added
+
+- Briefing-folder uploads in the agent CLI: `--briefing <dir>` converts `news.json`, `mail.json` and AI-edition `x.json` to public digest sections, including null AI shortfalls, input titles and English/Korean defaults. `--briefing-file` uploads a converted digest body; both support `--sections` and `--quiet`. `--briefings` and `--briefing-reactions` alias the existing digest commands, using the same connected key or `DASHBOARD_TOKEN`.
+
+### Fixed
+
+- A database from the single-user predecessor opens instead of stopping the server at startup: its `briefings` and `briefing_reactions` tables were left behind by the tenant upgrade with foreign keys into the tables it had replaced, which failed the deferred foreign-key check at commit. Each briefing now becomes a digest with its sections in upload order, `ai-morning` and `ai-evening` as `08:10` and `19:10`, article reactions kept, and the briefing push switch and automatic-audio setting read back under their digest names. An owner key file that still lists one key per agent is read for its owner key instead of being rejected.
+- Markdown in the reader: a heading keeps a `#` that ends a word (`# C#`), an ordered list that starts at 0 keeps its start, a fence line with a language (```` ```js ````) inside a code block stays code, and link addresses with balanced parentheses (`…/wiki/Bun_(software)`) stay whole.
+- New record: a first line longer than the 200-character title is kept whole in the body instead of losing what follows character 200, and a title cut at 200 no longer ends in half an emoji.
+- The `systemd --user` service that `agentic-dashboard setup` installs on Linux loads again: its working folder was written in quotes, which systemd reads as a relative path and refuses the whole unit, and its log path now also keeps a `%` in the home folder.
+- `server.env` reads a line copied from `.env.example` the way `.env` does: a ` # comment` after a value and 'single quotes' around it are no longer part of the value, so `PUSH=on   # web push` no longer stops the dashboard from starting and `GEMINI_API_KEY=   # turns on "Listen"` no longer sets the comment as the key.
+- `agentic-dashboard connect --skills` with an unknown target fails before it contacts the dashboard. It used to spend the one-time code and save the connection, then exit with an error, so running it again with the target fixed answered that the code was already used.
+- `agentic-dashboard service`, `setup --service` and `status` report a `launchctl` or `systemctl` that fails or is missing (a container, WSL without systemd) in one line instead of crashing with a stack trace; `status` then shows the service as installed, not running.
+- `install.sh` makes a relative `AGENTIC_DASHBOARD_HOME` or `AGENTIC_DASHBOARD_BIN_DIR` absolute. The `agentic-dashboard` command it wrote pointed at the app by the relative path and failed when run from any other folder, and setup saved the relative home for the service and the agent skills.
+- `bun run agent` (and `agentic-dashboard agent`) reports a missing option value or an unknown option as such with a pointer to `--help`, instead of "Save failed: …" whatever the command was, and invalid input to `--trash`, `--digest-reactions`, `--seen`/`--done` and `--timeline` names that command's options instead of `--file and --request-id`.
+- `agentic-dashboard agents` (installed command and single binary) names its own commands in its help and hints, such as `agentic-dashboard agents rotate <name>`, instead of `bun run agents`, which works only inside the repository.
+
+## [0.4.0] - 2026-10-24
+
+A Home tab and one Library, reactions and pictures on digest articles, audio made without asking, agents that can trash their own records, and digest audio read like a newscast. On first start the server adds the `narration_auto` and `digest_reactions` tables and two columns to `narrations`; back up the data folder before you upgrade.
 
 ### Added
 
@@ -24,7 +54,11 @@ On first start the server adds the `narration_auto` and `digest_reactions` table
 - A record's audio opens with a two- or three-sentence overview of what it covers and in what order, and tells a fact, figure or definition the document repeats only once in full. Saved scripts are written again under the new rules the next time audio is made.
 - Narration scripts always come from the script model: the lighter fallback model and `NARRATION_SCRIPT_FALLBACK_MODEL` are gone. With Vertex AI speech configured, the script is also streamed from the same model on Vertex AI first and then through the key; a try that stalls or times out is followed at once by the next, up to five tries, and when every try fails the audio fails with Retry instead of being made from a weaker script. While a script is tried again, the progress reads "Writing the script · attempt 2".
 - Digests are listed only in the Digest tab: the inbox shows records alone, and its badge, filter chips and title count only records.
-- The app opens on Today, and the tabs are Today, Digest, Library and More. Today shows today's digests (else the latest), up to five records to review, the audio you are listening to and tasks to check. The Inbox, Library and Archive merge into the Library, filtered by All, To review, Favorites and Archived, with continued records folded under their latest record; the kind and channel chips and the sidebar's channel list are gone, and Tasks moves under More. Old `#/inbox` and `#/archive` addresses redirect.
+- The app opens on Home (`#/home`), and the tabs are Home, Digest, Library and More. Home has no date title or day boundary: it shows the latest digest, the five newest records with how many are left to review and See all, the audio you are listening to and open tasks, with records to review first. The Inbox, Library and Archive merge into the Library, filtered by All, To review, Favorites and Archived, with continued records folded under their latest record; the kind and channel chips and the sidebar's channel list are gone, and Tasks moves under More. Old `#/today`, `#home`, `#/inbox` and `#/archive` addresses redirect.
+
+### Fixed
+
+- Each sentence line of a record or digest is its own paragraph, and paragraphs and lists on the reading screens have more room between them.
 
 ## [0.3.0] - 2026-10-07
 
@@ -110,7 +144,8 @@ The first public release.
 - Escape closes a dialog without the macOS alert sound.
 - The app name keeps its full width beside the sidebar's hide button.
 
-[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/floweredao/agentic-dashboard/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/floweredao/agentic-dashboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/floweredao/agentic-dashboard/releases/tag/v0.1.0

@@ -41,9 +41,13 @@ const FieldsSchema = z.record(z.string().max(100), JSONValueSchema).superRefine(
 export const RECORD_LIMITS = { bodyChars: 120000, requestBytes: 512 * 1024 } as const;
 export const TITLE_MAX_WIDTH = 40;
 const pictographic = /^\p{Extended_Pictographic}$/u;
+/** Combining marks (accents, an emoji's variation selector) take no column of their own. */
+const combining = /^\p{M}$/u;
 export function titleWidth(title: string): number {
   let width = 0;
-  for (const char of title) {
+  // Composed first, so decomposed Hangul (as macOS file names write it) measures as the syllables it shows.
+  for (const char of title.normalize("NFC")) {
+    if (combining.test(char)) continue;
     const c = char.codePointAt(0) ?? 0;
     const wide = (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3)
       || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60)
@@ -142,6 +146,8 @@ export const DashboardRecordSchema = z.object({
 export type DashboardRecord = z.infer<typeof DashboardRecordSchema>;
 /** Deleted records wait in the owner's trash this many days, then are removed for good. */
 export const TRASH_RETENTION_DAYS = 30;
+/** The trash list answers at most this many records, the most recently deleted first; older ones stay until purged. */
+export const TRASH_LIST_LIMIT = 200;
 /** One trashed record as it was when deleted; `purgeAt` = `deletedAt` + TRASH_RETENTION_DAYS. */
 export const TrashItemSchema = z.object({ record: DashboardRecordSchema, deletedAt: z.iso.datetime(), purgeAt: z.iso.datetime() }).strict();
 export type TrashItem = z.infer<typeof TrashItemSchema>;
@@ -172,6 +178,8 @@ export type Comment = z.infer<typeof CommentSchema>;
 export const QueuedCommentSchema = CommentSchema.extend({ recordTitle: z.string() }).strict();
 export type QueuedComment = z.infer<typeof QueuedCommentSchema>;
 export const COMMENT_MAX_LENGTH = 4000;
+/** One item's timeline answers at most this many entries: the newest ones, oldest first. */
+export const COMMENT_TIMELINE_LIMIT = 2000;
 /** new: not seen and not done; open: not done; all. */
 export const CommentStateSchema = z.enum(["new", "open", "all"]);
 export const CommentInputSchema = z.object({
@@ -214,6 +222,7 @@ export const NarrationAudioSchema = z.object({
  * state keeps the shape that clients built before it (strict schemas) can read.
  */
 export const NarrationSchema = z.object({
+  retryAt: z.iso.datetime().nullable().optional(),
   recordId: z.string().uuid(), status: NarrationStatusSchema, style: NarrationStyleSchema, stale: z.boolean(),
   progress: z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict().nullable(),
   waitUntil: z.iso.datetime().nullable(),
@@ -249,16 +258,16 @@ export const NarrationVoiceSettingsSchema = z.object({
 export type NarrationVoiceSettings = z.infer<typeof NarrationVoiceSettingsSchema>;
 /**
  * GET and PUT /api/v1/narration/auto (Settings › Automatic audio). `digests`: a digest's audio is made when it arrives, for
- * each changed part (`parts`), as one audio of the whole digest (`all`) or not at all. `records`: a new research or work
- * report gets its audio in that style; while it is on, the daily limit is at least `autoDailyRuns`. `scope`: what a record's
+ * each changed part (`parts`), as one audio of the whole digest (`all`) or not at all. `records`: a narratable record
+ * gets its audio on creation and text edits in that style; while it is on, the daily limit is at least `autoDailyRuns`. `scope`: what a record's
  * audio reads, its full document or only its summary (conclusion, summary, next actions). Unchanged content is never made again.
  */
 export const NarrationAutoSchema = z.object({
   digests: z.enum(["off", "parts", "all"]), records: z.enum(["off", "read", "podcast"]), scope: z.enum(["full", "summary"]),
 }).strict();
 export type NarrationAuto = z.infer<typeof NarrationAutoSchema>;
-/** The record kinds whose new records get audio when New records is on. */
-export const AUTO_NARRATED_KINDS = ["research", "work-report"] as const;
+/** Every narratable kind gets automatic audio on creation and meaningful text edits when enabled. */
+export const AUTO_NARRATED_KINDS = NARRATABLE_KINDS;
 
 /**
  * A record's attached HTML document (full document), for research, work-report, note and social records. The dashboard shows
@@ -300,7 +309,8 @@ export const MESSAGE_IMPORTANCE = ["urgent", "todo", "check", "info"] as const;
 export type MessageImportance = (typeof MESSAGE_IMPORTANCE)[number];
 /** A digest's slot within its day: morning (08:00), evening (21:00) or another time as HH:MM. */
 export const DigestSlotSchema = z.string().regex(/^(?:morning|evening|(?:[01]\d|2[0-3]):[0-5]\d)$/, "morning, evening or HH:MM");
-export const DIGEST_LIMITS = { items: 60, sections: 12, bodyBytes: 256 * 1024, rangeDays: 92 } as const;
+/** `searchDigests`: digest search reads at most this many digests, newest scheduled first. */
+export const DIGEST_LIMITS = { items: 60, sections: 12, bodyBytes: 256 * 1024, rangeDays: 92, searchDigests: 500 } as const;
 const digestUrl = z.url({ protocol: /^https?$/ }).max(2048);
 const itemKey = z.string().trim().min(1).max(200);
 export const DigestArticleSchema = z.object({
@@ -336,6 +346,12 @@ export const DigestInputSchema = z.object({
     sections.forEach((section, index) => {
       if (seen.has(section.key)) ctx.addIssue({ code: "custom", path: [index, "key"], message: "Section keys must be unique" });
       seen.add(section.key);
+      // A reaction names its article by section and item key, so two items under one key would share it.
+      const keys = new Set<string>();
+      section.items.forEach((item, itemIndex) => {
+        if (keys.has(item.key)) ctx.addIssue({ code: "custom", path: [index, "items", itemIndex, "key"], message: "Item keys must be unique within a section" });
+        keys.add(item.key);
+      });
     });
   }),
   notify: z.boolean().default(true),
@@ -402,10 +418,10 @@ export const PUSH_LOCALES = ["en", "ko"] as const;
 export const PushLocaleSchema = z.enum(PUSH_LOCALES);
 export type PushLocale = z.infer<typeof PushLocaleSchema>;
 export const PushSubscriptionSchema = z.object({
-  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(), locale: PushLocaleSchema.optional(),
+  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(), locale: PushLocaleSchema.optional(), hideContent: z.boolean().optional(),
   keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }).strict(),
 }).strict();
-export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, locale: PushLocaleSchema, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
+export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, locale: PushLocaleSchema, hideContent: z.boolean().optional(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
 export type PushDevice = z.infer<typeof PushDeviceSchema>;
 /** The JSON a notification carries; `url` is the in-app address the tap opens. */
 export const PushPayloadSchema = z.object({

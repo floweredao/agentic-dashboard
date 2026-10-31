@@ -3,7 +3,7 @@ import { bearer, fixture, payload } from "./backend-helper";
 
 test("request identity obeys the documented 128 character limit", async () => {
   // Given: an authenticated agent sends a well-formed record.
-  const f = fixture();
+  const f = (await fixture());
   try {
     // When: only the retry identity exceeds the published contract.
     const response = await f.call(
@@ -11,12 +11,12 @@ test("request identity obeys the documented 128 character limit", async () => {
     );
     // Then: the input boundary rejects it.
     expect(response.status).toBe(400);
-  } finally { f.close(); }
+  } finally { (await f.close()); }
 });
 
 test("record collections obey the same limits advertised to GPT Actions", async () => {
   // Given: agent input crosses the real API validator.
-  const f = fixture();
+  const f = (await fixture());
   try {
     for (const fields of [
       { tags: Array.from({ length: 21 }, (_, index) => `tag-${index}`) },
@@ -30,5 +30,5 @@ test("record collections obey the same limits advertised to GPT Actions", async 
       // Then: validation rejects rather than storing incompatible payloads.
       expect(response.status).toBe(400);
     }
-  } finally { f.close(); }
+  } finally { (await f.close()); }
 });

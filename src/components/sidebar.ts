@@ -67,6 +67,8 @@ export function useSidebarDrag({ enabled, open, onOpen, onClose }: { readonly en
       for (const element of [panel(), scrim()]) if (element) { element.style.transition = ""; element.style.transform = ""; element.style.marginLeft = ""; element.style.opacity = ""; }
     };
     const start = (event: TouchEvent) => {
+      // Another finger landing mid-drag ends the drag: the panel goes back to where its state puts it, not where the finger left it.
+      if (drag) clear();
       drag = null;
       const touch = event.touches[0];
       const side = panel();

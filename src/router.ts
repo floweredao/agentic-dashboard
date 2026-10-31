@@ -4,11 +4,11 @@ export type View = "home" | "library" | "digest" | "work" | "more" | "trash" | "
 export const views: readonly View[] = ["home", "library", "digest", "work", "more", "trash", "channels", "settings"];
 const text = strings<{ readonly views: Record<View, string>; readonly previous: string }>({
   en: {
-    views: { home: "Home", library: "Library", digest: "Digest", work: "Tasks", more: "More", trash: "Trash", channels: "Channels", settings: "Settings" },
+    views: { home: "Home", library: "Library", digest: "Digest", work: "Tasks", more: "More", trash: "Trash", channels: "Agent connections", settings: "Settings" },
     previous: "Previous record",
   },
   ko: {
-    views: { home: "메인", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", trash: "휴지통", channels: "채널 관리", settings: "설정" },
+    views: { home: "메인", library: "기록", digest: "다이제스트", work: "할 일", more: "더보기", trash: "휴지통", channels: "에이전트 연결", settings: "설정" },
     previous: "이전 기록",
   },
 });

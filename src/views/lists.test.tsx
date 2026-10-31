@@ -45,6 +45,15 @@ test("LibraryPane shows a social record summary", async () => {
   expect(summary).toEqual({ count: 1, text: "요약 본문" });
 });
 
+test("a long row summary is cut before an emoji that would not fit whole, never inside it", async () => {
+  // Given: a summary whose 280th UTF-16 unit is the first half of an emoji.
+  const records = [make("00000000-0000-4000-8000-000000000002", { fields: { summary: `${"가".repeat(279)}🙂 뒤` } })];
+  // When: the library list is rendered.
+  const summary = await scan(render(records), ".row-summary");
+  // Then: the preview ends before the emoji instead of with half of it (shown as �).
+  expect(summary.text).toBe("가".repeat(279));
+});
+
 test("LibraryPane has the search and the four state chips only: no kind, channel or topic chips", async () => {
   // Given: research and a link from different channels, with tags.
   const records = [

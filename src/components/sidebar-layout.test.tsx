@@ -40,6 +40,7 @@ async function serveApp() {
     "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "UTC", locale: "en", features: { narration: false, push: false, digest: false, trustedLogin: false } }),
     "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
     "/api/v1/records": Response.json({ items: records, nextCursor: null }),
+    "/api/v1/records/changes": Response.json({ cursor: 0, items: [], deletedIds: [], hasMore: false, reset: false }),
     "/api/v1/trash": Response.json({ items: [] }),
     "/api/v1/comments": Response.json({ items: [] }),
     "/api/v1/agents": Response.json({ items: [] }),
@@ -105,6 +106,29 @@ test("a wide window folds the sidebar into the layout and moves its button to th
   });
 }, 30_000);
 
+test("a 320px app bar contains the name when text is enlarged to 200 percent", async () => {
+  await withApp(320, 844, async view => {
+    // Given: Home at the narrowest supported width. Subscribe before navigating.
+    await view.evaluate(`new Promise((resolve, reject) => {
+      const observer = new MutationObserver(() => { if (document.querySelector(".today-page")) { observer.disconnect(); clearTimeout(timer); resolve(true); } });
+      const timer = setTimeout(() => { observer.disconnect(); reject(new Error("Home did not mount")); }, 5000);
+      observer.observe(document, { childList: true, subtree: true });
+      location.hash = "#/home";
+    })`);
+    // When: the reader enlarges text.
+    await view.evaluate(`document.documentElement.style.fontSize = "200%"`);
+    // Then: the app name shrinks inside the header rather than widening the document.
+    const width = Number(await view.evaluate("document.documentElement.scrollWidth"));
+    expect(width).toBeLessThanOrEqual(320);
+    const nameRight = Number(await view.evaluate('document.querySelector(".appbar .brand").getBoundingClientRect().right'));
+    expect(nameRight).toBeLessThanOrEqual(320);
+    const tabsFit = await view.evaluate('[...document.querySelectorAll(".tabbar .tab")].every(tab => tab.scrollHeight <= tab.clientHeight)');
+    expect(tabsFit).toBe(true);
+    const badgeFits = await view.evaluate('(() => { const badge = document.createElement("span"); badge.className = "segment-count"; badge.textContent = "2"; document.body.append(badge); const fits = badge.scrollHeight <= badge.clientHeight; badge.remove(); return fits; })()');
+    expect(badgeFits).toBe(true);
+  });
+}, 30_000);
+
 test("an iPad landscape window starts with two columns and unfolds the sidebar into the layout from the list head", async () => {
   await withApp(1180, 820, async view => {
     await until(view, settled);
@@ -159,6 +183,24 @@ test("a window too narrow for three columns slides the sidebar over the panes fr
   });
 }, 30_000);
 
+for (const width of [320, 390, 430]) {
+  test(`a ${width}px phone splits its tab bar evenly among the three enabled tabs, 49pt tall like an iOS tab bar`, async () => {
+    await withApp(width, 844, async view => {
+      await until(view, settled);
+      // Given: a phone. Then: 메인 · 브리핑 · 기록 · 더보기 share the whole bar in equal columns, none left empty at the right.
+      const bar = JSON.parse(String(await view.evaluate(`JSON.stringify((() => {
+        const box = document.querySelector(".tabbar").getBoundingClientRect();
+        const tabs = [...document.querySelectorAll(".tabbar .tab")].map(tab => tab.getBoundingClientRect());
+        return { right: box.right, height: box.height, widths: tabs.map(tab => tab.width), last: tabs.at(-1).right };
+      })())`))) as { right: number; height: number; widths: number[]; last: number };
+      expect(bar.widths).toHaveLength(3);
+      expect(Math.max(...bar.widths) - Math.min(...bar.widths)).toBeLessThan(1);
+      expect(Math.abs(bar.right - bar.last)).toBeLessThan(1);
+      expect(Math.round(bar.height)).toBe(49);
+    });
+  }, 30_000);
+}
+
 test("a phone keeps its tab bar and opens the sidebar as a drawer that closes on navigation", async () => {
   await withApp(390, 844, async view => {
     await view.evaluate(`location.hash = "#/library"`);
@@ -177,5 +219,59 @@ test("a phone keeps its tab bar and opens the sidebar as a drawer that closes on
     await until(view, `() => location.hash === "#/trash" && ${state} === "hidden"`);
     await until(view, settled);
     expect(JSON.parse(String(await view.evaluate(boxes)))[".tabbar"]).toEqual(rest[".tabbar"]);
+  });
+}, 30_000);
+
+test("a second finger landing mid-drag lets the sidebar go back to where it belongs instead of staying where the drag left it", async () => {
+  await withApp(390, 844, async view => {
+    await view.evaluate(`location.hash = "#/library"`);
+    await until(view, `() => document.querySelectorAll(".row-title").length === ${records.length}`);
+    await until(view, settled);
+    // A desktop Chrome without touch emulation has no Touch constructor, so the touch lists are plain
+    // objects on a normal event: the drawer's handlers read identifier, clientX and clientY from them.
+    const touches = `(points => points.map(([x, y], identifier) => ({ identifier, target: document.body, clientX: x, clientY: y })))`;
+    const fire = (type: string, points: readonly (readonly [number, number])[]) => view.evaluate(`(() => {
+      const touches = ${touches}(${JSON.stringify(points)});
+      const event = new Event(${JSON.stringify(type)}, { bubbles: true, cancelable: true });
+      for (const name of ["touches", "targetTouches", "changedTouches"]) Object.defineProperty(event, name, { value: touches });
+      document.body.dispatchEvent(event);
+    })()`);
+    const inline = `JSON.stringify([document.querySelector("#sidebar").style.transform, document.querySelector(".sidebar-scrim").style.opacity])`;
+    // Given: a phone, the drawer hidden, and a finger dragging it out from the left edge.
+    await fire("touchstart", [[5, 400]]);
+    await fire("touchmove", [[60, 402]]);
+    await fire("touchmove", [[120, 404]]);
+    expect(JSON.parse(await read(view, inline))[0]).toStartWith("translateX(");
+    // When: a second finger lands, and then both lift.
+    await fire("touchstart", [[120, 404], [200, 500]]);
+    await fire("touchend", []);
+    // Then: the drawer is no longer held by the drag: it stays hidden and nothing inline keeps it half out.
+    expect(await read(view, state)).toBe("hidden");
+    expect(JSON.parse(await read(view, inline))).toEqual(["", ""]);
+  });
+}, 30_000);
+
+test("a second finger landing on a row mid-swipe neither ends the swipe nor leaves the row pushed aside", async () => {
+  await withApp(390, 844, async view => {
+    await view.evaluate(`location.hash = "#/library"`);
+    await until(view, `() => document.querySelectorAll(".row-title").length === ${records.length}`);
+    await until(view, settled);
+    const fire = (type: string, pointerId: number, x: number, y: number) => view.evaluate(`(() => {
+      const row = document.querySelector(".swipe .row");
+      row.dispatchEvent(new PointerEvent(${JSON.stringify(type)}, { pointerId: ${pointerId}, isPrimary: ${pointerId === 1}, pointerType: "touch",
+        clientX: ${x}, clientY: ${y}, bubbles: true, cancelable: true }));
+    })()`);
+    const row = `JSON.stringify((item => [item.querySelector(".row").style.transform, item.dataset.phase ?? null, item.dataset.swipe ?? null])(document.querySelector(".swipe")))`;
+    // Given: a finger dragging the first row 40px right, short of archiving it.
+    await fire("pointerdown", 1, 100, 200);
+    await fire("pointermove", 1, 120, 201);
+    await fire("pointermove", 1, 140, 201);
+    expect(JSON.parse(await read(view, row))).toEqual(["translateX(40px)", "drag", "archive"]);
+    // When: a second finger touches the row, then the first one lifts.
+    await fire("pointerdown", 2, 200, 300);
+    await fire("pointerup", 1, 140, 201);
+    // Then: the row settles back in place with nothing of the swipe left on it.
+    await until(view, `() => !document.querySelector(".swipe").dataset.phase`);
+    expect(JSON.parse(await read(view, row))).toEqual(["", null, null]);
   });
 }, 30_000);

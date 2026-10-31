@@ -136,9 +136,10 @@ export async function enrichCapture(url: URL, dependencies: EnrichmentDependenci
     // Only original root github.com repository URLs can select the authenticated adapter.
     const repo = url.hostname === "github.com" && !url.port
       ? /^\/([a-z0-9](?:[a-z0-9-]{0,38}))\/([a-z0-9_.-]{1,100})\/?$/i.exec(url.pathname) : null;
-    if (repo && repo[2] !== "." && repo[2] !== "..") {
+    // Checked after dropping .git, or "..git" would ask for repos/<owner>/.. instead of a repository.
+    const name = repo?.[2]?.replace(/\.git$/i, "");
+    if (repo && name !== "." && name !== "..") {
       const owner = repo[1];
-      const name = repo[2]?.replace(/\.git$/i, "");
       if (!owner || !name) throw new CaptureUnavailable("unsupported");
       const endpoint = `repos/${owner}/${name}`;
       const github = dependencies.github ?? runGithub;
