@@ -38,6 +38,7 @@ bun scripts/i18n-check.ts
 - Read [DESIGN.md](DESIGN.md) before you change the UI, and keep it in sync.
 - Add or adjust tests next to the code you change. Tests use their own temporary databases; never point them at real data.
 - Put every UI string in the component's `strings({ en, ko })` dictionary from `src/i18n.ts`. English is the default; the checker fails on a missing translation or Korean text outside a `ko` dictionary.
+- Maintainers who keep a list of personal values outside the repository (one per line, `#` comments allowed) run `PRIVACY_DENYLIST=/path/to/list bun scripts/privacy-scan.ts` before pushing. It reads the list only from `PRIVACY_DENYLIST`, searches tracked files, every commit's changes and every commit message without regard to case, prints each hit's place with the value masked, and exits 1 on any hit. Without a list it says so and exits 0.
 - Keep commits small, with messages like `fix: keep the reader scroll position on back`.
 
 ## Reporting security issues

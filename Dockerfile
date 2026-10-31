@@ -6,6 +6,7 @@
 # and an emulated `bun install` (for example amd64 under Rosetta, which has no AVX) crashes.
 # BuildKit sets BUILDPLATFORM; the legacy builder leaves it empty, so it falls back to linux/amd64.
 ARG BUILDPLATFORM
+FROM mwader/static-ffmpeg:7.1@sha256:a8090df5f5608daef387e1b2e93b98aaacb4d92153ad904e7d715c725724fca4 AS ffmpeg
 FROM --platform=${BUILDPLATFORM:-linux/amd64} oven/bun:1 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -27,6 +28,7 @@ LABEL org.opencontainers.image.title="agentic-dashboard" \
       org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080
+COPY --from=ffmpeg /ffmpeg /usr/local/bin/ffmpeg
 COPY package.json bun.lock ./
 COPY --from=deps /app/node_modules node_modules
 RUN mkdir -p data && chown bun:bun data

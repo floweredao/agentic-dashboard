@@ -26,7 +26,7 @@ test("list views render their text in English", () => {
   // And: the one state chip group reads All · To review · Favorites · Archived.
   expect(library.match(/aria-label="Record status">(.*?)<\/div>/)?.[1]?.replace(/<[^>]+>/g, "")).toBe("All0To review0Favorites0Archived0");
   expect(archive).toContain("Nothing archived");
-  expect(more).toContain("Manage channels");
+  expect(more).toContain("Agent connections");
   expect(purgeLabel("2026-10-03T00:00:00Z", Date.parse("2026-10-02T00:00:00Z"))).toBe("Deleted permanently in 1 day");
   expect(`${library}${archive}${more}`).not.toMatch(/[가-힣]/);
 });

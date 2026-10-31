@@ -63,36 +63,27 @@ const matches = (needle: string, values: readonly string[]) => values.some(value
  * changes nothing. The article sections and the message sections are read apart (`articles_read_at`, `messages_read_at`).
  */
 export class Digests {
-  constructor(readonly store: Store, readonly timeZone: string) {
-    store.db.exec(`CREATE TABLE IF NOT EXISTS digests(id TEXT PRIMARY KEY, date TEXT NOT NULL, slot TEXT NOT NULL, scheduled_at TEXT NOT NULL,
-        sections TEXT NOT NULL CHECK(json_valid(sections)), created_by TEXT NOT NULL REFERENCES principals(id), created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL, version INTEGER NOT NULL, articles_read_at TEXT, messages_read_at TEXT, UNIQUE(date, slot));
-      CREATE INDEX IF NOT EXISTS digests_scheduled ON digests(scheduled_at);
-      CREATE TABLE IF NOT EXISTS digest_reactions(digest_id TEXT NOT NULL REFERENCES digests(id), section TEXT NOT NULL, article_key TEXT NOT NULL,
-        reaction TEXT NOT NULL CHECK(reaction IN ('like','dislike','seen')), title TEXT NOT NULL, source TEXT NOT NULL, url TEXT NOT NULL,
-        updated_at TEXT NOT NULL, PRIMARY KEY(digest_id, section, article_key));
-      CREATE INDEX IF NOT EXISTS digest_reactions_updated ON digest_reactions(updated_at);`);
-  }
+  constructor(readonly store: Store, readonly timeZone: string) {}
 
-  private find(date: string, slot: string): Digest | null {
-    const row = this.store.db.query("SELECT * FROM digests WHERE date=? AND slot=?").get(date, slot);
+  private async find(date: string, slot: string): Promise<Digest | null> {
+    const row = (await this.store.db.get("SELECT * FROM digests WHERE (date=? AND slot=?) AND user_id=?", [date, slot]));
     return row ? toDigest(row) : null;
   }
-  get(id: string): Digest {
-    const row = this.store.db.query("SELECT * FROM digests WHERE id=?").get(id);
+  async get(id: string): Promise<Digest> {
+    const row = (await this.store.db.get("SELECT * FROM digests WHERE (id=?) AND user_id=?", [id]));
     if (!row) throw new ApiError(404, "not_found", "Digest not found");
     return toDigest(row);
   }
-  exists(id: string) { return this.store.db.query("SELECT 1 FROM digests WHERE id=?").get(id) !== null; }
+  async exists(id: string) { return (await this.store.db.get("SELECT 1 FROM digests WHERE (id=?) AND user_id=?", [id])) !== null; }
 
   /**
    * `changed`: section keys whose content (title, items, shortfall) differs from what was stored. `added`: sections that had
-   * no items before and have some now, which is what a notification is about. A part gets unread again when one of its
+   * no items before, or had them under another kind, and have some now, which is what a notification is about. A part gets unread again when one of its
    * sections is added; a part with nothing to read counts as read.
    */
-  upsert(principal: Principal, input: DigestInput): { digest: Digest; created: boolean; changed: string[]; added: string[] } {
-    return this.store.db.transaction(() => {
-      const existing = this.find(input.date, input.slot);
+  async upsert(principal: Principal, input: DigestInput): Promise<{ digest: Digest; created: boolean; changed: string[]; added: string[] }> {
+    return await this.store.db.tx(async () => {
+      const existing = (await this.find(input.date, input.slot));
       const timestamp = new Date(this.store.now()).toISOString();
       const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt).toISOString()
         : existing?.scheduledAt ?? new Date(zonedInstant(input.date, slotTime(input.slot), this.timeZone)).toISOString();
@@ -103,7 +94,8 @@ export class Digests {
         const index = sections.findIndex(section => section.key === next.key);
         const previous = index >= 0 ? sections[index] : undefined;
         if (previous && canonical({ key: previous.key, title: previous.title, kind: previous.kind, items: previous.items, shortfall: previous.shortfall }) === canonical(next)) continue;
-        if ((previous?.items.length ?? 0) === 0 && next.items.length > 0) added.push(next.key);
+        // A key sent again under another kind brings new items to that part, whatever the old section held.
+        if ((previous?.kind !== next.kind || previous.items.length === 0) && next.items.length > 0) added.push(next.key);
         changed.push(next.key);
         const section = { ...next, updatedAt: timestamp } as DigestSection;
         if (index >= 0) sections[index] = section; else sections.push(section);
@@ -120,53 +112,52 @@ export class Digests {
         createdBy: existing?.createdBy ?? principal.id, createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp,
         version: (existing?.version ?? 0) + 1, articlesReadAt: reads.articles, messagesReadAt: reads.messages, readAt: bothRead(reads.articles, reads.messages),
       });
-      this.store.db.query(`INSERT INTO digests(id,date,slot,scheduled_at,sections,created_by,created_at,updated_at,version,articles_read_at,messages_read_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET scheduled_at=excluded.scheduled_at,sections=excluded.sections,
-        updated_at=excluded.updated_at,version=excluded.version,articles_read_at=excluded.articles_read_at,messages_read_at=excluded.messages_read_at`)
-        .run(digest.id, digest.date, digest.slot, digest.scheduledAt, JSON.stringify(digest.sections), digest.createdBy,
-          digest.createdAt, digest.updatedAt, digest.version, digest.articlesReadAt, digest.messagesReadAt);
+      (await this.store.db.run(`INSERT INTO digests(id,date,slot,scheduled_at,sections,created_by,created_at,updated_at,version,articles_read_at,messages_read_at,user_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET scheduled_at=excluded.scheduled_at,sections=excluded.sections,
+        updated_at=excluded.updated_at,version=excluded.version,articles_read_at=excluded.articles_read_at,messages_read_at=excluded.messages_read_at`, [digest.id, digest.date, digest.slot, digest.scheduledAt, JSON.stringify(digest.sections), digest.createdBy, digest.createdAt, digest.updatedAt, digest.version, digest.articlesReadAt, digest.messagesReadAt]));
       return { digest, created: existing === null, changed, added };
-    }).immediate();
+    });
   }
 
   /**
    * Summaries from `from` to `to` (dates in the dashboard's zone, default the last 14 days), newest scheduled first. `unread`
    * counts unread parts (a digest with unread articles and messages counts twice); `parts` gives each part's unread count and first date.
    */
-  list(raw: Record<string, string>) {
+  async list(raw: Record<string, string>) {
     const query = rangeSchema.parse(raw);
     const to = query.to ?? zonedDate(new Date(this.store.now()), this.timeZone);
     const from = query.from ?? shiftDay(to, -13);
     if (from > to) throw new ApiError(400, "invalid_query", "from must not follow to");
-    if (Date.parse(to) - Date.parse(from) > DIGEST_LIMITS.rangeDays * DAY_MS) throw new ApiError(400, "invalid_query", `Ask for at most ${DIGEST_LIMITS.rangeDays} days`);
+    // Both ends count, like the default range: 92 days leaves at most 91 days between them.
+    if (Date.parse(to) - Date.parse(from) >= DIGEST_LIMITS.rangeDays * DAY_MS) throw new ApiError(400, "invalid_query", `Ask for at most ${DIGEST_LIMITS.rangeDays} days`);
     const db = this.store.db;
-    const items = db.query("SELECT * FROM digests WHERE date>=? AND date<=? ORDER BY scheduled_at DESC, id DESC").all(from, to).map(row => summarize(toDigest(row)));
+    const items = (await db.all("SELECT * FROM digests WHERE (date>=? AND date<=?) AND user_id=? ORDER BY scheduled_at DESC, id DESC", [from, to])).map(row => summarize(toDigest(row)));
     const totals = z.object({ articles: z.number(), messages: z.number(), articlesEarliest: z.string().nullable(), messagesEarliest: z.string().nullable(),
       earliest: z.string().nullable(), latest: z.string().nullable() })
-      .parse(db.query(`SELECT count(articles_read_at IS NULL OR NULL) AS articles, count(messages_read_at IS NULL OR NULL) AS messages,
+      .parse((await db.get(`SELECT count(articles_read_at IS NULL OR NULL) AS articles, count(messages_read_at IS NULL OR NULL) AS messages,
         min(CASE WHEN ${presentSql("articles")} THEN date END) AS articlesEarliest, min(CASE WHEN ${presentSql("messages")} THEN date END) AS messagesEarliest,
-        min(date) AS earliest, max(date) AS latest FROM digests`).get());
+        min(date) AS earliest, max(date) AS latest FROM digests WHERE user_id=?`, [])));
     return { items, from, to, unread: totals.articles + totals.messages, earliestDate: totals.earliest, latestDate: totals.latest,
       parts: { articles: { unread: totals.articles, earliestDate: totals.articlesEarliest }, messages: { unread: totals.messages, earliestDate: totals.messagesEarliest } } };
   }
 
   /** Marks one part, or both without `part`. Marking unread only touches a part that has something to read. */
-  markRead(id: string, read: boolean, part?: DigestPart): DigestSummary {
-    const current = this.get(id);
+  async markRead(id: string, read: boolean, part?: DigestPart): Promise<DigestSummary> {
+    const current = (await this.get(id));
     const timestamp = new Date(this.store.now()).toISOString();
     const reads = { articles: current.articlesReadAt, messages: current.messagesReadAt };
     for (const each of part ? [part] : DIGEST_PARTS) {
       if (read) reads[each] ??= timestamp;
       else if (hasItems(current.sections, each)) reads[each] = null;
     }
-    this.store.db.query("UPDATE digests SET articles_read_at=?, messages_read_at=? WHERE id=?").run(reads.articles, reads.messages, id);
+    (await this.store.db.run("UPDATE digests SET articles_read_at=?, messages_read_at=? WHERE (id=?) AND user_id=?", [reads.articles, reads.messages, id]));
     return summarize({ ...current, articlesReadAt: reads.articles, messagesReadAt: reads.messages, readAt: bothRead(reads.articles, reads.messages) });
   }
 
   /** A digest's reactions by `section:key` (404 for an unknown digest). */
-  reactions(id: string): DigestReactions {
-    if (!this.exists(id)) throw new ApiError(404, "not_found", "Digest not found");
-    const rows = this.store.db.query("SELECT section, article_key, reaction FROM digest_reactions WHERE digest_id=? ORDER BY section, article_key").all(id);
+  async reactions(id: string): Promise<DigestReactions> {
+    if (!(await this.exists(id))) throw new ApiError(404, "not_found", "Digest not found");
+    const rows = (await this.store.db.all("SELECT section, article_key, reaction FROM digest_reactions WHERE (digest_id=?) AND user_id=? ORDER BY section, article_key", [id]));
     return Object.fromEntries(rows.map(value => {
       const row = z.object({ section: z.string(), article_key: z.string(), reaction: ArticleReactionSchema }).parse(value);
       return [`${row.section}:${row.article_key}`, row.reaction];
@@ -177,27 +168,26 @@ export class Digests {
    * Sets or clears the owner's reaction to one article the digest has now (messages take none), keeping its title, source and
    * link so the reaction still reads after a later upload rewrites the section.
    */
-  react(id: string, raw: unknown): DigestReactions {
+  async react(id: string, raw: unknown): Promise<DigestReactions> {
     const input = ArticleReactionInputSchema.parse(raw);
-    const digest = this.get(id);
+    const digest = (await this.get(id));
     const section = digest.sections.find(each => each.key === input.section);
     if (section?.kind === "messages") throw new ApiError(400, "invalid_request", "Messages take no reactions");
     const item = section?.items.find(each => each.key === input.key);
     if (!section || !item) throw new ApiError(404, "not_found", "Article not found in this digest");
     const article = item as DigestArticle;
-    if (input.reaction === null) this.store.db.query("DELETE FROM digest_reactions WHERE digest_id=? AND section=? AND article_key=?").run(id, input.section, input.key);
-    else this.store.db.query(`INSERT INTO digest_reactions(digest_id,section,article_key,reaction,title,source,url,updated_at) VALUES(?,?,?,?,?,?,?,?)
-      ON CONFLICT(digest_id,section,article_key) DO UPDATE SET reaction=excluded.reaction,title=excluded.title,source=excluded.source,url=excluded.url,updated_at=excluded.updated_at`)
-      .run(id, input.section, input.key, input.reaction, article.title, article.source, article.originalUrl ?? article.url, new Date(this.store.now()).toISOString());
-    return this.reactions(id);
+    if (input.reaction === null) (await this.store.db.run("DELETE FROM digest_reactions WHERE (digest_id=? AND section=? AND article_key=?) AND user_id=?", [id, input.section, input.key]));
+    else (await this.store.db.run(`INSERT INTO digest_reactions(digest_id,section,article_key,reaction,title,source,url,updated_at,user_id) VALUES(?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(user_id,digest_id,section,article_key) DO UPDATE SET reaction=excluded.reaction,title=excluded.title,source=excluded.source,url=excluded.url,updated_at=excluded.updated_at`, [id, input.section, input.key, input.reaction, article.title, article.source, article.originalUrl ?? article.url, new Date(this.store.now()).toISOString()]));
+    return (await this.reactions(id));
   }
 
   /** Reactions given in the last `days` days (default 30), newest first, with each article as it was reacted to. */
-  recentReactions(raw: Record<string, string>): { items: ReactionItem[]; from: string } {
+  async recentReactions(raw: Record<string, string>): Promise<{ items: ReactionItem[]; from: string }> {
     const query = reactionsQuerySchema.parse(raw);
     const from = new Date(this.store.now() - query.days * DAY_MS).toISOString();
-    const rows = this.store.db.query(`SELECT r.*, d.date, d.slot FROM digest_reactions r JOIN digests d ON d.id=r.digest_id
-      WHERE r.updated_at>=? ORDER BY r.updated_at DESC, r.digest_id, r.section, r.article_key`).all(from);
+    const rows = (await this.store.db.all(`SELECT r.*, d.date, d.slot FROM digest_reactions r JOIN digests d ON d.id=r.digest_id AND d.user_id=r.user_id
+      WHERE (r.updated_at>=?) AND r.user_id=? ORDER BY r.updated_at DESC, r.digest_id, r.section, r.article_key`, [from]));
     return { from, items: rows.map(value => {
       const row = reactionRowSchema.parse(value);
       return { digestId: row.digest_id, date: row.date, slot: row.slot, section: row.section, key: row.article_key,
@@ -206,11 +196,11 @@ export class Digests {
   }
 
   /** Articles (title, summary, source) and messages (sender, subject, summary, action) matching, newest digest first; `part` keeps to one kind. */
-  search(raw: Record<string, string>): { items: DigestHit[] } {
+  async search(raw: Record<string, string>): Promise<{ items: DigestHit[] }> {
     const query = searchSchema.parse(raw);
     const needle = query.q.toLowerCase();
     const hits: DigestHit[] = [];
-    for (const row of this.store.db.query("SELECT * FROM digests ORDER BY scheduled_at DESC, id DESC").iterate()) {
+    for (const row of (await this.store.db.all("SELECT * FROM digests WHERE user_id=? ORDER BY scheduled_at DESC, id DESC", []))) {
       const digest = toDigest(row);
       const base = { digestId: digest.id, date: digest.date, slot: digest.slot, scheduledAt: digest.scheduledAt };
       for (const section of digest.sections) {
@@ -229,18 +219,18 @@ export class Digests {
 
   /**
    * One part of a digest, or all of it (the articles, then the messages), as a note-shaped record for narration, with its
-   * label: the sections in order under their titles, each item as one line. `narrationId` is the part's id (`digestPartId`); null when there is no such digest or part.
+   * label: the sections in order under their titles, each item as one line. `narrationId` is the part's id (`digestPartId`); null when there is no such digest or part, or the part has no items to read.
    */
-  narrationSource(narrationId: string): { record: DashboardRecord; label: string } | null {
+  async narrationSource(narrationId: string): Promise<{ record: DashboardRecord; label: string } | null> {
     const { id, part } = digestOfPartId(narrationId);
-    if (!this.exists(id)) return null;
-    const digest = this.get(id);
+    if (!(await this.exists(id))) return null;
+    const digest = (await this.get(id));
     const sections = part === "all"
       ? DIGEST_PARTS.flatMap(kind => digest.sections.filter(section => section.kind === kind))
       : digest.sections.filter(section => section.kind === part);
-    if (sections.length === 0) return null;
+    if (!sections.some(section => section.items.length > 0)) return null;
     const lines: string[] = [];
-    const message = (item: DigestMessage) => `- [${item.importance}] ${item.from}: ${item.subject}. ${item.summary}${item.action ? ` ${item.action}` : ""}`;
+    const message = (item: DigestMessage) => `- [${item.importance}] ${item.from}: ${item.subject}. ${item.summary}`;
     const article = (item: DigestArticle) => `- ${item.title}${item.source ? ` (${item.source})` : ""}: ${item.summary}`;
     for (const section of sections) {
       if (!section.items.length) continue;

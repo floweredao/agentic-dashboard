@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bell, BriefcaseBusiness, Ellipsis, House, Library, Menu, Newspaper, PanelLeftClose, PanelLeftOpen, Plus, RadioTower, RefreshCw, Trash2 } from "lucide-react";
 import type { Comment, DashboardRecord, RecordInput, RecordKind, RecordPatch, TrashItem } from "../shared/contracts";
-import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, loadAgents, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
+import { createComment, createRecord, deleteRecord, emptyTrash as emptyTrashApi, errorMessage, isUnauthorized, loadAgents, loadComments, loadDigests, loadRecords, loadTrash, logout as endSession, markDigest as markDigestApi, patchRecord, purgeRecord, recordInputSchema, restoreRecord, session } from "./api";
+import { useRateLimited } from "./rate-limit";
 import type { DigestPage } from "./api";
 import { syncPush } from "./push";
 import { Empty, DialogToast } from "./components/primitives";
@@ -38,7 +39,8 @@ const text = strings({
     purgeConfirm: (title: string) => `Delete "${title}" permanently? This can't be undone.`, purged: "Deleted permanently.",
     emptyConfirm: "Empty the trash? Every item will be deleted permanently and this can't be undone.", emptied: "Emptied the trash.",
     aiReverted: "Restored the original title and summary.", followUp: (title: string) => `Follow-up: ${title}`, loggedOut: "Signed out.",
-    undo: "Undo", close: "Close", skip: "Skip to content", loading: "Loading", mainMenu: "Main menu",
+    undo: "Undo", close: "Close", skip: "Skip to content", loading: "Starting the service…", mainMenu: "Main menu",
+    startupFailed: "Couldn't start the dashboard", retry: "Retry",
     compose: "New item", composeShortcut: "New item (C)", more: "More",
     offline: "Offline · changes won't save", disconnected: "Not connected", refresh: "Refresh",
     showSidebar: "Show sidebar", hideSidebar: "Hide sidebar", showSidebarShortcut: "Show sidebar (⌘\\)", hideSidebarShortcut: "Hide sidebar (⌘\\)",
@@ -56,7 +58,8 @@ const text = strings({
     purgeConfirm: (title: string) => `"${title}" 항목을 영구 삭제할까요? 되돌릴 수 없어요.`, purged: "영구 삭제했어요.",
     emptyConfirm: "휴지통을 비울까요? 모든 항목이 영구 삭제되고 되돌릴 수 없어요.", emptied: "휴지통을 비웠어요.",
     aiReverted: "원래 제목과 요약으로 되돌렸어요.", followUp: (title: string) => `${title} 후속 할 일`, loggedOut: "로그아웃했어요.",
-    undo: "되돌리기", close: "닫기", skip: "본문으로 바로가기", loading: "불러오는 중", mainMenu: "주 메뉴",
+    undo: "되돌리기", close: "닫기", skip: "본문으로 바로가기", loading: "서비스를 시작하는 중…", mainMenu: "주 메뉴",
+    startupFailed: "대시보드를 시작하지 못했어요", retry: "다시 시도",
     compose: "새로 저장", composeShortcut: "새로 저장 (C)", more: "더보기",
     offline: "오프라인 · 저장되지 않아요", disconnected: "연결 안 됨", refresh: "새로고침",
     showSidebar: "사이드바 보기", hideSidebar: "사이드바 숨기기", showSidebarShortcut: "사이드바 보기 (⌘\\)", hideSidebarShortcut: "사이드바 숨기기 (⌘\\)",
@@ -115,6 +118,9 @@ export function App() {
   const [agents, setAgents] = useState<readonly string[]>([]);
   const [csrf, setCsrf] = useState("");
   const [loading, setLoading] = useState(true);
+  const [startupError, setStartupError] = useState("");
+  const [startupAttempt, setStartupAttempt] = useState(0);
+  const limited = useRateLimited();
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [modal, setModal] = useState<Modal>(null);
@@ -182,12 +188,18 @@ export function App() {
     const resized = () => setNarrow(media.matches);
     media.addEventListener("change", resized);
     let mounted = true;
+    setLoading(true);
+    setStartupError("");
     session().then(async auth => {
       const loaded = await loadAll(cause => { if (mounted) void report(cause); });
       if (mounted) { setCsrf(auth.csrfToken); store(loaded); if (config.features.demo) notify(text().demoNotice); }
-    }).catch(() => undefined).finally(() => { if (mounted) setLoading(false); });
+    }).catch(async (cause: unknown) => {
+      if (isUnauthorized(cause)) { if (mounted) setCsrf(""); return; }
+      const message = await errorMessage(cause);
+      if (mounted) { setCsrf(""); setStartupError(message); }
+    }).finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; window.removeEventListener("hashchange", changed); media.removeEventListener("change", resized); };
-  }, []);
+  }, [startupAttempt]);
 
   useEffect(() => {
     if (!connected) return;
@@ -288,13 +300,13 @@ export function App() {
   const dashboard: Dashboard = useMemo(() => {
     const byId = new Map(records.map(record => [record.id, record]));
     /** undo: the changes that put the saved record back, offered as Undo in the toast. */
-    const patch = async (record: DashboardRecord, changes: RecordPatch["changes"], message = text().saved, undo?: RecordPatch["changes"]) => {
+    const patch = async (record: DashboardRecord, changes: RecordPatch["changes"], message: string | null = text().saved, undo?: RecordPatch["changes"]) => {
       setBusy(true);
       setToast(null);
       try {
         const saved = await patchRecord(current(record), changes, latest.current.csrf);
         replace(saved);
-        setToast({ message, tone: "info", key: Date.now(), ...(undo ? { undo: () => { void patch(saved, undo, text().undone); } } : {}) });
+        if (message !== null) setToast({ message, tone: "info", key: Date.now(), ...(undo ? { undo: () => { void patch(saved, undo, text().undone); } } : {}) });
         return saved;
       } catch (cause) { if (!navigator.onLine) setOffline(true); notify(await errorMessage(cause), "error"); return null; }
       finally { setBusy(false); }
@@ -362,7 +374,7 @@ export function App() {
       finally { setBusy(false); }
     };
     return {
-      records, byId, trash, comments, connected, csrfToken: csrf, loading, busy, route, back, navigate, select, open, patch, confirm, create, editDraft, notify,
+      records, byId, trash, comments, connected, csrfToken: csrf, loading, busy: busy || limited, route, back, navigate, select, open, patch, confirm, create, editDraft, notify,
       digests, digestReads,
       markDigest: async (id, part, read, quiet = false) => {
         if (quiet && config.features.demo) return;
@@ -401,7 +413,7 @@ export function App() {
         for (const [key, value] of Object.entries(params)) { if (value) merged[key] = value; else delete merged[key]; }
         navigate({ view: now.view, id: now.id, params: merged }, options);
       },
-      toggleStar: async record => { await patch(record, { fields: { ...current(record).fields, starred: current(record).fields.starred !== true } }, current(record).fields.starred === true ? text().unstarred : text().starred); },
+      toggleStar: async record => { await patch(record, { fields: { ...current(record).fields, starred: current(record).fields.starred !== true } }, null); },
       markPending: async record => { await patch(record, { reviewState: "pending" }, text().markedPending, { reviewState: "approved" }); },
       markRead: async record => {
         const now = current(record);
@@ -493,7 +505,7 @@ export function App() {
       logout: async () => { await endSession(latest.current.csrf); setCsrf(""); setRecords([]); setTrash([]); setComments([]); setDigests(null); setAgents([]); navigate({ view: "home" }); notify(text().loggedOut); },
       importJson: async text => create(recordInputSchema.parse(JSON.parse(text)), crypto.randomUUID()),
     };
-  }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, route, back, navigate, notify, refresh, replace, report, store]);
+  }, [records, trash, comments, digests, digestReads, connected, csrf, loading, busy, limited, route, back, navigate, notify, refresh, replace, report, store]);
 
   // A tapped notification in an open window: go to the screen it names, as a new history entry.
   useEffect(() => {
@@ -578,7 +590,7 @@ export function App() {
         <div className="sidebar-foot">
           {demoReleaseBadge}
           <span className={`status${offline ? " offline" : ""}`} role="status">{offline ? t.offline : connected ? syncLabel(syncedAt) : t.disconnected}</span>
-          {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh} title={t.refresh}><RefreshCw size={16} aria-hidden="true" /></button>}
+          {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading || limited} aria-label={t.refresh} title={t.refresh}><RefreshCw size={16} aria-hidden="true" /></button>}
         </div>
       </nav>
       <div className="sidebar-scrim" aria-hidden="true" onClick={hideSidebar} />
@@ -589,11 +601,15 @@ export function App() {
         {back && <button type="button" className="btn appbar-back" onClick={dashboard.goBack}><ArrowLeft size={18} aria-hidden="true" />{backLabel(back.hash)}</button>}
         <a className="brand" href={link("home")}><img src="/brand-mark.png" alt="" width={26} height={26} /><span className="brand-name">{config.appName}</span>{demoBadge}</a>
         {connected && <button type="button" className="icon-btn appbar-compose" onClick={() => dashboard.compose()} aria-label={t.compose} title={t.compose}><Plus size={20} aria-hidden="true" /></button>}
-        {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading} aria-label={t.refresh}><RefreshCw size={18} aria-hidden="true" /></button>}
+        {connected && <button type="button" className="icon-btn" onClick={() => { void refresh(); }} disabled={loading || limited} aria-label={t.refresh}><RefreshCw size={18} aria-hidden="true" /></button>}
       </header>
 
       <main id="main" tabIndex={-1} inert={sidebar === "open"} className={`workspace${!connected || singlePane(route.view) ? " single" : ""}`}>
-        {!connected ? loading ? null : <section className="pane">
+        {!connected ? loading ? <section className="pane"><div className="gate" role="status">{t.loading}</div></section>
+          : startupError ? <section className="pane"><div className="gate" data-startup-error>
+            <h1>{t.startupFailed}</h1><p role="alert">{startupError}</p>
+            <button type="button" className="btn btn-primary" disabled={limited} onClick={() => setStartupAttempt(value => value + 1)}>{t.retry}</button>
+          </div></section> : <section className="pane">
           <OwnerGate onToken={() => setModal({ mode: "login" })} />
         </section>
           : route.view === "home" ? <section className="pane" aria-label={title}><HomePane /></section>
