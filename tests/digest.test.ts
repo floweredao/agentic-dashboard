@@ -91,7 +91,29 @@ test("With DIGEST off every digest route answers 404", async () => {
       expect(response.status).toBe(404);
       expect(await errorCode(response)).toBe("feature_disabled");
     }
+    // And: the owner's own writes report the feature as off instead of looking a digest up.
+    for (const [path, method, body] of [[`/api/v1/digests/${id}/read`, "POST", { read: true }],
+      [`/api/v1/digests/${id}/reactions`, "PUT", { section: "domestic", key: "a", reaction: "like" }]] as const) {
+      const response = await off.call(path, method, body, owner);
+      expect(response.status).toBe(404);
+      expect(await errorCode(response)).toBe("feature_disabled");
+    }
   } finally { (await off.close()); }
+});
+
+test("The digest list counts both ends of its range: 92 days is served and 93 refused", async () => {
+  // Given: the documented maximum is 92 days, counted like the default 14-day range.
+  const owner = await f.login();
+  // When: the owner asks for exactly 92 days.
+  const widest = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-02", "GET", undefined, owner);
+  // Then: that range is served.
+  expect(widest.status).toBe(200);
+  expect(await widest.json()).toMatchObject({ from: "2026-01-01", to: "2026-04-02" });
+  // When: one more day is asked for.
+  const tooWide = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-03", "GET", undefined, owner);
+  // Then: the query is refused instead of serving a wider range than documented.
+  expect(tooWide.status).toBe(400);
+  expect(await errorCode(tooWide)).toBe("invalid_query");
 });
 
 test("Malformed digests are refused before anything is written: unknown kind, duplicate or bad keys, empty sections", async () => {
