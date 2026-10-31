@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ArchiveRestore, Trash2 } from "lucide-react";
 import { TRASH_RETENTION_DAYS } from "../../shared/contracts";
 import { BackButton, Empty, SidebarOpen } from "../components/primitives";
-import { channelOf, channelLabel, kindLabels } from "../model";
+import { channelOf, channelLabel, kindLabels, localDate } from "../model";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
 
@@ -24,9 +24,9 @@ const text = strings({
 });
 
 const day = 86_400_000;
-/** Days left before the purge, rounded up; on the purge day itself it reads "today". */
+/** Calendar days (in the dashboard's zone) left before the purge; on the purge day itself it reads "today". */
 export function purgeLabel(purgeAt: string, now = Date.now()) {
-  const days = Math.max(0, Math.ceil((new Date(purgeAt).getTime() - now) / day));
+  const days = Math.max(0, Math.round((Date.parse(localDate(new Date(purgeAt))) - Date.parse(localDate(new Date(now)))) / day));
   return days === 0 ? text().purgeToday : text().purgeIn(days);
 }
 

@@ -27,7 +27,7 @@ Rotation only updates an active principal. A revoked agent returns `409 agent_re
 
 `POST /api/v1/agents/invites { name }` lets a CSRF-authenticated owner issue the existing 15-minute single-use installer invitation for a new name. The connection screen supplies the hosted URL and invitation to the connect-only installer, explains macOS/Linux prerequisites and untested Windows support, and offers a curl fallback. Its test-save action writes through the bearer and reads the returned id through the owner API before showing success.
 
-A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`).
+A one-time connection code (`agentic-dashboard invite <name>` on the host, table `agent_invites`) registers a new agent from another computer: `XXXX-XXXX-XXXX-XXXX` in Crockford base32 (80 random bits, case and dashes ignored), valid for 15 minutes and for one `POST /api/v1/agents/connect`. Only its SHA-256 hash is stored; a new code for the same name replaces the old one, and a name that is already registered gets no code (`409 agent_exists`). `invite` prints when the code expires in `TIME_ZONE` from server.env (the host's zone when it is unset or unknown).
 
 Local owner sessions last 7 days. The cookie is `agentic_session`, `HttpOnly`, `SameSite=Strict`, and `Secure` when the origin is HTTPS. Every owner mutation needs the CSRF token from the session response and an allowed `Origin`.
 
@@ -211,7 +211,7 @@ association without deleting the older account's tombstone.
 
 | Route | Who | Result |
 |---|---|---|
-| `GET /api/v1/records` | owner, agent | `{ items, nextCursor }`; query `kind`, `status`, `reviewState`, `archived` (`false`, `true`, `all`), `projectId`, `q`, `dueFrom`, `dueTo`, `limit` (1..50), `cursor`; `q` is trimmed (at most 200 characters; blank lists everything) and matches the title or body ignoring case, also beyond ASCII, and Unicode form (decomposed Hangul matches composed), paging with `cursor` and the other filters like a plain list |
+| `GET /api/v1/records` | owner, agent | `{ items, nextCursor }`, newest first (`createdAt`, then `id`, both descending); query `kind`, `status`, `reviewState`, `archived` (`false`, `true`, `all`), `projectId`, `q`, `dueFrom`, `dueTo`, `limit` (1..50), `cursor`; `q` is trimmed (at most 200 characters; blank lists everything) and matches the title or body ignoring case, also beyond ASCII, and Unicode form (decomposed Hangul matches composed), paging with `cursor` and the other filters like a plain list |
 | `POST /api/v1/records` | owner, agent | 201 `{ record, replayed: false }` |
 | `GET /api/v1/records/:id` | owner, agent | `{ record }` |
 | `PATCH /api/v1/records/:id` | owner, agent (own records) | `{ record }` |
