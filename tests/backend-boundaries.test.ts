@@ -6,9 +6,9 @@ import { createApp } from "../server/app";
 import { CredentialsSchema } from "../server/auth";
 import { bearer, fixture, origin, payload, recordResult, tokens } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 test("extreme nesting returns validation error rather than server error", async () => {
   let nested: unknown = 1;
@@ -18,9 +18,9 @@ test("extreme nesting returns validation error rather than server error", async 
 });
 
 test("credentials generate once with restricted mode and database stores only token hashes", async () => {
-  f.app.close();
+  (await f.app.close());
   unlinkSync(f.options.credentialsPath);
-  const app = createApp(f.options);
+  const app = (await createApp(f.options));
   const first = readFileSync(f.options.credentialsPath, "utf8");
   const credentials = CredentialsSchema.parse(JSON.parse(first));
   expect(Object.values(credentials).every(value => value.length >= 40)).toBe(true);
@@ -31,17 +31,17 @@ test("credentials generate once with restricted mode and database stores only to
     expect(rows.every(row => /^[a-f0-9]{64}$/.test(row.token_hash))).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(credentials.owner);
     expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
-  } finally { db.close(); app.close(); }
+  } finally { db.close(); (await app.close()); }
   chmodSync(f.options.credentialsPath, 0o644);
-  const restarted = createApp(f.options);
+  const restarted = (await createApp(f.options));
   try {
     expect(readFileSync(f.options.credentialsPath, "utf8")).toBe(first);
     expect(statSync(f.options.credentialsPath).mode & 0o777).toBe(0o600);
-  } finally { restarted.close(); }
+  } finally { (await restarted.close()); }
 });
 
 test("session cookies protect HTTP and HTTPS and responses carry restrictive headers", async () => {
-  const secure = fixture(10000, Date.now, { privateOrigin: "https://dashboard.example.test" });
+  const secure = (await fixture(10000, Date.now, { privateOrigin: "https://dashboard.example.test" }));
   try {
   for (const [app, requestOrigin] of [[f, origin], [secure, "https://dashboard.example.test"]] as const) {
     const response = await app.call("/api/v1/auth/session", "POST", { token: tokens.owner }, { Origin: requestOrigin });
@@ -58,7 +58,7 @@ test("session cookies protect HTTP and HTTPS and responses carry restrictive hea
     expect(policy["img-src"]).toEqual(["'self'", "data:", "blob:", "https:"]);
     expect(policy["script-src"]).toEqual(["'self'"]);
   }
-  } finally { secure.close(); }
+  } finally { (await secure.close()); }
 });
 
 test("filters select archived, review, project, status and exclude archived by default", async () => {

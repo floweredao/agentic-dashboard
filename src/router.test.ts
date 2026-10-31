@@ -93,5 +93,5 @@ test("the back label names the screen it returns to", () => {
   expect(backLabel("#/library?state=pending")).toBe("기록");
   expect(backLabel("#/home")).toBe("메인");
   expect(backLabel("#/more")).toBe("더보기");
-  expect(backLabel("#/channels")).toBe("채널 관리");
+  expect(backLabel("#/channels")).toBe("에이전트 연결");
 });

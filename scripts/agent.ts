@@ -1,10 +1,11 @@
 import { parseArgs } from "node:util";
 import { HTTPError } from "ky";
 import { z } from "zod";
-import { DocumentStateSchema, NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
+import { DigestInputSchema, DigestSectionKeySchema, DocumentStateSchema, NarrationStateSchema, NarrationStyleSchema } from "../shared/contracts";
 import type { NarrationState } from "../shared/contracts";
 import { storedConnection } from "../cli/client";
 import { digestReactions, getDocument, getNarration, getRecord, putDocument, listComments, listDigests, markComment, postComment, postDigest, readShared, requestNarration, searchRecords, sendRecord, trashRecord, updateRecord } from "./agent-client";
+import { digestFromFiles } from "./briefing-convert";
 
 let readingShared = false;
 type Action = "save" | "get" | "update" | "trash" | "search" | "task" | "report" | "comments" | "mark" | "reply" | "timeline" | "narrate" | "digest" | "digests" | "reactions";
@@ -80,9 +81,14 @@ try {
       force: { type: "boolean" },
       style: { type: "string" },
       digest: { type: "string" },
+      briefing: { type: "string" },
+      "briefing-file": { type: "string" },
+      sections: { type: "string" },
       quiet: { type: "boolean" },
       digests: { type: "boolean" },
+      briefings: { type: "boolean" },
       "digest-reactions": { type: "boolean" },
+      "briefing-reactions": { type: "boolean" },
       days: { type: "string" },
       from: { type: "string" },
       to: { type: "string" },
@@ -131,23 +137,41 @@ try {
         "Narrate:     bun run agent --narrate <record-id> [--style read|podcast] [--force] [--wait] [--interval 5] [--timeout 900]   (done 0, failed 1, timeout 2; without --style the last style, read at first)\n" +
         "Narration:   bun run agent --narration <record-id>\n" +
         "Digest:      bun run agent --digest digest.json [--quiet]   (the POST /api/v1/digests body)\n" +
-        "Digests:     bun run agent --digests [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n" +
-        "Reactions:   bun run agent --digest-reactions [--days 30]   (the owner's Like · Not for me · Seen it, newest first: {items, from})",
+        "Briefing:    bun run agent --briefing <dir> [--sections mail,domestic,international] [--quiet]   (news.json, mail.json; AI editions also read x.json, sections ai-development,social)\n" +
+        "Digest body: bun run agent --briefing-file digest.json [--sections <names>] [--quiet]   (alias for --digest)\n" +
+        "Digests:     bun run agent --digests (or --briefings) [--from YYYY-MM-DD] [--to YYYY-MM-DD]\n" +
+        "Reactions:   bun run agent --digest-reactions (or --briefing-reactions) [--days 30]   (the owner's Like · Not for me · Seen it, newest first: {items, from})",
     );
-  } else if (values.digest !== undefined) {
+  } else if (values.digest !== undefined || values.briefing !== undefined || values["briefing-file"] !== undefined) {
     action = "digest";
-    const input = z.record(z.string(), z.unknown()).parse(await Bun.file(z.string().min(1).parse(values.digest)).json());
-    if (values.quiet) input["notify"] = false;
+    const sections = values.sections === undefined ? undefined : z.array(DigestSectionKeySchema).min(1)
+      .parse(list(values.sections).map(key => key === "aiDevelopment" ? "ai-development" : key));
+    let input: unknown;
+    const file = values["briefing-file"] ?? values.digest;
+    if (file !== undefined) {
+      const body = DigestInputSchema.parse(await Bun.file(z.string().min(1).parse(file)).json());
+      input = DigestInputSchema.parse({ ...body,
+        sections: sections ? body.sections.filter(section => sections.includes(section.key)) : body.sections,
+        notify: values.quiet ? false : body.notify });
+    } else {
+      const dir = z.string().min(1).parse(values.briefing);
+      const read = async (name: string): Promise<unknown> => {
+        const entry = Bun.file(`${dir}/${name}`);
+        return await entry.exists() ? await entry.json() : undefined;
+      };
+      const [news, mail, x] = await Promise.all([read("news.json"), read("mail.json"), read("x.json")]);
+      input = digestFromFiles({ news, mail, x }, { ...(sections ? { sections } : {}), notify: values.quiet !== true });
+    }
     const result = z.object({ digest: z.object({ id: z.string(), date: z.string(), slot: z.string(), version: z.number(),
       sections: z.array(z.object({ key: z.string(), items: z.array(z.unknown()) }).passthrough()) }).passthrough(),
       created: z.boolean(), changed: z.array(z.string()), notified: z.boolean() }).parse(await postDigest(await connect(), input));
     const { digest } = result;
     print({ id: digest.id, date: digest.date, slot: digest.slot, version: digest.version, created: result.created, changed: result.changed,
       notified: result.notified, counts: Object.fromEntries(digest.sections.map(section => [section.key, section.items.length])) });
-  } else if (values["digest-reactions"]) {
+  } else if (values["digest-reactions"] || values["briefing-reactions"]) {
     action = "reactions";
     print(await digestReactions(await connect(), values.days === undefined ? undefined : z.coerce.number().int().min(1).max(92).parse(values.days)));
-  } else if (values.digests) {
+  } else if (values.digests || values.briefings) {
     action = "digests";
     print(await listDigests(await connect(), { ...(values.from ? { from: values.from } : {}), ...(values.to ? { to: values.to } : {}) }));
   } else if (values.shared !== undefined) {

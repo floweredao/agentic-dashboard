@@ -7,9 +7,9 @@ import { createAiFill } from "../server/ai-fill";
 import { Store } from "../server/store";
 import { bearer, fixture, payload, recordResult } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 async function create(session: HeadersInit, record: unknown, requestId = crypto.randomUUID()) {
   const response = await f.call("/api/v1/records", "POST", payload(record, requestId), session);
@@ -114,22 +114,22 @@ test("the same requestId creates a new record after the original is deleted", as
 
 test("an AI fill queued for a record deleted before it runs stops silently", async () => {
   const dir = mkdtempSync(join(tmpdir(), "agentic-delete-"));
-  const store = new Store(join(dir, "db.sqlite"), () => Date.parse("2026-09-28T12:00:00Z"));
+  const store = await Store.open(join(dir, "db.sqlite"), () => Date.parse("2026-09-28T12:00:00Z"));
   const errors = spyOn(console, "error");
   try {
-    store.db.query("INSERT INTO principals(id,source,token_hash) VALUES('owner','manual','x')").run();
+    (await store.db.run("INSERT INTO principals(id,source,token_hash,user_id) VALUES('owner','manual','x',?)", []));
     const input = { kind: "social" as const, title: "jack (@jack) on X", body: "", status: "new", projectId: null, taskId: null, dueDate: null,
       tags: [], links: [{ label: "원문", url: "https://x.com/jack/status/20" }], fields: { origin: "x" } };
-    const make = () => store.create({ id: "owner", source: "manual" }, crypto.randomUUID(), input, input).record;
-    const before = make();
-    const during = make();
+    const make = async () => (await store.create({ id: "owner", source: "manual" }, crypto.randomUUID(), input, input)).record;
+    const before = (await make());
+    const during = (await make());
     let runs = 0;
     const fill = createAiFill({ store, read: async () => "page", run: async () => {
       runs++;
-      store.delete(during.id, 1);
+      (await store.delete(during.id, 1));
       return JSON.stringify({ title: "새 제목", summary: "" });
     } });
-    store.delete(before.id, 1);
+    (await store.delete(before.id, 1));
     fill.enqueue(before.id);
     fill.enqueue(during.id);
     await fill.idle();
@@ -137,7 +137,7 @@ test("an AI fill queued for a record deleted before it runs stops silently", asy
     expect(errors).not.toHaveBeenCalled();
   } finally {
     errors.mockRestore();
-    store.close();
+    (await store.close());
     rmSync(dir, { recursive: true, force: true });
   }
 });

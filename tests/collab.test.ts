@@ -3,9 +3,9 @@ import { z } from "zod";
 import { CommentSchema, QueuedCommentSchema } from "../shared/contracts";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 type Agent = "omo" | "codex" | "chatgpt";
 const created = z.object({ comment: CommentSchema, record: recordResult.shape.record.nullable(), replayed: z.boolean() });
@@ -159,7 +159,7 @@ test("an existing database gains the comments table without losing records", asy
   // Given: a record saved before the restart.
   const task = await ownerTask("재시작 전");
   // When: the server restarts on the same database file.
-  f.restart();
+  (await f.restart());
   // Then: the record is intact and comments work.
   const got = await f.call(`/api/v1/records/${task.id}`, "GET", undefined, await f.login());
   expect(recordResult.parse(await got.json()).record).toMatchObject({ id: task.id, title: "재시작 전", version: 1 });
