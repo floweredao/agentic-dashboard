@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DashboardRecordSchema, DateSchema, RecordKindSchema, ReviewStateSchema, TRASH_RETENTION_DAYS } from "../shared/contracts";
+import { DashboardRecordSchema, DateSchema, RecordKindSchema, ReviewStateSchema, TRASH_LIST_LIMIT, TRASH_RETENTION_DAYS } from "../shared/contracts";
 import type { DashboardRecord, RecordDocument, RecordKind, TrashItem } from "../shared/contracts";
 import { ApiError } from "./errors";
 import { RecordStore } from "./record-store";
@@ -98,7 +98,7 @@ export class Store extends RecordStore {
   }
   async trashList(): Promise<TrashItem[]> {
     (await this.purgeTrash());
-    return (await this.db.all("SELECT data,deleted_at FROM trash WHERE user_id=? ORDER BY deleted_at DESC,id DESC", [])).map(value => {
+    return (await this.db.all(`SELECT data,deleted_at FROM trash WHERE user_id=? ORDER BY deleted_at DESC,id DESC LIMIT ${TRASH_LIST_LIMIT}`, [])).map(value => {
       const row = trashRow.parse(value);
       return { record: DashboardRecordSchema.parse(JSON.parse(row.data)), deletedAt: row.deleted_at,
         purgeAt: new Date(Date.parse(row.deleted_at) + RETENTION_MS).toISOString() };
