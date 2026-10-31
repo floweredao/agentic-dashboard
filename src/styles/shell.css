@@ -17,7 +17,7 @@
 }
 .app[data-sidebar="open"] .sidebar-scrim { opacity: 1; pointer-events: auto; }
 .sidebar-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
-.sidebar-head .brand { flex: 1; min-width: 0; gap: 8px; padding: 0 2px 0 4px; }
+.sidebar-head .brand { flex: 1; min-width: 0; gap: 6px; padding: 0 0 0 2px; }
 /* A configurable app name ("Agentic Dashboard") fits beside the hide button at the sidebar's 248px. */
 .sidebar-head .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9375rem; }
 .sidebar-toggle { color: var(--faint); }
@@ -123,8 +123,9 @@
 /* page: the tab's own screen; true: a screen under it (보관함, 휴지통, 채널 관리 under 더보기). */
 .tab[aria-current] { color: var(--ink); }
 .tab-badge {
-  position: absolute; top: 6px; left: calc(50% + 6px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
-  background: var(--accent); color: var(--on-ink); font-size: 0.625rem; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
+  position: absolute; top: 2px; left: calc(50% + 8px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+  /* Sits on the glyph's top-right corner like an iOS tab badge; the canvas ring keeps it off the glyph's strokes. */
+  box-shadow: 0 0 0 2px var(--canvas); background: var(--accent); color: var(--on-ink); font-size: 0.625rem; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
 }
 
 /* The playback that goes on while its record's player is off screen: above the phone's tab bar, in the corner on wider screens. */

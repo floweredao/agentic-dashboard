@@ -235,7 +235,7 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
         {material && <>
           <button type="button" className={confirmed ? "btn btn-primary is-confirmed" : "btn btn-primary"} onClick={() => { void d.confirm(record); }} disabled={d.busy || record.reviewState !== "pending"} title={text().confirmTitle}>
             {confirmed && <Check size={16} aria-hidden="true" />}
-            {confirmed ? text().confirmed : text().confirm}
+            <span className="btn-label">{confirmed ? text().confirmed : text().confirm}</span>
           </button>
           {due && <button type="button" className="btn btn-outline revisit-button" onClick={() => { void d.clearRevisit(record); }} disabled={d.busy}
             aria-label={text().revisited}>
@@ -251,7 +251,7 @@ export function Reader({ record }: { readonly record: DashboardRecord }) {
         </>}
         {record.kind === "task" && <>
           <button type="button" className="btn btn-primary" onClick={() => { void d.confirm(record); }} disabled={d.busy || record.status === "done"} title={text().completeTitle}>
-            <Check size={16} aria-hidden="true" />{record.status === "done" ? text().done : text().complete}
+            <Check size={16} aria-hidden="true" /><span className="btn-label">{record.status === "done" ? text().done : text().complete}</span>
           </button>
           {editButton}
         </>}
