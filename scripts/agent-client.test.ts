@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { getRecord, listComments, markComment, postComment, readShared, searchRecords, sendRecord, trashRecord, updateRecord } from "./agent-client";
+import { digestReactions, getDocument, getNarration, getRecord, listComments, listDigests, markComment, postComment, postDigest, putDocument, readShared, requestNarration, searchRecords, sendRecord, trashRecord, updateRecord } from "./agent-client";
 
 test("agent comment calls reach the comment routes with their credential, query and body", async () => {
   // Given: a real local HTTP boundary that records each request.
@@ -258,6 +258,52 @@ test("agent trash sends DELETE with expectedVersion and its credential, and reje
       { method: "DELETE", path: "/api/v1/records/theirs", body: { expectedVersion: 1 }, authorization: "Bearer test-credential" },
     ]);
     expect(refused).toBeInstanceOf(Error);
+  } finally {
+    await server.stop(true);
+  }
+});
+
+test("agent document, narration and digest calls reach their routes with the credential, query and body", async () => {
+  // Given: a real local HTTP boundary that records each request.
+  const received: { method: string; path: string; query: Record<string, string>; body: unknown; authorization: string | null }[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url);
+      received.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams),
+        body: request.headers.get("content-type")?.includes("json") ? await request.json() : null,
+        authorization: request.headers.get("authorization") });
+      return Response.json({ ok: url.pathname });
+    },
+  });
+  const connection = { url: `http://127.0.0.1:${server.port}`, token: "test-credential" };
+  const auth = "Bearer test-credential";
+  try {
+    // When: an agent attaches and reads a document, narrates (with and without options), uploads and lists digests
+    // (an empty bound left out) and reads reactions with and without a day count; one id carries a slash.
+    await putDocument(connection, "r-1", "<p>본문</p>");
+    await getDocument(connection, "r/../trash");
+    await requestNarration(connection, "r-1", false);
+    await requestNarration(connection, "r-1", true, "podcast");
+    await getNarration(connection, "r-1");
+    await postDigest(connection, { date: "2026-01-02", slot: "morning", sections: [] });
+    await listDigests(connection, { from: "2026-01-01", to: "" });
+    await digestReactions(connection);
+    const reactions = await digestReactions(connection, 7);
+    // Then: each call reaches exactly its route, the id stays one path segment, and the agent credential goes with it.
+    expect(received).toEqual([
+      { method: "PUT", path: "/api/v1/records/r-1/document", query: {}, body: { html: "<p>본문</p>" }, authorization: auth },
+      { method: "GET", path: "/api/v1/records/r%2F..%2Ftrash/document", query: {}, body: null, authorization: auth },
+      { method: "POST", path: "/api/v1/records/r-1/narration", query: {}, body: {}, authorization: auth },
+      { method: "POST", path: "/api/v1/records/r-1/narration", query: {}, body: { force: true, style: "podcast" }, authorization: auth },
+      { method: "GET", path: "/api/v1/records/r-1/narration", query: {}, body: null, authorization: auth },
+      { method: "POST", path: "/api/v1/digests", query: {}, body: { date: "2026-01-02", slot: "morning", sections: [] }, authorization: auth },
+      { method: "GET", path: "/api/v1/digests", query: { from: "2026-01-01" }, body: null, authorization: auth },
+      { method: "GET", path: "/api/v1/digests/reactions", query: {}, body: null, authorization: auth },
+      { method: "GET", path: "/api/v1/digests/reactions", query: { days: "7" }, body: null, authorization: auth },
+    ]);
+    expect(reactions).toEqual({ ok: "/api/v1/digests/reactions" });
   } finally {
     await server.stop(true);
   }
