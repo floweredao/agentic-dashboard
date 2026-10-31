@@ -3,9 +3,9 @@ import { z } from "zod";
 import { DigestSchema, DigestSummarySchema } from "../shared/contracts";
 import { bearer, fixture } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 const article = (key: string, title: string, extra: Record<string, unknown> = {}) => ({
   key, title, source: "Newswire", summary: `${title} 요약.`, url: `https://news.example.com/${key}`, ...extra,
@@ -41,7 +41,7 @@ test("An agent uploads a digest; the same upload again changes nothing and keeps
   expect(first.digest.sections.map(section => [section.key, section.title, section.kind])).toEqual([["domestic", "Domestic", "articles"], ["world", "World", "articles"]]);
   // When: the same body is sent again (a retry), and again after a restart.
   const replay = await upload(body, 200);
-  f.restart();
+  (await f.restart());
   const afterRestart = await upload(body, 200);
   // Then: nothing changed and the stored digest is the first one.
   for (const result of [replay, afterRestart]) {
@@ -81,7 +81,7 @@ test("Any registered agent uploads and reads digests; the owner gets 403, no cre
 });
 
 test("With DIGEST off every digest route answers 404", async () => {
-  const off = fixture(10000, Date.now, { digestEnabled: false });
+  const off = (await fixture(10000, Date.now, { digestEnabled: false }));
   try {
     const owner = await off.login();
     const id = crypto.randomUUID();
@@ -91,7 +91,7 @@ test("With DIGEST off every digest route answers 404", async () => {
       expect(response.status).toBe(404);
       expect(await errorCode(response)).toBe("feature_disabled");
     }
-  } finally { off.close(); }
+  } finally { (await off.close()); }
 });
 
 test("Malformed digests are refused before anything is written: unknown kind, duplicate or bad keys, empty sections", async () => {
@@ -125,14 +125,14 @@ test("A digest larger than the 32 KiB record limit is accepted", async () => {
 });
 
 test("The default scheduled time is the slot's time in the dashboard's time zone", async () => {
-  const york = fixture(10000, Date.now, { timeZone: "America/New_York" });
+  const york = (await fixture(10000, Date.now, { timeZone: "America/New_York" }));
   try {
     const post = async (slot: string) => saved.parse(await (await york.call("/api/v1/digests", "POST",
       { date: "2026-10-01", slot, sections: [articles("a", "A", [article("a", "소식")])] }, bearer("omo"))).json()).digest.scheduledAt;
     expect(await post("morning")).toBe("2026-10-01T12:00:00.000Z");
     expect(await post("evening")).toBe("2026-10-02T01:00:00.000Z");
     expect(await post("06:15")).toBe("2026-10-01T10:15:00.000Z");
-  } finally { york.close(); }
+  } finally { (await york.close()); }
 });
 
 test("The owner lists digests newest first, reads one, and marks it read until a new section arrives", async () => {

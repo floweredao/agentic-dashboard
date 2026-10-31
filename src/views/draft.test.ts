@@ -36,6 +36,28 @@ test("the title is capped at 200 characters and empty text yields no title", () 
   expect(draftFromText("   \n ", "research").title).toBe("");
 });
 
+test("a first line longer than a title is kept whole in the body", () => {
+  // Given: a pasted paragraph of 260 characters on one line, then a second line.
+  const long = "가".repeat(260);
+  // When: a draft is derived without an explicit title.
+  const draft = draftFromText(`${long}\n둘째 줄`, "note");
+  // Then: the title is its first 200 characters and the body still holds every character pasted.
+  expect(draft.title).toBe("가".repeat(200));
+  expect(draft.body).toBe(`${long}\n둘째 줄`);
+  // And: a first line that fits stays out of the body, as before.
+  expect(draftFromText("짧은 제목\n본문", "note").body).toBe("본문");
+});
+
+test("a title cut at 200 never ends in half an emoji", () => {
+  // Given: a first line and a URL path whose 200th UTF-16 unit is the first half of an emoji.
+  const line = `${"a".repeat(199)}🙂 끝`;
+  const url = new URL(`https://example.com/${"b".repeat(187)}🙂`);
+  // When/Then: the titles stop before the emoji instead of keeping a lone surrogate the schema still accepts.
+  expect(draftFromText(line, "note").title).toBe("a".repeat(199));
+  expect(draftFromText(url.href, "social").title).toBe(`example.com/${"b".repeat(187)}`);
+  expect(draftFromText(`${"a".repeat(198)}🙂 끝`, "note").title).toBe(`${"a".repeat(198)}🙂`);
+});
+
 test("a non-empty explicit title wins and keeps the whole text as the body", () => {
   // Given: text with its own first line and a URL, each with an explicit title.
   const fromText = draftFromText("첫 줄\n둘째 줄", "task", " 직접 쓴 제목 ");

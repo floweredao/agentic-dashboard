@@ -37,9 +37,9 @@ test("the panes render their text in Korean, and differently from English", () =
   const panes: readonly [string, ReactNode, "library" | "work" | "more" | "settings" | "channels", string][] = [
     ["library", <LibraryPane />, "library", "기록"],
     ["work", <WorkPane />, "work", "새 할 일"],
-    ["more", <MorePane />, "more", "채널 관리"],
+    ["more", <MorePane />, "more", "에이전트 연결"],
     ["settings", <SettingsPane />, "settings", "시스템 설정 따르기"],
-    ["channels", <ChannelsView />, "channels", "채널 관리"],
+    ["channels", <ChannelsView />, "channels", "에이전트 연결"],
   ];
   for (const [name, node, view, expected] of panes) {
     applyLocale("ko");

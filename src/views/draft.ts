@@ -10,6 +10,8 @@ const generic = strings(genericLabels);
 const everyGeneric: readonly string[] = [...Object.values(genericLabels.en), ...Object.values(genericLabels.ko)];
 
 const decode = (path: string) => { try { return decodeURIComponent(path); } catch { return path; } };
+/** At most `length` UTF-16 units, never ending in half of a surrogate pair (an emoji cut in two). */
+const clip = (text: string, length: number) => { const cut = text.slice(0, length); return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut; };
 
 /** The trimmed text when it is exactly one http(s) URL, otherwise null. */
 export function urlOf(text: string): URL | null {
@@ -20,7 +22,7 @@ export function urlOf(text: string): URL | null {
 
 /** Host and path without www., query, fragment or a trailing slash. */
 export function urlTitle(url: URL): string {
-  return `${url.hostname.replace(/^www\./, "")}${decode(url.pathname)}`.replace(/\/+$/, "").slice(0, 200);
+  return clip(`${url.hostname.replace(/^www\./, "")}${decode(url.pathname)}`.replace(/\/+$/, ""), 200);
 }
 
 /** The owner's pick wins; otherwise empty text or a lone URL is a link and any other text is a memo. */
@@ -36,7 +38,10 @@ export function linkText(link: RecordInput["links"][number]): string {
   return url ? urlTitle(url) : link.url;
 }
 
-/** A pasted URL becomes a link with a readable title; text splits into a first-line title and a body. */
+/**
+ * A pasted URL becomes a link with a readable title; text splits into a first-line title and a body.
+ * A first line too long for a title is cut for the title and kept whole in the body, so nothing pasted is lost.
+ */
 export function draftFromText(text: string, kind: RecordKind, title = ""): RecordInput {
   const base = blankRecord(kind);
   const explicit = title.trim();
@@ -47,7 +52,8 @@ export function draftFromText(text: string, kind: RecordKind, title = ""): Recor
   if (index < 0) return { ...base, title: explicit };
   if (explicit) return { ...base, title: explicit, body: text.trim() };
   const heading = (lines[index] ?? "").trim().replace(/^#{1,6}\s*/, "").replace(/\s+#+$/, "");
-  return { ...base, title: heading.slice(0, 200).trim(), body: lines.slice(index + 1).join("\n").trim() };
+  const firstLine = clip(heading, 200).trim();
+  return { ...base, title: firstLine, body: lines.slice(firstLine.length < heading.length ? index : index + 1).join("\n").trim() };
 }
 
 /** Contract limits for record links and tags (shared/contracts.ts). */

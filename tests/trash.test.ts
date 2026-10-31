@@ -5,9 +5,9 @@ import { bearer, fixture, payload, recordResult } from "./backend-helper";
 const DAY = 24 * 60 * 60 * 1000;
 const start = Date.parse("2026-09-01T00:00:00.000Z");
 let clock = start;
-let f = fixture(10000, () => clock);
-afterEach(() => { f.close(); clock = start; f = fixture(10000, () => clock); });
-afterAll(() => f.close());
+let f = (await fixture(10000, () => clock));
+afterEach(async () => { (await f.close()); clock = start; f = (await fixture(10000, () => clock)); });
+afterAll(async () => (await f.close()));
 
 const trashList = z.object({ items: z.array(z.object({
   record: z.object({ id: z.string(), title: z.string(), version: z.number() }).passthrough(),
@@ -141,15 +141,15 @@ test("items older than 30 days are purged while newer ones remain", async () => 
   clock = start + DAY;
   await remove(recent.id, 1, session);
   clock = start + 30 * DAY - 1;
-  expect(f.app.purgeTrash()).toBe(0);
+  expect((await f.app.purgeTrash())).toBe(0);
   clock = start + 30 * DAY;
-  expect(f.app.purgeTrash()).toBe(1);
+  expect((await f.app.purgeTrash())).toBe(1);
   session = await f.login();
   expect((await trash(session)).map(item => item.record.id)).toEqual([recent.id]);
   expect((await restore(old.id, session)).status).toBe(404);
   clock = start + 31 * DAY;
-  f.restart();
+  (await f.restart());
   session = await f.login();
-  expect(f.app.purgeTrash()).toBe(0);
+  expect((await f.app.purgeTrash())).toBe(0);
   expect(await trash(session)).toEqual([]);
 });
