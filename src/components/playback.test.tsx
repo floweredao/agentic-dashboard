@@ -113,6 +113,34 @@ test("the position is kept per record and file, and a start resumes from it", ()
   expect(savedPosition("record-1", track(1).src, read)).toBe(0);
 });
 
+test("starting another record saves where the first one was and keeps the second one's place, though a browser reports the pause only afterwards", () => {
+  // Given: an element that behaves like a browser's: pause() queues its event, and a new source starts at 0 with no length.
+  class QueuedAudio extends FakeAudio {
+    queued: Event[] = [];
+    override pause() { if (this.paused) return; this.paused = true; this.queued.push(new Event("pause")); }
+    override load() { super.load(); this.currentTime = 0; this.duration = Number.NaN; }
+    flush() { for (const event of this.queued.splice(0)) this.dispatchEvent(event); }
+  }
+  const storage = new Map([["agentic:listen:record-2", JSON.stringify({ src: track(2).src, t: 100 })]]);
+  const read = (key: string) => storage.get(key) ?? null;
+  const store = createPlayback({ read, write: (key, value) => { storage.set(key, value); }, remove: key => { storage.delete(key); }, media: null });
+  const audio = new QueuedAudio();
+  store.attach(audio);
+  // And: record 1 playing at 44 s, last saved at 42 s; record 2 left at 100 s.
+  store.start(track(1), { play: true });
+  audio.meta(600);
+  audio.tick(42);
+  audio.tick(44);
+  // When: record 2 is started, and the browser then delivers record 1's pause.
+  store.start(track(2), { play: true });
+  audio.flush();
+  // Then: record 1 resumes at 44 s, and record 2 still at 100 s once its length is known.
+  expect(savedPosition("record-1", track(1).src, read)).toBe(44);
+  expect(savedPosition("record-2", track(2).src, read)).toBe(100);
+  audio.meta(600);
+  expect(audio.currentTime).toBe(100);
+});
+
 test("a seek before the file has loaded lands once its length is known, and the rate carries over to the next record", () => {
   const { store, audio, storage } = setup();
   store.setRate(1.5);

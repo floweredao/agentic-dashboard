@@ -123,12 +123,15 @@ export function libraryView(records: readonly DashboardRecord[], state: LibraryS
   return records.filter(record => isRecord(record) && record.archivedAt === null && (state === "all" || record.fields.starred === true))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 }
-/** Case-insensitive match over the text a person remembers: title, body, summary, conclusion, tags, host. */
+/**
+ * Case-insensitive match over the text a person remembers: title, body, summary, conclusion, tags, host. Both sides are
+ * composed (NFC) first, so Hangul saved decomposed (macOS file names) matches what the keyboard types.
+ */
 export function matchesQuery(record: DashboardRecord, query: string) {
-  const needle = query.trim().toLocaleLowerCase();
+  const needle = query.trim().normalize("NFC").toLocaleLowerCase();
   if (!needle) return true;
   return [record.title, record.body, textField(record, "summary"), textField(record, "conclusion"), record.tags.join(" "), record.links.map(link => link.url).join(" ")]
-    .join("\n").toLocaleLowerCase().includes(needle);
+    .join("\n").normalize("NFC").toLocaleLowerCase().includes(needle);
 }
 /** When a part of a digest (or its summary) was read; null while it waits. */
 export const partReadAt = (item: Pick<DigestSummary, "articlesReadAt" | "messagesReadAt">, part: DigestPart) => part === "messages" ? item.messagesReadAt : item.articlesReadAt;

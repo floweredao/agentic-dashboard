@@ -24,6 +24,17 @@ test("titleWidth counts wide characters as two columns", () => {
   expect(RecordInputSchema.safeParse({ kind: "note", title: "가".repeat(100) }).success).toBe(true);
 });
 
+test("titleWidth measures what is shown: decomposed Hangul as its syllables, accents and emoji variation selectors as nothing", () => {
+  // Given: titles as macOS file names and some keyboards write them, in decomposed (NFD) form.
+  const decomposed = "회의록 정리".normalize("NFD");
+  expect(decomposed.length).toBe(13);
+  // Then: each syllable is two columns, as in the composed title, and combining marks add no column.
+  expect(titleWidth(decomposed)).toBe(titleWidth("회의록 정리"));
+  expect(titleWidth(decomposed)).toBe(11);
+  expect(titleWidth("cafe\u0301")).toBe(4);
+  expect(titleWidth("\u2714\ufe0f done")).toBe(7);
+});
+
 async function save(source: "omo" | "codex" | "chatgpt", title: string, requestId = crypto.randomUUID()) {
   return await f.call("/api/v1/records", "POST", payload(agentRecord({ title }), requestId), bearer(source));
 }
@@ -41,6 +52,12 @@ test("concise and boundary titles are accepted", async () => {
   expect((await save("omo", "Opus 한국어 지침 무시 원인")).status).toBe(201);
   expect((await save("omo", "가".repeat(20))).status).toBe(201);
   expect((await save("omo", `${"가".repeat(20)}a`)).status).toBe(400);
+});
+
+test("a decomposed Korean title within 40 columns is accepted like the same title composed", async () => {
+  expect((await save("omo", "가".repeat(20).normalize("NFD"))).status).toBe(201);
+  expect((await save("omo", "각".repeat(20).normalize("NFD"))).status).toBe(201);
+  expect((await save("omo", "각".repeat(21).normalize("NFD"))).status).toBe(400);
 });
 
 test("owner titles are not limited", async () => {
