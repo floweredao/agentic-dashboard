@@ -270,6 +270,16 @@ export function App() {
     if (route.id) window.scrollTo(0, 0);
     else window.scrollTo(0, listScroll.current.get(routeKey) ?? 0);
   }, [routeKey, route.id]);
+  // Leaving a reader takes the control that had focus with it (the app bar's back, the reader's menu): focus goes to the row
+  // of the record that was open, or to main when that row has left the list (deleted or archived).
+  const openBefore = useRef(route.id);
+  useLayoutEffect(() => {
+    const was = openBefore.current;
+    openBefore.current = route.id;
+    const active = document.activeElement;
+    if (!was || route.id || (active && active !== document.body && active.isConnected)) return;
+    (document.getElementById(`row-${was}`) ?? document.getElementById("main"))?.focus({ preventScroll: true });
+  }, [route.id]);
 
   // Desktop deep link: once records arrive, centre the selected row so its neighbours show too.
   const revealed = useRef(false);
