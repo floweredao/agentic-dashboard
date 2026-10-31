@@ -1938,7 +1938,8 @@
       "items": 60,
       "sections": 12,
       "bodyBytes": 262144,
-      "rangeDays": 92
+      "rangeDays": 92,
+      "searchDigests": 500
     },
     "messageImportance": [
       "urgent",
