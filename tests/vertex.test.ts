@@ -68,7 +68,7 @@ test("with Vertex, a dialogue is one multi-speaker request with every turn namin
   });
 });
 
-test("with Vertex, the script's second route still goes to the AI Studio Interactions API with the key, same model", async () => {
+test("with Vertex, the script's second route still goes to the AI Studio Interactions API with the key, with gemini-3.8-flash", async () => {
   const { gemini, sent } = provider(() => Response.json({ steps: [{ type: "model_output", content: [{ type: "text", text: "원고" }] }] }));
   expect(gemini.scriptRoutes).toEqual(["vertex", "gemini"]);
   expect(await gemini.script("규칙", "[기록]", signal(), "gemini")).toBe("원고");

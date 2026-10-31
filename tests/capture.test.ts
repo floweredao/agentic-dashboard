@@ -11,19 +11,19 @@ import { bearer, fixture, payload } from "./backend-helper";
 const privateOrigin = "https://capture.example.test:9443";
 const identity = { Host: "capture.example.test:9443", "Tailscale-User-Login": "owner@example.test", "X-Capture": "v1" };
 const resultSchema = z.object({ record: DashboardRecordSchema, replayed: z.boolean() });
-function captureFixture(options: AppOptions = {}) {
-  const f = fixture();
+async function captureFixture(options: AppOptions = {}) {
+  const f = (await fixture());
   let enrichments = 0;
   const config = { ...f.options, privateOrigin, trustedIdentity: { header: "Tailscale-User-Login", login: "owner@example.test" }, publicApiBaseUrl: "https://agents.example.test", ...options,
     enrichCapture: async (url: URL) => { enrichments++; return (options.enrichCapture ?? (async target => captureFallback(target)))(url); } };
-  let app = createApp(config);
+  let app = (await createApp(config));
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: request => app.fetch(request) });
   const ingress = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: request => app.publicFetch(request) });
   const db = new Database(f.options.databasePath);
   const count = (table: "records" | "requests" | "sessions") => z.object({ n: z.number() }).parse(db.query(`SELECT count(*) AS n FROM ${table}`).get()).n;
   return {
     f, db, count, get app() { return app; }, get enrichments() { return enrichments; },
-    restart() { app.close(); app = createApp(config); },
+    async restart() { (await app.close()); app = (await createApp(config)); },
     async call(body: unknown = { url: "https://example.com/a" }, init: RequestInit = {}, publicOnly = false) {
       const headers = new Headers({ ...identity, "Content-Type": "application/json" });
       new Headers(init.headers).forEach((value, key) => headers.set(key, value));
@@ -36,7 +36,7 @@ function captureFixture(options: AppOptions = {}) {
       return response;
     },
     async close() {
-      await server.stop(true); await ingress.stop(true); db.close(); app.close(); f.close();
+      await server.stop(true); await ingress.stop(true); db.close(); (await app.close()); (await f.close());
       expect(existsSync(f.dir)).toBe(false);
       if (process.env.CAPTURE_EVIDENCE) console.log(`cleanup: stopped private/public HTTP listeners; removed ${f.dir}`);
     },
@@ -45,10 +45,10 @@ function captureFixture(options: AppOptions = {}) {
 
 test("enriches a URL-only capture with a real title and extractive summary", async () => {
   // Given: page metadata available through the endpoint's offline enrichment seam.
-  const f = captureFixture({ enrichCapture: async () => ({
+  const f = (await captureFixture({ enrichCapture: async () => ({
     title: "Shortcuts user guide",
     fields: { summary: "Run shortcuts from another app.", captureEnrichment: { status: "available", source: "page" } },
-  }) });
+  }) }));
   try {
     // When: the existing Shortcut sends only its original URL.
     const response = await f.call({ url: "https://support.apple.com/ko-kr/guide/shortcuts/apd163eb9f95/ios" });
@@ -63,7 +63,7 @@ test("enriches a URL-only capture with a real title and extractive summary", asy
 
 test("creates pending social capture without a session", async () => {
   // Given: an isolated private Serve backend and no session.
-  const f = captureFixture();
+  const f = (await captureFixture());
   try {
     // When: a native caller shares a URL without tokens, cookies or Origin.
     const response = await f.call({ url: " https://X.com/user/status/1 " });
@@ -91,7 +91,7 @@ const invalidBodies = [
 ];
 test.each(invalidBodies.map(body => ({ body })))("rejects invalid capture JSON %j", async ({ body }) => {
   // Given/When: invalid input crosses the actual HTTP boundary.
-  const f = captureFixture();
+  const f = (await captureFixture());
   try {
     const response = await f.call(body);
     // Then: validation never persists anything or creates a session.
@@ -110,7 +110,7 @@ test.each([
   [`https://example.com/${"a".repeat(2028)}`, `example.com/${"a".repeat(188)}`, "other"],
 ])("infers title and origin for %s", async (url, title, origin) => {
   // Given/When: a valid URL, including the 2048-character boundary, is captured.
-  const f = captureFixture();
+  const f = (await captureFixture());
   try {
     const response = await f.call({ url }, { headers: { Origin: privateOrigin } });
     // Then: inference uses hostname boundaries, omits root/query/fragment and truncates title.
@@ -145,7 +145,7 @@ const deniedCases: readonly { readonly name: string; readonly headers?: HeadersI
 ];
 test.each([...deniedCases])("denies capture with $name", async ({ options, headers, status }) => {
   // Given/When: one trust condition fails on the live backend.
-  const f = captureFixture(options);
+  const f = (await captureFixture(options));
   try {
     const response = await f.call(undefined, { headers: headers ?? {} });
     // Then: no credential fallback or persistent side effect is possible.
@@ -156,7 +156,7 @@ test.each([...deniedCases])("denies capture with $name", async ({ options, heade
 });
 test("requires each header and ignores valid cookie authority", async () => {
   // Given: an existing owner session.
-  const f = captureFixture();
+  const f = (await captureFixture());
   try {
     const owner = await f.f.login();
     for (const missing of ["Host", "Tailscale-User-Login", "X-Capture"]) {
@@ -171,7 +171,7 @@ test("requires each header and ignores valid cookie authority", async () => {
 });
 test("rejects malformed bodies and public ingress", async () => {
   // Given/When: malformed JSON, wrong media type, oversized body, or public access.
-  const f = captureFixture();
+  const f = (await captureFixture());
   try {
     expect((await f.call(undefined, { body: "{" })).status).toBe(400);
     expect((await f.call(undefined, { headers: { "Content-Type": "text/plain" } })).status).toBe(415);
@@ -184,7 +184,7 @@ test("rejects malformed bodies and public ingress", async () => {
 });
 test("replays concurrent and restarted captures without resetting edited read archived state", async () => {
   // Given: several native submissions of the same normalized URL.
-  const f = captureFixture();
+  const f = (await captureFixture());
   try {
     const responses = await Promise.all(Array.from({ length: 8 }, (_, i) => f.call({ url: i % 2 ? " https://EXAMPLE.com:443/a " : "https://example.com/a" })));
     expect(responses.map(r => r.status).sort()).toEqual([200, 200, 200, 200, 200, 200, 200, 201]);
@@ -201,7 +201,7 @@ test("replays concurrent and restarted captures without resetting edited read ar
     expect(row.request_id).toBe(`capture:v1:${new Bun.CryptoHasher("sha512").update("https://example.com/a").digest("hex")}`);
     expect(row.request_id.length).toBe(139); expect(JSON.parse(row.payload)).toEqual({ url: "https://example.com/a" });
     // When: the server restarts and receives the URL again.
-    f.restart();
+    (await f.restart());
     const response = await f.call({ url: "https://example.com/a" });
     // Then: replay returns the original snapshot, not a rewrite of the edited record.
     expect(response.status).toBe(200); expect(await response.json()).toEqual({ record: first.record, replayed: true });
@@ -217,13 +217,13 @@ test("keeps Store.create authoritative when separate apps finish enrichment out 
   const secondEntered = Promise.withResolvers<void>();
   const firstReady = Promise.withResolvers<void>();
   const secondReady = Promise.withResolvers<void>();
-  const f = captureFixture({ enrichCapture: async url => {
+  const f = (await captureFixture({ enrichCapture: async url => {
     firstEntered.resolve(); await firstReady.promise;
     return { ...captureFallback(url), title: "Late metadata" };
-  } });
-  const second = createApp({ ...f.f.options, privateOrigin, trustedIdentity: { header: "Tailscale-User-Login", login: "owner@example.test" },
+  } }));
+  const second = (await createApp({ ...f.f.options, privateOrigin, trustedIdentity: { header: "Tailscale-User-Login", login: "owner@example.test" },
     enrichCapture: async url => { secondEntered.resolve(); await secondReady.promise; return { ...captureFallback(url), title: "Winning metadata" }; },
-  });
+  }));
   try {
     const one = f.call();
     const two = second.fetch(new Request(`${privateOrigin}/api/v1/capture`, {
@@ -243,12 +243,12 @@ test("keeps Store.create authoritative when separate apps finish enrichment out 
     expect(await replayResponse.json()).toEqual({ record: winner.record, replayed: true });
     expect(f.count("records")).toBe(1); expect(f.count("requests")).toBe(1);
   } finally {
-    firstReady.resolve(); secondReady.resolve(); second.close(); await f.close();
+    firstReady.resolve(); secondReady.resolve(); (await second.close()); await f.close();
   }
 });
 test("rolls back capture when the request snapshot cannot be inserted", async () => {
   // Given: a real SQLite failure after the record insert.
-  const f = captureFixture();
+  const f = (await captureFixture());
   try {
     f.db.run("CREATE TRIGGER fail_capture BEFORE INSERT ON requests BEGIN SELECT RAISE(ABORT, 'capture test rollback'); END");
     // When: capture attempts the transaction.
@@ -262,12 +262,12 @@ test("rolls back capture when the request snapshot cannot be inserted", async ()
 test("saves private targets as unavailable without resolving or connecting", async () => {
   // Given: the real enrichment and security path, with network seams that must not run.
   let networkCalls = 0;
-  const f = captureFixture({ enrichCapture: url => enrichCapture(url, {
+  const f = (await captureFixture({ enrichCapture: url => enrichCapture(url, {
     page: (target, signal) => fetchPublicPage(target, signal, {
       resolve: async () => { networkCalls++; throw new Error("Unexpected DNS"); },
       request: async () => { networkCalls++; throw new Error("Unexpected connection"); },
     }),
-  }) });
+  }) }));
   try {
     // When: a validated URL points at loopback.
     const response = await f.call({ url: "http://127.0.0.1:9/a" });

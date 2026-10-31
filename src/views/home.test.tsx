@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { DashboardRecordSchema } from "../../shared/contracts";
+import { DashboardRecordSchema, DigestSummarySchema } from "../../shared/contracts";
 import type { DashboardRecord } from "../../shared/contracts";
 import { DashboardContext } from "../state";
 import { fakeDashboard } from "../test-dashboard";
@@ -49,4 +49,23 @@ test("Home says there is nothing yet when no digest or record has arrived", asyn
   const html = render([]);
   expect(await texts(html, ".today-empty")).toEqual(["아직 온 다이제스트 없음", "아직 기록 없음"]);
   expect(html).not.toContain("today-tasks");
+  // And: the empty 최근 기록 offers its next step, a 새로 저장 button that opens the compose dialog.
+  expect(await texts(html, 'section[aria-labelledby="today-records"] button.today-empty-action')).toEqual(["새로 저장"]);
+});
+
+test("Home shows the two most recent digests", async () => {
+  // Given: three ordered digest summaries.
+  const items = [3, 2, 1].map(n => DigestSummarySchema.parse({
+    id: `00000000-0000-4000-8000-00000000000${n}`, date: "2026-10-01", slot: "morning",
+    scheduledAt: "2026-10-01T08:00:00.000Z", createdAt: "2026-10-01T08:00:00.000Z", updatedAt: "2026-10-01T08:00:00.000Z",
+    createdBy: "omo", version: 1, readAt: null, articlesReadAt: null, messagesReadAt: null, counts: { domestic: 1 },
+    outline: [{ key: "domestic", title: "Domestic", kind: "articles", items: 1 }], headlines: [`Headline ${n}`], messageHeadline: null, urgent: 0, todo: 0,
+  }));
+  const page = { items, from: "2026-10-01", to: "2026-10-01", unread: 3, earliestDate: "2026-10-01", latestDate: "2026-10-01",
+    parts: { articles: { unread: 3, earliestDate: "2026-10-01" }, messages: { unread: 0, earliestDate: null } } };
+  // When: Home is rendered with those digests.
+  const dashboard = { ...fakeDashboard([], { view: "home" }), digests: page };
+  const html = renderToStaticMarkup(<DashboardContext.Provider value={dashboard}><HomePane /></DashboardContext.Provider>);
+  // Then: only the two newest headlines are shown, in order.
+  expect(await texts(html, ".digest-row-headline")).toEqual(["Headline 3", "Headline 2"]);
 });

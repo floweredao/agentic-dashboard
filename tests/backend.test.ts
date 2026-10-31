@@ -4,9 +4,9 @@ import { z } from "zod";
 import { RECORD_LIMITS } from "../shared/contracts";
 import { agentRecord, bearer, fixture, origin, payload, recordResult, tokens } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 test("health and schema expose private metadata only", async () => {
   expect((await f.call("/api/health")).status).toBe(200);
@@ -33,7 +33,7 @@ test("identical concurrent requests persist once, conflict on different payload 
   const records = await Promise.all(responses.map(async r => recordResult.parse(await r.json()).record));
   expect(new Set(records.map(r => r.id)).size).toBe(1);
   expect((await f.call("/api/v1/records", "POST", payload({ kind: "note", title: "Different" }, p.requestId), bearer("codex"))).status).toBe(409);
-  f.restart();
+  (await f.restart());
   const replay = await f.call("/api/v1/records", "POST", p, bearer("codex"));
   expect(replay.status).toBe(200);
   expect(recordResult.parse(await replay.json()).record).toEqual(recordResult.shape.record.parse(records[0]));
@@ -42,7 +42,7 @@ test("identical concurrent requests persist once, conflict on different payload 
 test("owner session survives restart, has protected cookie and logout revokes", async () => {
   const session = await f.login();
   expect(session.Cookie).toContain("=");
-  f.restart();
+  (await f.restart());
   expect((await f.call("/api/v1/auth/session", "GET", undefined, session)).status).toBe(200);
   expect((await f.call("/api/v1/auth/session", "DELETE", undefined, session)).status).toBe(204);
   expect((await f.call("/api/v1/auth/session", "GET", undefined, session)).status).toBe(401);
@@ -59,9 +59,9 @@ test("browser origin, CSRF and failed bearer never permit cookie fallback", asyn
   expect((await f.call("/api/v1/records", "POST", payload(), bearer("owner"))).status).toBe(403);
 });
 test("expired sessions fail without timing waits", async () => {
-  f.close();
+  (await f.close());
   let now = Date.now();
-  f = fixture(10000, () => now);
+  f = (await fixture(10000, () => now));
   const session = await f.login();
   now += 8 * 24 * 60 * 60 * 1000;
   expect((await f.call("/api/v1/auth/session", "GET", undefined, session)).status).toBe(401);
@@ -226,7 +226,7 @@ test("transport rejects Host, media type, malformed JSON, oversized body and una
   }
 });
 test("request rate limit produces 429", async () => {
-  f.close(); f = fixture(2);
+  (await f.close()); f = (await fixture(2));
   const statuses = [];
   for (let index = 0; index < 3; index++) statuses.push((await f.call("/api/v1/records", "POST", payload(), bearer("omo"))).status);
   expect(statuses).toEqual([201, 201, 429]);
