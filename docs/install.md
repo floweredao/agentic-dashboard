@@ -57,9 +57,31 @@ NARRATION_TTS_PROVIDER=vertex
 NARRATION_VERTEX_PROJECT=your-project-id
 ```
 
-The Vertex script route uses `gemini-4-argon`; the key remains its second route.
+The Vertex script route uses `gemini-4-argon`; the key remains its second route,
+so `GEMINI_API_KEY` is still required with Vertex: without it narration reports
+unavailable (`features.narration: false` in `GET /api/v1/config`).
 `NARRATION_SCRIPT_MODEL` and `NARRATION_KEY_SCRIPT_MODEL` configure these separately.
 `NARRATION_CONCURRENCY` defaults to 2; the same record never runs twice at once.
+
+The server reads the key only from its environment. A login service started by
+launchd does not see your shell's variables, so give the key to the service. To
+keep it in the macOS Keychain instead of a file, store it once and start the
+server from a small wrapper that reads it (replace the service name with your own):
+
+```sh
+security add-generic-password -s my-gemini-key -a "$USER" -w   # asks for the key
+```
+
+```sh
+#!/bin/sh
+# start-dashboard.sh: the command your launch agent runs
+GEMINI_API_KEY=$(security find-generic-password -s my-gemini-key -a "$USER" -w) || exit 1
+export GEMINI_API_KEY
+exec agentic-dashboard start
+```
+
+The Keychain answers a launch agent in your login session; a shell without access
+to the login Keychain (for example over SSH) gets an error instead of the key.
 
 On macOS, audio uses the system `afconvert`. On other systems install `ffmpeg` on
 the server's PATH for AAC/M4A encoding. If neither tool is installed, or encoding
