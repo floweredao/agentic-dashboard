@@ -1,7 +1,7 @@
 export type Lang = "en" | "ko";
 
 export const detectLang = (env: NodeJS.ProcessEnv = process.env): Lang =>
-  /^ko/i.test(env["AGENTIC_DASHBOARD_LANG"] || env["LC_ALL"] || env["LC_MESSAGES"] || env["LANG"] || "") ? "ko" : "en";
+  /^ko(?![a-z])/i.test(env["AGENTIC_DASHBOARD_LANG"] || env["LC_ALL"] || env["LC_MESSAGES"] || env["LANG"] || "") ? "ko" : "en";
 
 export const en = {
   help: `Agentic Dashboard
@@ -74,6 +74,7 @@ Settings live in AGENTIC_DASHBOARD_HOME (default ~/.agentic-dashboard).`,
   connectAgent: "Agent name (as registered on the dashboard)",
   connectKey: "Agent key (hidden while you type)",
   connectNeedKey: "Without a terminal, pass --code, or --agent with the key on standard input (--key-stdin).",
+  connectKeyStoreInvalid: "--key-store is keychain or file.",
   connectBadKey: "The dashboard refused this key (HTTP {status}). Check it, or use a connection code instead.",
   connectConnected: "Connected as \"{agent}\"; the key works.",
   connectKeychain: "Stored the key in the system keychain (service agentic-dashboard).",
@@ -182,6 +183,7 @@ export const ko: Record<MessageKey, string> = {
   connectAgent: "에이전트 이름(대시보드에 등록된 이름)",
   connectKey: "에이전트 키(입력하는 동안 보이지 않아요)",
   connectNeedKey: "터미널이 없을 때는 --code를 주거나, --agent와 함께 키를 표준 입력으로 주세요(--key-stdin).",
+  connectKeyStoreInvalid: "--key-store는 keychain 또는 file이에요.",
   connectBadKey: "대시보드가 이 키를 거절했어요(HTTP {status}). 키를 확인하거나 연결 코드를 쓰세요.",
   connectConnected: "\"{agent}\"로 연결했어요. 키가 잘 돼요.",
   connectKeychain: "키를 시스템 키체인(서비스 agentic-dashboard)에 저장했어요.",

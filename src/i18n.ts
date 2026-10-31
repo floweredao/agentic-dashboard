@@ -1,6 +1,7 @@
 import { config } from "./config";
+import { strings as pairedStrings, type Locale } from "../shared/strings";
 
-export type Locale = "en" | "ko";
+export type { Locale } from "../shared/strings";
 /** What the person chose in Settings: a language, or `system` to follow this device's language. */
 export type Preference = Locale | "system";
 export const locales: readonly Locale[] = ["en", "ko"];
@@ -88,7 +89,7 @@ export const dictionaries: Dictionary[] = [];
  */
 export function strings<T>(dictionary: { readonly en: T; readonly ko: NoInfer<T> }): () => T {
   dictionaries.push(dictionary);
-  return () => dictionary[getLocale()];
+  return pairedStrings(dictionary, getLocale);
 }
 
 /** BCP 47 tag for Intl formatters in the current language. */

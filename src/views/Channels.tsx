@@ -6,14 +6,19 @@ import { errorMessage, listAgents } from "../api";
 import type { AgentInfo } from "../api";
 import { BackButton, ChannelMark, Dialog, SidebarOpen } from "../components/primitives";
 import { config } from "../config";
+import { useAccount } from "../account-context";
 import { strings } from "../i18n";
 import { channelKeys, channelOf, channelLabel, isRecord, relativeTime } from "../model";
 import type { Channel } from "../model";
 import { formatRoute, viewTitles } from "../router";
 import { useDashboard } from "../state";
+import { useRateLimited } from "../rate-limit";
+import { SignIn } from "./SignIn";
+import { AgentConnections } from "./AgentConnections";
 
 const text = strings({
   en: {
+    signedInGoogle: (email: string) => `Signed in with Google as ${email}`, googleSession: "Signed in with Google",
     savedBy: (name: string) => `Records saved by ${name}`,
     share: "Links saved with the share button",
     manual: "Records you saved in this app",
@@ -35,6 +40,7 @@ const text = strings({
     cancel: "Cancel", connect: "Sign in",
   },
   ko: {
+    signedInGoogle: (email: string) => `Google 계정 ${email}로 로그인했어요`, googleSession: "Google로 로그인했어요",
     savedBy: (name: string) => `${name} 에이전트가 저장한 기록`,
     share: "iPhone 공유 버튼으로 저장한 링크",
     manual: "이 앱에서 직접 저장한 기록",
@@ -67,6 +73,7 @@ export function AgentUsage({ agent }: { readonly agent: AgentInfo | undefined })
 }
 
 export function ChannelsView() {
+  const account = useAccount()?.account;
   const t = text();
   const { records, importJson, logout } = useDashboard();
   const [registered, setRegistered] = useState<readonly AgentInfo[]>([]);
@@ -75,11 +82,13 @@ export function ChannelsView() {
   const [json, setJson] = useState("");
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
+  const limited = useRateLimited();
   const live = records.filter(record => isRecord(record) && record.archivedAt === null);
   const agents = channelKeys.filter(channel => channel !== "share" && channel !== "manual");
 
   const submitImport = async (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
     event.preventDefault();
+    if (limited || importing) return;
     setError("");
     setImporting(true);
     try {
@@ -96,7 +105,8 @@ export function ChannelsView() {
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen /><h1>{viewTitles.channels}</h1></div>
     </header>
-    {agents.length === 0 && <p className="channel-note">{t.noAgents} <code>{t.registerCommand}</code> {t.noAgentsAfter}</p>}
+    {config.authMode === "google" && <AgentConnections />}
+    {config.authMode === "local" && agents.length === 0 && <p className="channel-note">{t.noAgents} <code>{t.registerCommand}</code> {t.noAgentsAfter}</p>}
     <div className="channel-grid">
       {channelKeys.map(channel => {
         const items = live.filter(record => channelOf(record) === channel);
@@ -130,11 +140,13 @@ export function ChannelsView() {
       <form className="import-form" onSubmit={submitImport}>
         <label className="field">
           <span>{t.importField}</span>
-          <textarea value={json} onChange={event => setJson(event.target.value)} rows={8} spellCheck={false} />
+          <textarea value={json} onChange={event => setJson(event.target.value)} rows={8} spellCheck={false}
+            aria-invalid={Boolean(error)} aria-describedby={error ? "import-error" : undefined} />
         </label>
-        {error && <p className="form-error" role="alert">{error}</p>}
+        <pre className="channel-note">{'{"kind":"note","title":"Note","body":"Details","tags":["note"]}'}</pre>
+        {error && <p id="import-error" className="form-error" role="alert">{error}</p>}
         <div className="channel-actions">
-          <button type="submit" className="btn btn-primary" disabled={importing || json.trim() === ""}>{t.importButton}</button>
+          <button type="submit" className="btn btn-primary" disabled={limited || importing || json.trim() === ""}>{t.importButton}</button>
         </div>
       </form>
     </details>
@@ -142,7 +154,7 @@ export function ChannelsView() {
     <section className="channel-section session-section" aria-labelledby="session-title">
       <div className="channel-section-head">
         <h2 id="session-title">{t.session}</h2>
-        <p>{t.signedIn}</p>
+        <p>{config.authMode === "google" ? account?.email ? t.signedInGoogle(account.email) : t.googleSession : t.signedIn}</p>
       </div>
       <button type="button" className="btn btn-outline" onClick={() => { void logout(); }}>
         <LogOut size={16} aria-hidden="true" />{t.logout}
@@ -155,6 +167,7 @@ export function ChannelsView() {
 /** Shown while signed out: the owner signs in with the owner key; with trusted login on, the proxy did not identify them. */
 export function OwnerGate({ onToken }: { readonly onToken: () => void }) {
   const t = text();
+  if (config.authMode === "google") return <SignIn />;
   return <div className="gate">
     <img src="/brand-mark.png" alt="" width={56} height={56} />
     <h1>{config.appName}</h1>
@@ -172,9 +185,11 @@ export function LoginDialog({ onClose }: { readonly onClose: () => void }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const limited = useRateLimited();
 
   const submit = async (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
     event.preventDefault();
+    if (limited || connecting) return;
     setError("");
     setConnecting(true);
     try {
@@ -196,7 +211,7 @@ export function LoginDialog({ onClose }: { readonly onClose: () => void }) {
       <p className="login-note">{t.keyNote}</p>
       <div className="dialog-actions">
         <button type="button" className="btn btn-quiet" onClick={onClose}>{t.cancel}</button>
-        <button type="submit" className="btn btn-primary" disabled={connecting || token.trim() === ""}>{t.connect}</button>
+        <button type="submit" className="btn btn-primary" disabled={limited || connecting || token.trim() === ""}>{t.connect}</button>
       </div>
     </form>
   </Dialog>;

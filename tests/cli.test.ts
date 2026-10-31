@@ -62,7 +62,7 @@ describeConnect();
 function describeConnect() {
   let dir = "";
   let server: ReturnType<typeof Bun.serve> | null = null;
-  let app: ReturnType<typeof createApp> | null = null;
+  let app: Awaited<ReturnType<typeof createApp>> | null = null;
   let port = 0;
   const env = (home: string) => ({ ...process.env, HOME: home, AGENTIC_DASHBOARD_HOME: join(home, ".agentic-dashboard"), AGENTIC_DASHBOARD_LANG: "en",
     AGENTIC_DASHBOARD_LAUNCHER: "", DASHBOARD_URL: "", DASHBOARD_TOKEN: "", CODEX_HOME: "" });
@@ -71,7 +71,7 @@ function describeConnect() {
     const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
     return { code: await child.exited, stdout, stderr };
   };
-  beforeAll(() => {
+  beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), "agentic-cli-"));
     const probe = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
     port = probe.port;
@@ -79,10 +79,10 @@ function describeConnect() {
     const host = join(dir, "host", ".agentic-dashboard");
     mkdirSync(host, { recursive: true });
     writeFileSync(join(host, "server.env"), formatEnv("# test", { PORT: String(port), DATA_DIR: join(host, "data") }));
-    app = createApp({ databasePath: join(host, "data", "dashboard.sqlite"), credentialsPath: join(host, "data", "credentials.json"), port });
+    app = (await createApp({ databasePath: join(host, "data", "dashboard.sqlite"), credentialsPath: join(host, "data", "credentials.json"), port }));
     server = Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
   });
-  afterAll(() => { server?.stop(true); app?.close(); rmSync(dir, { recursive: true, force: true }); });
+  afterAll(async () => { server?.stop(true); (await app?.close()); rmSync(dir, { recursive: true, force: true }); });
 
   test("invite on the host and connect on another computer: the key lands in a private file, the skill is installed and records save", async () => {
     const host = join(dir, "host");
@@ -120,7 +120,7 @@ function describeConnect() {
   });
 
   test("connect with an agent name and a key on stdin, and a refused key changes nothing", async () => {
-    const key = app?.agents.add("desk-agent") ?? "";
+    const key = await app?.agents.add("desk-agent") ?? "";
     const desk = join(dir, "desk");
     const refused = await cli(desk, ["connect", "--url", `http://127.0.0.1:${port}`, "--agent", "desk-agent", "--key-stdin", "--key-store", "file"], "wrong-key");
     expect(refused.code).toBe(1);

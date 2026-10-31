@@ -8,7 +8,7 @@ const usage = `Manage the agents that may write to this dashboard.
 
   bun run agents add <name>      register an agent and print its key once
   bun run agents list            list agents, when each was added and last used
-  bun run agents rotate <name>   issue a new key (the old one stops working); also reactivates a removed agent
+  bun run agents rotate <name>   replace an active agent's key; revoked agents cannot be rotated
   bun run agents remove <name>   revoke an agent's key; its records stay
 
 Names use lowercase letters, digits and dashes and start with a letter, for example codex, claude-code or research-bot.
@@ -18,17 +18,17 @@ const args = Bun.argv.slice(2);
 if (args[0] === "agents") args.shift();
 const [command, name] = args;
 const databasePath = process.env["DATABASE_PATH"] ?? join(process.env["DATA_DIR"] ?? "data", "dashboard.sqlite");
-const store = new Store(databasePath, Date.now);
+const store = await Store.open(databasePath, Date.now);
 const agents = new Agents(store);
 const issued = (verb: string, agent: string, key: string) => console.log(
   `${verb} agent "${agent}". Its key is shown only now; store it where the agent reads it, for example:\n\n` +
   `  export DASHBOARD_TOKEN='${key}'\n\nThe dashboard keeps only a hash of it. Lost it? Run: bun run agents rotate ${agent}`);
 try {
-  if (command === "add" && name) issued("Added", name, agents.add(name));
-  else if (command === "rotate" && name) issued("Rotated the key of", name, agents.rotate(name));
-  else if (command === "remove" && name) { agents.revoke(name); console.log(`Removed agent "${name}": its key no longer works. Its records stay.`); }
+  if (command === "add" && name) issued("Added", name, (await agents.add(name)));
+  else if (command === "rotate" && name) issued("Rotated the key of", name, (await agents.rotate(name)));
+  else if (command === "remove" && name) { (await agents.revoke(name)); console.log(`Removed agent "${name}": its key no longer works. Its records stay.`); }
   else if (command === "list") {
-    const items = agents.list();
+    const items = (await agents.list());
     if (!items.length) console.log("No agents yet. Add one with: bun run agents add <name>");
     for (const agent of items) {
       const state = agent.revokedAt ? `removed ${agent.revokedAt}` : `last used ${agent.lastUsedAt ?? "never"}`;
@@ -44,5 +44,5 @@ try {
   else throw error;
   process.exitCode = 1;
 } finally {
-  store.close();
+  (await store.close());
 }
