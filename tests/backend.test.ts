@@ -217,6 +217,33 @@ test("pagination filters avoid duplicates and reject invalid query/cursor", asyn
     expect((await f.call(`/api/v1/records?${query}`, "GET", undefined, session)).status).toBe(400);
   }
 });
+test("search ignores case beyond ASCII, decomposed Hangul and surrounding spaces, and pages with filters", async () => {
+  // Given: notes saved a second apart, so newest first is one order.
+  let clock = Date.parse("2026-10-01T00:00:00Z");
+  (await f.close()); f = (await fixture(10000, () => clock += 1000));
+  const session = await f.login();
+  const titles = ["CAFÉ guide", "Über notes", "한글 검색 노트", "plain words", "검색 둘째", "검색 셋째"];
+  for (const title of titles) expect((await f.call("/api/v1/records", "POST", payload({ kind: "note", title, body: "본문" }), session)).status).toBe(201);
+  const titlesOf = async (query: string) => {
+    const response = await f.call(`/api/v1/records?${query}`, "GET", undefined, session);
+    expect(response.status).toBe(200);
+    return z.object({ items: z.array(z.object({ title: z.string() })), nextCursor: z.string().nullable() }).parse(await response.json());
+  };
+  const q = (value: string) => `q=${encodeURIComponent(value)}`;
+  // When/Then: case beyond ASCII, a decomposed query and surrounding spaces still match.
+  expect((await titlesOf(q("café"))).items.map(item => item.title)).toEqual(["CAFÉ guide"]);
+  expect((await titlesOf(q("ÜBER"))).items.map(item => item.title)).toEqual(["Über notes"]);
+  expect((await titlesOf(q("한글 검색".normalize("NFD")))).items.map(item => item.title)).toEqual(["한글 검색 노트"]);
+  expect((await titlesOf(q("  plain  "))).items.map(item => item.title)).toEqual(["plain words"]);
+  expect((await titlesOf(q("   "))).items).toHaveLength(titles.length);
+  expect((await f.call(`/api/v1/records?${q("가".repeat(201))}`, "GET", undefined, session)).status).toBe(400);
+  // And: a search pages newest first like a plain list, and a filter that excludes every match leaves an empty last page.
+  const first = await titlesOf(`${q("검색")}&kind=note&limit=2`);
+  expect(first.items.map(item => item.title)).toEqual(["검색 셋째", "검색 둘째"]);
+  const second = await titlesOf(`${q("검색")}&kind=note&limit=2&cursor=${encodeURIComponent(first.nextCursor ?? "")}`);
+  expect(second).toEqual({ items: [expect.objectContaining({ title: "한글 검색 노트" })], nextCursor: null });
+  expect(await titlesOf(`${q("검색")}&kind=task`)).toEqual({ items: [], nextCursor: null });
+});
 test("transport rejects Host, media type, malformed JSON, oversized body and unauthenticated access", async () => {
   expect((await f.call("/api/health", "GET", undefined, { Host: "evil.example" })).status).toBe(421);
   expect((await f.call("/api/v1/records")).status).toBe(401);
