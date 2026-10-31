@@ -74,6 +74,8 @@ solely because script-writing rules change.
 
 `server/migrations.ts` applies ordered, transactional versions recorded in `schema_migrations`. Pre-tenant files are rebuilt with every existing row assigned to `local`; documents, reactions, automation settings and saved audio metadata are preserved. `users` holds account metadata. The API continues to omit internal tenant columns.
 
+A pre-tenant file that kept `briefings` and `briefing_reactions` instead of digests is carried over in the same version: each briefing becomes a digest with its sections in upload order (`mail`, `social`, `domestic`, `international`, `ai-development`), the `ai-morning` and `ai-evening` editions take their scheduled times (`08:10`, `19:10`), each reaction keeps the article it was given to, and the briefing push switch and briefing automatic-audio setting are read back under their digest names. The briefing tables are then removed: their foreign keys point at the copies the upgrade replaces, so leaving them behind fails the deferred foreign-key check at commit and the server never starts. Narration rows need no change, since a digest part is narrated under the same id the briefing part used.
+
 Local audio paths remain unchanged for the implicit owner. Other accounts use separate hashed directories below `audio/users/`; one account cannot prune another account's files. SQL statements are asynchronous on both backends. Transaction serialization includes unrelated reads and writes, so an await cannot accidentally admit another request into a transaction.
 
 Tests exercise libSQL against an isolated local `file:` database without a hosted account. Set `LIBSQL_TEST_URL` only to a disposable local libSQL server to additionally exercise that transport.
