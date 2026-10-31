@@ -214,6 +214,7 @@ export const NarrationAudioSchema = z.object({
  * state keeps the shape that clients built before it (strict schemas) can read.
  */
 export const NarrationSchema = z.object({
+  retryAt: z.iso.datetime().nullable().optional(),
   recordId: z.string().uuid(), status: NarrationStatusSchema, style: NarrationStyleSchema, stale: z.boolean(),
   progress: z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() }).strict().nullable(),
   waitUntil: z.iso.datetime().nullable(),
@@ -249,16 +250,16 @@ export const NarrationVoiceSettingsSchema = z.object({
 export type NarrationVoiceSettings = z.infer<typeof NarrationVoiceSettingsSchema>;
 /**
  * GET and PUT /api/v1/narration/auto (Settings › Automatic audio). `digests`: a digest's audio is made when it arrives, for
- * each changed part (`parts`), as one audio of the whole digest (`all`) or not at all. `records`: a new research or work
- * report gets its audio in that style; while it is on, the daily limit is at least `autoDailyRuns`. `scope`: what a record's
+ * each changed part (`parts`), as one audio of the whole digest (`all`) or not at all. `records`: a narratable record
+ * gets its audio on creation and text edits in that style; while it is on, the daily limit is at least `autoDailyRuns`. `scope`: what a record's
  * audio reads, its full document or only its summary (conclusion, summary, next actions). Unchanged content is never made again.
  */
 export const NarrationAutoSchema = z.object({
   digests: z.enum(["off", "parts", "all"]), records: z.enum(["off", "read", "podcast"]), scope: z.enum(["full", "summary"]),
 }).strict();
 export type NarrationAuto = z.infer<typeof NarrationAutoSchema>;
-/** The record kinds whose new records get audio when New records is on. */
-export const AUTO_NARRATED_KINDS = ["research", "work-report"] as const;
+/** Every narratable kind gets automatic audio on creation and meaningful text edits when enabled. */
+export const AUTO_NARRATED_KINDS = NARRATABLE_KINDS;
 
 /**
  * A record's attached HTML document (full document), for research, work-report, note and social records. The dashboard shows
@@ -408,10 +409,10 @@ export const PUSH_LOCALES = ["en", "ko"] as const;
 export const PushLocaleSchema = z.enum(PUSH_LOCALES);
 export type PushLocale = z.infer<typeof PushLocaleSchema>;
 export const PushSubscriptionSchema = z.object({
-  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(), locale: PushLocaleSchema.optional(),
+  endpoint: z.string().max(2048), expirationTime: z.number().nullable().optional(), locale: PushLocaleSchema.optional(), hideContent: z.boolean().optional(),
   keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }).strict(),
 }).strict();
-export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, locale: PushLocaleSchema, createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
+export const PushDeviceSchema = z.object({ kinds: PushKindsSchema, locale: PushLocaleSchema, hideContent: z.boolean().optional(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime() }).strict();
 export type PushDevice = z.infer<typeof PushDeviceSchema>;
 /** The JSON a notification carries; `url` is the in-app address the tap opens. */
 export const PushPayloadSchema = z.object({

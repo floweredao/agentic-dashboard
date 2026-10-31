@@ -7,6 +7,7 @@ import type { Share } from "../api";
 import { config } from "../config";
 import { strings } from "../i18n";
 import { useDashboard } from "../state";
+import { useRateLimited } from "../rate-limit";
 import { Dialog } from "./primitives";
 
 const text = strings({
@@ -15,7 +16,7 @@ const text = strings({
     copyFailed: "Couldn't copy. Select the text and copy it yourself.",
     shareFailed: "Couldn't share to another app.", stopped: "Sharing stopped.",
     title: "Share with an agent",
-    note: "Only devices and agents on the same private network can open this link. It is read-only and needs no sign-in.",
+    note: "Anyone with this link who can reach this server can read this record until you stop sharing. No sign-in is needed. It includes the title, source, dates, status, summary, conclusion, body, next steps, links, tags and previous-record reference, but not personal notes. Stop sharing revokes the link, not copies already saved.",
     preparing: "Preparing the link…",
     link: "Link", copyLink: "Copy link", copy: "Copy", linkCopied: "Link copied.",
     code: "Code", copyCode: "Copy code", codeCopied: "Code copied.",
@@ -27,7 +28,7 @@ const text = strings({
     copyFailed: "복사하지 못했어요. 직접 선택해 복사해 주세요.",
     shareFailed: "다른 앱으로 공유하지 못했어요.", stopped: "공유를 중지했어요.",
     title: "에이전트와 공유",
-    note: "같은 비공개 네트워크에 연결된 기기와 에이전트만 이 링크를 열 수 있어요. 로그인 없이 읽기만 할 수 있어요.",
+    note: "이 서버에 접속할 수 있는 사람은 누구나 링크만 있으면 공유를 중지할 때까지 로그인 없이 기록을 읽을 수 있어요. 제목, 출처, 날짜, 상태, 요약, 결론, 본문, 다음 할 일, 링크, 태그, 이전 기록 참조를 포함하고 개인 메모는 제외해요. 공유 중지는 링크를 무효화하지만 이미 저장한 사본은 지우지 못해요.",
     preparing: "링크를 준비하는 중…",
     link: "링크", copyLink: "링크 복사", copy: "복사", linkCopied: "링크를 복사했어요.",
     code: "코드", copyCode: "코드 복사", codeCopied: "코드를 복사했어요.",
@@ -55,7 +56,8 @@ export function ShareDialog({ record, csrfToken, onClose }: {
   const messageField = useRef<HTMLTextAreaElement>(null);
   const retryButton = useRef<HTMLButtonElement>(null);
   const copyLinkButton = useRef<HTMLButtonElement>(null);
-  const busy = loading || saving;
+  const limited = useRateLimited();
+  const busy = loading || saving || limited;
   const [attempt, setAttempt] = useState(0);
 
   // Opening the dialog is the request: POST returns the record's existing share or creates it, so the link shows at once.

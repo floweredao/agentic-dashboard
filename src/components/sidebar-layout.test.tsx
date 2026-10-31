@@ -40,6 +40,7 @@ async function serveApp() {
     "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "UTC", locale: "en", features: { narration: false, push: false, digest: false, trustedLogin: false } }),
     "/api/v1/auth/session": Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
     "/api/v1/records": Response.json({ items: records, nextCursor: null }),
+    "/api/v1/records/changes": Response.json({ cursor: 0, items: [], deletedIds: [], hasMore: false, reset: false }),
     "/api/v1/trash": Response.json({ items: [] }),
     "/api/v1/comments": Response.json({ items: [] }),
     "/api/v1/agents": Response.json({ items: [] }),
@@ -105,6 +106,29 @@ test("a wide window folds the sidebar into the layout and moves its button to th
   });
 }, 30_000);
 
+test("a 320px app bar contains the name when text is enlarged to 200 percent", async () => {
+  await withApp(320, 844, async view => {
+    // Given: Home at the narrowest supported width. Subscribe before navigating.
+    await view.evaluate(`new Promise((resolve, reject) => {
+      const observer = new MutationObserver(() => { if (document.querySelector(".today-page")) { observer.disconnect(); clearTimeout(timer); resolve(true); } });
+      const timer = setTimeout(() => { observer.disconnect(); reject(new Error("Home did not mount")); }, 5000);
+      observer.observe(document, { childList: true, subtree: true });
+      location.hash = "#/home";
+    })`);
+    // When: the reader enlarges text.
+    await view.evaluate(`document.documentElement.style.fontSize = "200%"`);
+    // Then: the app name shrinks inside the header rather than widening the document.
+    const width = Number(await view.evaluate("document.documentElement.scrollWidth"));
+    expect(width).toBeLessThanOrEqual(320);
+    const nameRight = Number(await view.evaluate('document.querySelector(".appbar .brand").getBoundingClientRect().right'));
+    expect(nameRight).toBeLessThanOrEqual(320);
+    const tabsFit = await view.evaluate('[...document.querySelectorAll(".tabbar .tab")].every(tab => tab.scrollHeight <= tab.clientHeight)');
+    expect(tabsFit).toBe(true);
+    const badgeFits = await view.evaluate('(() => { const badge = document.createElement("span"); badge.className = "segment-count"; badge.textContent = "2"; document.body.append(badge); const fits = badge.scrollHeight <= badge.clientHeight; badge.remove(); return fits; })()');
+    expect(badgeFits).toBe(true);
+  });
+}, 30_000);
+
 test("an iPad landscape window starts with two columns and unfolds the sidebar into the layout from the list head", async () => {
   await withApp(1180, 820, async view => {
     await until(view, settled);
@@ -158,6 +182,24 @@ test("a window too narrow for three columns slides the sidebar over the panes fr
     expect(await read(view, "history.length")).toBe(entries);
   });
 }, 30_000);
+
+for (const width of [320, 390, 430]) {
+  test(`a ${width}px phone splits its tab bar evenly among the three enabled tabs, 49pt tall like an iOS tab bar`, async () => {
+    await withApp(width, 844, async view => {
+      await until(view, settled);
+      // Given: a phone. Then: 메인 · 브리핑 · 기록 · 더보기 share the whole bar in equal columns, none left empty at the right.
+      const bar = JSON.parse(String(await view.evaluate(`JSON.stringify((() => {
+        const box = document.querySelector(".tabbar").getBoundingClientRect();
+        const tabs = [...document.querySelectorAll(".tabbar .tab")].map(tab => tab.getBoundingClientRect());
+        return { right: box.right, height: box.height, widths: tabs.map(tab => tab.width), last: tabs.at(-1).right };
+      })())`))) as { right: number; height: number; widths: number[]; last: number };
+      expect(bar.widths).toHaveLength(3);
+      expect(Math.max(...bar.widths) - Math.min(...bar.widths)).toBeLessThan(1);
+      expect(Math.abs(bar.right - bar.last)).toBeLessThan(1);
+      expect(Math.round(bar.height)).toBe(49);
+    });
+  }, 30_000);
+}
 
 test("a phone keeps its tab bar and opens the sidebar as a drawer that closes on navigation", async () => {
   await withApp(390, 844, async view => {

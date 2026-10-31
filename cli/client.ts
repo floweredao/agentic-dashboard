@@ -96,6 +96,8 @@ export interface ConnectFlags {
 
 export async function connect(p: Paths, flags: ConnectFlags) {
   const prompting = interactive() && !flags.yes;
+  // A mistyped --skills fails here, before a one-time code is spent on a connection that then reports failure.
+  skillChoice(p, flags.skills);
   const current = readClient(p);
   if (current && prompting && !flags.url && !flags.code && !await confirm(t("connectAlready", { url: current.url, agent: current.agent }), false)) return;
   let url = "";
@@ -126,8 +128,9 @@ export async function connect(p: Paths, flags: ConnectFlags) {
         ({ agent, key } = z.object({ agent: z.string(), key: z.string() }).parse(await response.json()));
         break;
       }
-      const message = response.status === 404 ? t("connectBadCode")
-        : z.object({ error: z.object({ message: z.string() }) }).safeParse(await response.json().catch(() => null)).data?.error.message ?? `HTTP ${response.status}`;
+      // The server's messages are English; a malformed code (400) is as unknown as an expired one (404).
+      const message = response.status === 404 || response.status === 400 ? t("connectBadCode")
+        : response.status === 429 ? t("connectRateLimited") : t("connectCodeFailed", { status: response.status });
       if (!prompting || flags.code) throw new CliError(message);
       say(message);
       continue;
@@ -155,14 +158,7 @@ export async function connect(p: Paths, flags: ConnectFlags) {
  */
 export async function installSkills(p: Paths, connection: { url: string; agent: string }, choice: string | undefined, prompting: boolean, force = false) {
   if (choice === "none") return;
-  const all = skillTargets(p.userHome);
-  let targets = all.filter(target => existsSync(target.root));
-  if (choice && choice !== "detected") {
-    const ids = choice.split(",").map(id => id.trim()).filter(Boolean);
-    const unknown = ids.find(id => !all.some(target => target.id === id));
-    if (unknown) throw new CliError(t("skillsUnknownTarget", { target: unknown }));
-    targets = all.filter(target => ids.includes(target.id));
-  }
+  const targets = skillChoice(p, choice);
   if (targets.length === 0) { say(t("skillsNone")); return; }
   if (prompting && choice === undefined && !await confirm(t("skillsAsk", { list: targets.map(target => target.label).join(", ") }), true)) return;
   const content = renderSkill(readFileSync(SKILL_SOURCE, "utf8"), { launcher: launcher(), ...connection });
@@ -171,6 +167,16 @@ export async function installSkills(p: Paths, connection: { url: string; agent: 
       ? t("skillsInstalled", { label: target.label, path: target.file })
       : t("skillsSkipped", { path: target.file }));
   }
+}
+
+/** The targets a `choice` of installSkills names; an unknown target id throws. */
+function skillChoice(p: Paths, choice: string | undefined) {
+  const all = skillTargets(p.userHome);
+  if (!choice || choice === "detected" || choice === "none") return all.filter(target => existsSync(target.root));
+  const ids = choice.split(",").map(id => id.trim()).filter(Boolean);
+  const unknown = ids.find(id => !all.some(target => target.id === id));
+  if (unknown) throw new CliError(t("skillsUnknownTarget", { target: unknown }));
+  return all.filter(target => ids.includes(target.id));
 }
 
 export async function clientStatus(p: Paths) {
