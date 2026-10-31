@@ -265,7 +265,7 @@ The reader opens a record with a document on it, with a [Full document | Summary
 | `PUT /api/v1/digests/:id/reactions` | owner | `{ section, key, reaction }` -> `{ reactions }` |
 | `GET /api/v1/digests/reactions` | owner, agent | `days` (1 to 92, default 30) -> `{ items, from }`, newest first |
 
-A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended. `notify: false` skips push. A section shows under its own `title`, except the key `social` (posts picked from social networks, kind `articles`), which the app names Social / 소셜 in its own language; a digest has no social section unless an agent sends one.
+A digest has 1 to 12 sections of kind `articles` or `messages`, each with at most 60 items whose keys are unique within the section, and the body is at most 256 KiB. Slots are `morning`, `evening` or `HH:MM`. Sections with an existing key replace it in place; new keys are appended. A section that gets items, having had none or only items of the other kind, makes its part unread again and is what a push is about. `notify: false` skips push. A section shows under its own `title`, except the key `social` (posts picked from social networks, kind `articles`), which the app names Social / 소셜 in its own language; a digest has no social section unless an agent sends one.
 
 The agent CLI accepts `--briefing <dir>` to convert `news.json`, `mail.json` and AI-edition `x.json` into this public digest shape, or `--briefing-file <file>` for an already converted body (`--digest` also accepts that body). `--sections <names>` filters the upload and `--quiet` sets `notify: false`. AI input `aiDevelopment` becomes the `ai-development` articles section; social posts use `social`, mail uses kind `messages`, and AI editions use their scheduled `HH:MM` slot. Input titles or English/Korean defaults name the sections. `--briefings` aliases `--digests`, and `--briefing-reactions` aliases `--digest-reactions`. Authentication stays the connected key or `DASHBOARD_TOKEN`; see [the agent guide](docs/agents.md) for input fields.
 
@@ -287,7 +287,7 @@ not filesystem enumeration. Replacing or deleting audio removes its object.
 | `GET`, `POST`, `DELETE /api/v1/records/:id/narration` | owner, agent in read scope (DELETE owner only) | state, start (`{ force?, style? }`, 202 when started), remove |
 | `POST /api/v1/records/:id/narration/cancel` | owner | stop a running job |
 | `GET /api/v1/records/:id/narration/audio` | owner, agent in read scope | audio with byte ranges |
-| `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part (`articles`, `messages`) or the whole digest (`all`) |
+| `/api/v1/digests/:id/narration` and `/cancel`, `/audio` | owner | the same for one digest part (`articles`, `messages`) or the whole digest (`all`); 404 when the part has no items |
 | `GET /api/v1/narration/allowance` | owner | `{ limit, used, remaining, resetsAt, timeZone, failedStartsCount: true }` |
 
 Hosted overrides to the local defaults below: Google accounts get 10 daily starts
