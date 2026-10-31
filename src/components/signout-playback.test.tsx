@@ -54,15 +54,20 @@ test("signing out stops a private record's audio and takes its title off the sys
   const build = await Bun.build({ entrypoints: [`${import.meta.dir}/../main.tsx`], target: "browser" });
   expect(build.success).toBe(true);
   const [script, styles] = await Promise.all([".js", ".css"].map(extension => build.outputs.find(output => output.path.endsWith(extension))?.text() ?? ""));
-  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", routes: {
+  // An onboarded account, so the app opens straight on its screens.
+  const account = { id: "test-user", email: "reader@example.test", locale: "ko", timeZone: "Asia/Seoul", timeZoneSaved: true,
+    onboardedAt: "2026-09-01T00:00:00.000Z", agentSaveVerified: true, agentSaveRecordId: null, features: { digest: false, push: false } };
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => Response.json({ items: [] }), routes: {
     "/": new Response(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><link rel="stylesheet" href="/app.css"></head><body><script>localStorage.setItem("agentic:locale", "ko")</script><div id="root"></div><script type="module" src="/app.js"></script></body></html>`,
       { headers: { "Content-Type": "text/html; charset=utf-8" } }),
     "/app.js": new Response(script, { headers: { "Content-Type": "text/javascript; charset=utf-8" } }),
     "/app.css": new Response(styles, { headers: { "Content-Type": "text/css; charset=utf-8" } }),
     "/api/v1/config": Response.json({ appName: "Agentic Dashboard", timeZone: "Asia/Seoul", locale: "ko", features: { narration: true, push: false, digest: false, trustedLogin: false } }),
     "/api/v1/auth/session": request => request.method === "DELETE" ? new Response(null, { status: 204 })
-      : Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z" }),
+      : Response.json({ csrfToken: "csrf-1", expiresAt: "2026-10-06T00:00:00.000Z", account }),
+    "/api/v1/account": Response.json({ account }),
     "/api/v1/records": Response.json({ items: [record], nextCursor: null }),
+    "/api/v1/records/changes": Response.json({ cursor: 0, items: [], deletedIds: [], hasMore: false, reset: false }),
     [`/api/v1/records/${record.id}/narration`]: Response.json(narration),
     [audioPath]: new Response(silence(), { headers: { "Content-Type": "audio/wav" } }),
   } });
@@ -79,7 +84,8 @@ test("signing out stops a private record's audio and takes its title off the sys
     // When: the owner signs out from Channels.
     await view.evaluate(`location.hash = "#/channels"`);
     await press(view, ".session-section .btn");
-    await until(view, `() => document.querySelector(".toast > span")?.textContent === "로그아웃했어요."`);
+    // Signing out ends on the owner-key sign-in screen.
+    await until(view, `() => document.querySelector(".gate input[type=password]") !== null`);
 
     // Then: nothing of the record is left playing, loaded or named on the lock screen.
     expect(JSON.parse(String(await view.evaluate(`(${player})()`)))).toEqual({ src: null, paused: true, media: null });
