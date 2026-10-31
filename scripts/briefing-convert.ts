@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DigestInputSchema } from "../shared/contracts";
 import type { DigestInput, DigestMessage, DigestSectionInput } from "../shared/contracts";
+import { systemTimeZone, validTimeZone, zoneOffsetMs } from "../shared/time";
 
 /** Headings in mail.json's grouped Markdown messages. */
 const IMPORTANCE: Readonly<Record<string, DigestMessage["importance"]>> = {
@@ -76,14 +77,20 @@ export function parseMailDigest(messages: readonly string[]): DigestMessage[] {
   return items;
 }
 
-/** Convert a briefing folder to the public digest body; AI editions use their scheduled HH:MM slot. */
+/**
+ * Convert a briefing folder to the public digest body; AI editions use their scheduled HH:MM slot. The date and slot are read
+ * in `timeZone` (default: `TIME_ZONE`, else the host's zone).
+ */
 export function digestFromFiles(files: { readonly news?: unknown; readonly mail?: unknown; readonly x?: unknown },
-  options: { readonly sections?: readonly string[]; readonly notify?: boolean; readonly locale?: "en" | "ko" } = {}): DigestInput {
+  options: { readonly sections?: readonly string[]; readonly notify?: boolean; readonly locale?: "en" | "ko"; readonly timeZone?: string } = {}): DigestInput {
+  const zone = options.timeZone ?? (process.env["TIME_ZONE"]?.trim() || systemTimeZone());
+  if (!validTimeZone(zone)) throw new Error(`Unknown time zone ${zone}; use an IANA name such as Europe/Berlin.`);
   const news = files.news === undefined ? null : newsSchema.parse(files.news);
   const mail = files.mail === undefined ? null : mailSchema.parse(files.mail);
   if (!news && !mail) throw new Error("A briefing folder needs news.json or mail.json.");
   const scheduledAt = news?.targetScheduledAt ?? mail?.targetScheduledAt ?? "";
-  const shifted = new Date(Date.parse(scheduledAt) + 9 * 60 * 60 * 1000).toISOString();
+  const at = Date.parse(scheduledAt);
+  const shifted = new Date(at + zoneOffsetMs(at, zone)).toISOString();
   const date = shifted.slice(0, 10), time = shifted.slice(11, 16);
   const aiEdition = AI_EDITIONS.some(edition => edition === news?.edition);
   const edition = news?.edition === "morning" || news?.edition === "evening" ? news.edition : undefined;
