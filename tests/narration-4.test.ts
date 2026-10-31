@@ -222,3 +222,25 @@ test("the owner narrates a digest's messages on their own: the messages part has
   const eveningId = (await evening.json() as { digest: { id: string } }).digest.id;
   expect((await f.call(`/api/v1/digests/${digestPartId(eveningId, "messages")}/narration`, "GET", undefined, owner)).status).toBe(404);
 });
+
+test("a digest part whose sections have no items has nothing to narrate: 404 and no script call", async () => {
+  const { f, tts, idle } = (await setup());
+  const owner = await f.login();
+  // Given: a digest with articles and a messages section that only says why it is empty.
+  const created = await f.call("/api/v1/digests", "POST", { date: "2026-10-01", slot: "morning", notify: false, sections: [
+    { key: "domestic", title: "Domestic", kind: "articles", items: [{ key: "a", title: "국내 소식", source: "연합뉴스", summary: "요약", url: "https://news.example.com/a" }] },
+    { key: "inbox", title: "Inbox", kind: "messages", items: [], shortfall: "메일을 읽지 못했어요" }] }, bearer("omo"));
+  const id = (await created.json() as { digest: { id: string } }).digest.id;
+  const path = `/api/v1/digests/${digestPartId(id, "messages")}/narration`;
+  // When: the owner asks for the empty messages part.
+  const response = await f.call(path, "POST", {}, owner);
+  await idle();
+  // Then: there is no such part to narrate, and no script was paid for.
+  expect(response.status).toBe(404);
+  expect((await f.call(path, "GET", undefined, owner)).status).toBe(404);
+  expect(tts.calls.script).toBe(0);
+  // And: the part that does have items is still narrated.
+  expect((await f.call(`/api/v1/digests/${id}/narration`, "POST", {}, owner)).status).toBe(202);
+  await idle();
+  expect(tts.calls.script).toBe(1);
+});
