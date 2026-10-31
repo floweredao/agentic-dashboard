@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AGENT_RECORD_GUIDE, RecordInputSchema, RecordPatchSchema, type DashboardRecord } from "../shared/contracts";
+import { AGENT_RECORD_GUIDE, RECORD_LIMITS, RecordInputSchema, RecordPatchSchema, type DashboardRecord } from "../shared/contracts";
 import { ApiError } from "./errors";
 import { hash } from "./agents";
 import { json } from "./json-body";
@@ -224,7 +224,8 @@ export function createMcpHandler({ store, port, rateLimit, now, onCreate, onUpda
     if (count > rateLimit) return reply({ error: { code: "rate_limited", message: "Request limit exceeded" } }, 429, { "Retry-After": "60" });
 
     let body: unknown;
-    try { body = await json(request); }
+    // Same cap as POST and PATCH /api/v1/records, which these tools mirror.
+    try { body = await json(request, RECORD_LIMITS.requestBytes); }
     catch (error) {
       if (!(error instanceof ApiError)) throw error;
       return rpcFailure(null, error.status === 400 ? -32700 : -32600, error.message, error.status);
