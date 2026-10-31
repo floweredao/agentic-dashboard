@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import type { DashboardRecord, Narration, NarrationState, NarrationStatus } from "../shared/contracts";
+import { localAudioStore } from "./audio-store";
 import { type NarrationOptions, type Job, rowSchema, type Row, type Changes } from "./narration-types";
 import { sourceHash } from "./narration-text";
 import { accountActive } from "./work-guard";
@@ -9,6 +11,10 @@ export function createNarrationState(options: NarrationOptions, running: Readonl
   const now = () => new Date(store.now()).toISOString();
 
   const available = async () => provider !== null && await provider.available();
+  const storage = options.audioStore ?? localAudioStore(options.audioDir);
+  const audioUser = options.audioStore ? store.db.userId : "local";
+  /** Audio whose local file left the audio folder (removed by hand, or a data folder copied without it) is no audio: not offered, made again. */
+  const audioPresent = async (current: Row) => current.audio_file !== null && (storage.remote || existsSync(await storage.url(audioUser, current.audio_file)));
 
 
   async function row(id: string): Promise<Row | null> {
@@ -26,7 +32,7 @@ export function createNarrationState(options: NarrationOptions, running: Readonl
 
 
   async function view(current: Row, record: DashboardRecord): Promise<Narration> {
-    const audio = current.audio_file && current.audio_mime && current.audio_at ? {
+    const audio = current.audio_file && current.audio_mime && current.audio_at && await audioPresent(current) ? {
       url: `${(await options.lookup?.(current.record_id))?.audioBase ?? `/api/v1/records/${current.record_id}`}/narration/audio?v=${current.audio_file.slice(37, 45)}`, mime: current.audio_mime,
       bytes: current.audio_bytes ?? 0, durationMs: current.audio_ms ?? 0, model: current.audio_model ?? "", voice: current.audio_voice ?? "",
       style: current.audio_style, createdAt: current.audio_at,
@@ -48,5 +54,5 @@ export function createNarrationState(options: NarrationOptions, running: Readonl
     const current = (await row(record.id));
     return { narration: current ? (await view(current, record)) : null, available: await available() };
   }
-  return { now, available, row, set, state };
+  return { now, available, row, set, state, audioPresent };
 }

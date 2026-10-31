@@ -52,11 +52,11 @@ export function createNarrationWork(options: NarrationOptions, runtime: {
     catch (error) {
       if (!(error instanceof ApiError) || error.status !== 404) throw error;
       const source = (await options.lookup?.(id));
-      if (!source) { (await set(id, { status: "failed", error: "record_missing" })); return; }
+      if (!source) { (await set(id, { status: "failed", error: "record_missing", progress_done: null, progress_total: null })); return; }
       record = source.record;
       label = source.label;
     }
-    if (!provider || !await available()) { if (!cancel.aborted) (await set(id, { status: "failed", error: "no_key" })); return; }
+    if (!provider || !await available()) { if (!cancel.aborted) (await set(id, { status: "failed", error: "no_key", progress_done: null, progress_total: null })); return; }
     if (cancel.aborted) return;
     const hash = sourceHash(record);
     const style = job.style;
