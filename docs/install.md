@@ -26,7 +26,7 @@ one-time connection code.
 To install a release, name its tag in both places:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.4.0/install.sh | AGENTIC_DASHBOARD_REF=v0.4.0 sh
+curl -fsSL https://raw.githubusercontent.com/floweredao/agentic-dashboard/v0.5.0/install.sh | AGENTIC_DASHBOARD_REF=v0.5.0 sh
 ```
 
 Without a terminal, pass setup flags after `sh -s --`, for example
