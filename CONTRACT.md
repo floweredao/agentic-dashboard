@@ -4,7 +4,7 @@ This document describes what the server promises: the data model, the HTTP API, 
 
 ## Storage and account boundaries
 
-All data access uses the asynchronous `Sql` interface. A local path or `file:` URL uses bun:sqlite with WAL, foreign keys and a 5-second busy timeout; `libsql://` and HTTPS URLs use libSQL. `DATABASE_URL` overrides `DATABASE_PATH`; remote credentials come from `DATABASE_AUTH_TOKEN`. Each versioned migration commits its data and `schema_migrations` entry together. Existing single-owner databases upgrade in place under the implicit `local` account.
+All data access uses the asynchronous `Sql` interface. A local path or `file:` URL uses bun:sqlite with WAL, foreign keys and a 5-second busy timeout; `libsql://` and HTTPS URLs use libSQL. `DATABASE_URL` overrides `DATABASE_PATH`; remote credentials come from `DATABASE_AUTH_TOKEN`. Each versioned migration commits its data and `schema_migrations` entry together. Existing single-owner databases upgrade in place under the implicit `local` account. A database from the single-user predecessor, which kept news and mail briefings, upgrades as well: every briefing becomes a digest whose sections are ordered `mail`, `social`, `domestic`, `international`, `ai-development`, the `ai-morning` and `ai-evening` slots become `08:10` and `19:10`, article reactions move with them, and the briefing push switch and briefing automatic-audio setting keep their value under the digest name.
 
 Every tenant table has a non-null `user_id`: principals, sessions, records, evidence, requests, trash, comments, documents, agent_invites, digests, digest_reactions, narrations, narration_runs, narration_auto, narration_settings, push_subscriptions, shares, background_jobs, record_sync and record_changes. Principal names, idempotency keys, digest slots, comments, documents and narration state are scoped to that account. Generated record columns index kind, creation time and archive state. Account, migration, OAuth transaction and operator maintenance/alert state live in global control tables.
 
@@ -19,7 +19,7 @@ In Google mode, unauthenticated requests use a non-persisted public service scop
 | Owner | `manual` | Local mode: owner key from `data/credentials.json` or trusted proxy. Google mode: Google sign-in. Session cookie plus CSRF token; authority is limited to the selected account |
 | Agent | its registered name, for example `codex` | `Authorization: Bearer <agent key>` |
 
-Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key.
+Agent names match `^[a-z][a-z0-9-]{0,31}$`; `manual` and `owner` are reserved. Agents are managed with `bun run agents add|list|rotate|remove`. The server stores only a SHA-256 hash of each key. Only `owner` is read from the key file; other entries, such as the per-agent keys the predecessor kept there, are ignored.
 
 Browser sessions can also create an agent with `POST /api/v1/agents { name, capture? }`, rotate with `POST /api/v1/agents/:name/rotate`, or revoke with `DELETE /api/v1/agents/:name`. All require CSRF. New keys are `fd_` followed by 32 random bytes in base64url, returned once as `{ agent, key }` on create/rotate; list/get never expose keys or hashes. `capture` defaults false and is shown in agent metadata. Revocation and rotation invalidate the previous key immediately. Agent names are attribution within an account, not separate privacy boundaries.
 
