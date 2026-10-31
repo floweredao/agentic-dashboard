@@ -3,7 +3,7 @@ import { ArticleReactionInputSchema, ArticleReactionSchema, DIGEST_LIMITS, DIGES
 import type { DashboardRecord, Digest, DigestArticle, DigestHit, DigestInput, DigestMessage, DigestPart, DigestReactions, DigestSection, DigestSummary, ReactionItem } from "../shared/contracts";
 import { zonedDate, zonedInstant } from "../shared/time";
 import { ApiError } from "./errors";
-import { canonical, type Principal, type Store } from "./store";
+import { canonical, searchable, type Principal, type Store } from "./store";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const rowSchema = z.object({
@@ -55,7 +55,7 @@ export function summarize(digest: Digest): DigestSummary {
     headlines: headlines(digest), messageHeadline: topMessage(messages)?.subject ?? null,
     urgent: messages.filter(item => item.importance === "urgent").length, todo: messages.filter(item => item.importance === "todo").length };
 }
-const matches = (needle: string, values: readonly string[]) => values.some(value => value.toLowerCase().includes(needle));
+const matches = (needle: string, values: readonly string[]) => values.some(value => searchable(value).includes(needle));
 
 /**
  * Digests collected by agents, kept apart from records. A digest is keyed by its date and slot; an upload replaces the
@@ -198,7 +198,7 @@ export class Digests {
   /** Articles (title, summary, source) and messages (sender, subject, summary, action) matching, newest digest first; `part` keeps to one kind. */
   async search(raw: Record<string, string>): Promise<{ items: DigestHit[] }> {
     const query = searchSchema.parse(raw);
-    const needle = query.q.toLowerCase();
+    const needle = searchable(query.q);
     const hits: DigestHit[] = [];
     for (const row of (await this.store.db.all("SELECT * FROM digests WHERE user_id=? ORDER BY scheduled_at DESC, id DESC", []))) {
       const digest = toDigest(row);

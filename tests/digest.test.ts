@@ -250,6 +250,11 @@ test("Search finds articles and messages across digests, newest first, and keeps
   ]);
   expect(await search("&part=articles")).toEqual([["2026-10-01", "world", "World", "articles", "b"], ["2026-09-30", "domestic", "Domestic", "articles", "a"]]);
   expect(await search("&part=messages")).toEqual([["2026-10-01", "inbox", "Inbox", "messages", "m"]]);
+  // A decomposed query (as macOS may hand over Hangul) and capitals beyond ASCII find the same items.
+  const found = async (q: string) => hits.parse(await (await f.call(`/api/v1/digests/search?q=${encodeURIComponent(q)}`, "GET", undefined, owner)).json()).items.map(hit => hit.item.key);
+  expect(await found("반도체 수출".normalize("NFD"))).toEqual(["a"]);
+  await upload(morning([articles("europe", "Europe", [article("e", "Économie française")])], { date: "2026-10-03" }));
+  expect(await found("éCONOMIE")).toEqual(["e"]);
   expect((await f.call("/api/v1/digests/search?q=", "GET", undefined, owner)).status).toBe(400);
   expect((await f.call("/api/v1/digests/search?q=a&part=all", "GET", undefined, owner)).status).toBe(400);
 });

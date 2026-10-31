@@ -14,10 +14,12 @@ const stored = z.object({ data: z.string() });
 const querySchema = z.object({
   kind: RecordKindSchema.optional(), status: z.string().min(1).max(50).optional(),
   reviewState: ReviewStateSchema.optional(), archived: z.enum(["false", "true", "all"]).default("false"),
-  projectId: z.string().uuid().optional(), q: z.string().max(200).optional(),
+  projectId: z.string().uuid().optional(), q: z.string().trim().max(200).optional(),
   dueFrom: DateSchema.optional(), dueTo: DateSchema.optional(),
   limit: z.coerce.number().int().min(1).max(50).default(50), cursor: z.string().max(512).optional(),
 }).strict();
+/** Search compares text in one Unicode form and case: SQLite's lower() folds ASCII only, and macOS may hand over decomposed Hangul. */
+export const searchable = (text: string) => text.normalize("NFC").toLowerCase();
 const cursorSchema = z.object({ createdAt: z.iso.datetime(), id: z.string().uuid() }).strict();
 const trashRow = z.object({ data: z.string(), deleted_at: z.string() });
 const documentRow = z.object({ html: z.string(), bytes: z.number(), updated_by: z.string(), updated_at: z.string() });
@@ -149,7 +151,6 @@ export class Store extends RecordStore {
       conditions.push(`${key === "kind" ? "kind" : `json_extract(data,'$.${key}')`}=?`); params.push(query[key]);
     }
     if (query.archived !== "all") conditions.push(`archived_at IS ${query.archived === "true" ? "NOT " : ""}NULL`);
-    if (query.q) { conditions.push("(instr(lower(json_extract(data,'$.title')),lower(?))>0 OR instr(lower(json_extract(data,'$.body')),lower(?))>0)"); params.push(query.q, query.q); }
     if (query.dueFrom) { conditions.push("json_extract(data,'$.dueDate')>=?"); params.push(query.dueFrom); }
     if (query.dueTo) { conditions.push("json_extract(data,'$.dueDate')<=?"); params.push(query.dueTo); }
     if (query.cursor) {
@@ -161,9 +162,13 @@ export class Store extends RecordStore {
       params.push(cursor.createdAt, cursor.createdAt, cursor.id);
     }
 
+    // `q` is matched here rather than in SQL, over the filtered rows newest first, so it still pages with the cursor and filters.
+    const needle = query.q ? searchable(query.q) : null;
     const rows = (await this.db.all(`SELECT data FROM records WHERE (${conditions.length ? conditions.join(" AND ") : "1=1"}) AND user_id=?
-      ORDER BY created_at DESC,id DESC LIMIT ${query.limit + 1}`, [...params]));
-    const records = rows.map(row => DashboardRecordSchema.parse(JSON.parse(stored.parse(row).data))).map(record => reader ? agentView(reader, record) : record);
+      ORDER BY created_at DESC,id DESC${needle ? "" : ` LIMIT ${query.limit + 1}`}`, [...params]));
+    const parsed = rows.map(row => DashboardRecordSchema.parse(JSON.parse(stored.parse(row).data)));
+    const matched = needle ? parsed.filter(record => searchable(record.title).includes(needle) || searchable(record.body).includes(needle)).slice(0, query.limit + 1) : parsed;
+    const records = matched.map(record => reader ? agentView(reader, record) : record);
     const items = records.slice(0, query.limit);
     const last = items.at(-1);
     return { items, nextCursor: records.length > query.limit && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt, id: last.id })).toString("base64url") : null };
