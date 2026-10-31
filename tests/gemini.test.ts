@@ -161,7 +161,7 @@ test("a 429 says how long to wait: RetryInfo or Retry-After; a used-up daily fre
 const vertexAdc = { exists: async () => true, token: async () => "ya29.test-token" };
 const vertexSse = (chunks: unknown[]) => new Response(chunks.map(chunk => `data: ${JSON.stringify(chunk)}\r\n\r\n`).join(""), { headers: { "content-type": "text/event-stream" } });
 
-test("there is no lighter script model: without Vertex the script has one route, the key, always with the script model", async () => {
+test("without Vertex the script has one route, the key, with gemini-3.8-flash (the free tier gives gemini-4-argon no quota)", async () => {
   const { gemini, sent } = provider(() => steps([{ type: "text", text: "원고" }]));
   expect("fallbackScriptModel" in gemini).toBe(false);
   expect(gemini.scriptRoutes).toEqual(["gemini"]);
@@ -169,28 +169,29 @@ test("there is no lighter script model: without Vertex the script has one route,
   expect(sent[0]?.body).toMatchObject({ model: "gemini-3.8-flash" });
 });
 
-test("with Vertex, the script is streamed from the same model on Vertex AI (global) first, and the key is the second route", async () => {
+test("with Vertex, the script is streamed from gemini-4-argon on Vertex AI (global) first, and the key with gemini-3.8-flash is the second route", async () => {
   const sent: Sent[] = [];
   const lines: string[] = [];
   const gemini = geminiProvider({ key: async () => KEY, vertex: { project: "p-1", credentials: vertexAdc, log: line => lines.push(line) }, fetch: async (url, init) => {
     sent.push({ url, headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
     return url.includes("aiplatform")
-      ? vertexSse([{ candidates: [{ content: { role: "model", parts: [{ text: "안녕" }] } }], modelVersion: "gemini-3.8-flash" },
-        { candidates: [{ content: { role: "model", parts: [{ text: "하세요." }] }, finishReason: "STOP" }], modelVersion: "gemini-3.8-flash" }])
+      ? vertexSse([{ candidates: [{ content: { role: "model", parts: [{ text: "안녕" }] } }], modelVersion: "gemini-4-argon" },
+        { candidates: [{ content: { role: "model", parts: [{ text: "하세요." }] }, finishReason: "STOP" }], modelVersion: "gemini-4-argon" }])
       : steps([{ type: "text", text: "키 원고" }]);
   } });
   expect(gemini.scriptRoutes).toEqual(["vertex", "gemini"]);
   const received: number[] = [];
   expect(await gemini.script("규칙", "[기록]", signal(), undefined, chars => received.push(chars))).toBe("안녕하세요.");
   expect(received).toEqual([2, 6]);
-  expect(sent[0]?.url).toBe("https://aiplatform.googleapis.com/v1/projects/p-1/locations/global/publishers/google/models/gemini-3.8-flash:streamGenerateContent?alt=sse");
+  expect(sent[0]?.url).toBe("https://aiplatform.googleapis.com/v1/projects/p-1/locations/global/publishers/google/models/gemini-4-argon:streamGenerateContent?alt=sse");
   expect(sent[0]?.headers.get("authorization")).toBe("Bearer ya29.test-token");
   expect(sent[0]?.headers.get("x-goog-api-key")).toBeNull();
   expect(sent[0]?.body).toEqual({ systemInstruction: { parts: [{ text: "규칙" }] }, contents: [{ role: "user", parts: [{ text: "[기록]" }] }] });
   // One log line names the host and the model that wrote it, never the token.
-  expect(lines).toEqual(["narration script: aiplatform.googleapis.com gemini-3.8-flash global 200 model=gemini-3.8-flash chars=6"]);
+  expect(lines).toEqual(["narration script: aiplatform.googleapis.com gemini-4-argon global 200 model=gemini-4-argon chars=6"]);
   expect(await gemini.script("규칙", "[기록]", signal(), "gemini")).toBe("키 원고");
   expect(sent[1]?.body).toMatchObject({ model: "gemini-3.8-flash" });
+  expect(lines.at(-1)).toBe("narration script: generativelanguage.googleapis.com gemini-3.8-flash 200 chars=4");
   expect(lines.join("\n")).not.toContain("ya29");
 });
 
