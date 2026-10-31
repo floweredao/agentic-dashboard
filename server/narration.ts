@@ -64,7 +64,7 @@ export function createNarration(options: NarrationOptions) {
     // A digest has no summary of its own to choose: it is always read whole.
     const scope = (await options.lookup?.(record.id)) ? "full" : settings.scope;
     if (current && ACTIVE.has(current.status)) return false;
-    if (current && current.audio_hash === hash && current.audio_style === style && current.audio_scope === scope && !force) {
+    if (current && current.audio_hash === hash && current.audio_style === style && current.audio_scope === scope && !force && await rows.audioPresent(current)) {
       if (current.style !== style) (await set(record.id, { style }));
       return false;
     }
@@ -214,11 +214,11 @@ export function createNarration(options: NarrationOptions) {
   /** The style this record's audio was last asked for, if any. */
   const styleOf = async (id: string): Promise<NarrationStyle | null> => (await row(id))?.style ?? null;
 
-  /** Jobs cut off by a restart start again; they were already counted against the daily limit. */
+  /** Jobs cut off by a restart start again from the queue, without the cut-off run's progress; they were already counted against the daily limit. */
   async function resume() {
     for (const value of (await store.db.all("SELECT record_id FROM narrations WHERE (status IN ('queued','scripting','speaking')) AND user_id=? ORDER BY requested_at", []))) {
       const { record_id } = z.object({ record_id: z.string() }).parse(value);
-      if (!options.jobs) await set(record_id, { status: "queued" });
+      if (!options.jobs) await set(record_id, { status: "queued", progress_done: null, progress_total: null });
       await enqueue(record_id);
     }
   }
