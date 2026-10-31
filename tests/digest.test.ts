@@ -91,7 +91,29 @@ test("With DIGEST off every digest route answers 404", async () => {
       expect(response.status).toBe(404);
       expect(await errorCode(response)).toBe("feature_disabled");
     }
+    // And: the owner's own writes report the feature as off instead of looking a digest up.
+    for (const [path, method, body] of [[`/api/v1/digests/${id}/read`, "POST", { read: true }],
+      [`/api/v1/digests/${id}/reactions`, "PUT", { section: "domestic", key: "a", reaction: "like" }]] as const) {
+      const response = await off.call(path, method, body, owner);
+      expect(response.status).toBe(404);
+      expect(await errorCode(response)).toBe("feature_disabled");
+    }
   } finally { (await off.close()); }
+});
+
+test("The digest list counts both ends of its range: 92 days is served and 93 refused", async () => {
+  // Given: the documented maximum is 92 days, counted like the default 14-day range.
+  const owner = await f.login();
+  // When: the owner asks for exactly 92 days.
+  const widest = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-02", "GET", undefined, owner);
+  // Then: that range is served.
+  expect(widest.status).toBe(200);
+  expect(await widest.json()).toMatchObject({ from: "2026-01-01", to: "2026-04-02" });
+  // When: one more day is asked for.
+  const tooWide = await f.call("/api/v1/digests?from=2026-01-01&to=2026-04-03", "GET", undefined, owner);
+  // Then: the query is refused instead of serving a wider range than documented.
+  expect(tooWide.status).toBe(400);
+  expect(await errorCode(tooWide)).toBe("invalid_query");
 });
 
 test("Malformed digests are refused before anything is written: unknown kind, duplicate or bad keys, empty sections", async () => {
@@ -265,4 +287,35 @@ test("The owner marks an article liked, not for them or seen; the digest reads b
     reaction: z.string(), title: z.string(), source: z.string(), url: z.string(), updatedAt: z.string() }).strict()), from: z.string() }).strict().parse(await recent.json());
   expect(body.items).toEqual([expect.objectContaining({ digestId: id, section: "domestic", key: "a", reaction: "dislike", title: "First story", source: "Newswire", url: "https://news.example.com/a" })]);
   expect((await f.call("/api/v1/digests/reactions?days=0", "GET", undefined, bearer("omo"))).status).toBe(400);
+});
+
+test("Two items with one key in a section are refused, since a reaction names its article by section and key", async () => {
+  // Given: the same article key twice in one section, of either kind.
+  const twice = [
+    morning([articles("domestic", "Domestic", [article("a", "First story"), article("a", "Second story")])]),
+    morning([messages("inbox", "Inbox", [message("m", "첫 메일"), message("m", "둘째 메일")])]),
+  ];
+  // Then: each upload is refused and nothing is stored.
+  for (const body of twice) {
+    const response = await f.call("/api/v1/digests", "POST", body, bearer("omo"));
+    expect([response.status, await errorCode(response)]).toEqual([400, "invalid_input"]);
+  }
+  expect(list.parse(await (await f.call("/api/v1/digests?from=2026-09-01&to=2026-10-31", "GET", undefined, await f.login())).json()).items).toEqual([]);
+  // And: one key in two different sections is still fine.
+  await upload(morning([articles("domestic", "Domestic", [article("a", "국내 소식")]), articles("world", "World", [article("a", "해외 소식")])]));
+});
+
+test("A section sent again under another kind is new to read in that part", async () => {
+  // Given: a section first sent as articles, which the owner reads.
+  const am = await upload(morning([articles("inbox", "Inbox", [article("a", "잘못 보낸 소식")])]));
+  const owner = await f.login();
+  await f.call(`/api/v1/digests/${am.digest.id}/read`, "POST", { read: true }, owner);
+  // When: the agent sends the same key again as the messages it should have been.
+  const fixed = await upload(morning([messages("inbox", "Inbox", [message("m1", "새 기기 접속 알림")])]), 200);
+  // Then: the messages are unread, and the articles part, now empty, stays read.
+  expect(fixed.changed).toEqual(["inbox"]);
+  expect(fixed.digest.messagesReadAt).toBeNull();
+  expect(fixed.digest.articlesReadAt).not.toBeNull();
+  const listed = list.parse(await (await f.call("/api/v1/digests?from=2026-10-01&to=2026-10-01", "GET", undefined, owner)).json());
+  expect(listed.parts).toMatchObject({ articles: { unread: 0 }, messages: { unread: 1 } });
 });

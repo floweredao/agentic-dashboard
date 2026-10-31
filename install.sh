@@ -15,6 +15,10 @@ REF="${AGENTIC_DASHBOARD_REF:-main}"
 APP_HOME="${AGENTIC_DASHBOARD_HOME:-$HOME/.agentic-dashboard}"
 BIN_DIR="${AGENTIC_DASHBOARD_BIN_DIR:-$HOME/.local/bin}"
 SOURCE="${AGENTIC_DASHBOARD_SOURCE:-https://codeload.github.com/floweredao/agentic-dashboard/tar.gz/$REF}"
+# The command and the service run from other folders, so relative settings are made absolute here.
+case "$APP_HOME" in /*) ;; *) APP_HOME="$PWD/$APP_HOME" ;; esac
+case "$BIN_DIR" in /*) ;; *) BIN_DIR="$PWD/$BIN_DIR" ;; esac
+export AGENTIC_DASHBOARD_HOME="$APP_HOME"
 COMMAND="$BIN_DIR/agentic-dashboard"
 
 say() { printf '%s\n' "$*"; }

@@ -337,6 +337,12 @@ export const DigestInputSchema = z.object({
     sections.forEach((section, index) => {
       if (seen.has(section.key)) ctx.addIssue({ code: "custom", path: [index, "key"], message: "Section keys must be unique" });
       seen.add(section.key);
+      // A reaction names its article by section and item key, so two items under one key would share it.
+      const keys = new Set<string>();
+      section.items.forEach((item, itemIndex) => {
+        if (keys.has(item.key)) ctx.addIssue({ code: "custom", path: [index, "items", itemIndex, "key"], message: "Item keys must be unique within a section" });
+        keys.add(item.key);
+      });
     });
   }),
   notify: z.boolean().default(true),
