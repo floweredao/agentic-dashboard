@@ -17,7 +17,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function issue(env: Record<string, string>) {
+async function issue(env: Record<string, string>) {
   const dir = mkdtempSync(join(tmpdir(), "agentic-invite-zone-"));
   dirs.push(dir);
   const p = paths({ HOME: dir, AGENTIC_DASHBOARD_HOME: join(dir, ".agentic-dashboard") });
@@ -31,19 +31,19 @@ function issue(env: Record<string, string>) {
   mkdirSync(p.data, { recursive: true });
   const out: string[] = [];
   const write = spyOn(process.stdout, "write").mockImplementation(chunk => { out.push(String(chunk)); return true; });
-  try { invite(p, "laptop"); } finally { write.mockRestore(); }
+  try { (await invite(p, "laptop")); } finally { write.mockRestore(); }
   return out.join("");
 }
 
-test("invite prints the code's expiry in the dashboard's TIME_ZONE, not the host machine's zone", () => {
+test("invite prints the code's expiry in the dashboard's TIME_ZONE, not the host machine's zone", async () => {
   // 23:50 in Seoul (14:50 UTC): the 15-minute code runs out at 00:05 the next day there.
   setSystemTime(new Date("2026-10-23T14:50:00Z"));
-  expect(issue({ TIME_ZONE: "Asia/Seoul" })).toContain("It works once, until 12:05 AM.");
+  expect(await issue({ TIME_ZONE: "Asia/Seoul" })).toContain("It works once, until 12:05 AM.");
 });
 
-test("invite falls back to the host's zone when TIME_ZONE is unset or unknown", () => {
+test("invite falls back to the host's zone when TIME_ZONE is unset or unknown", async () => {
   setSystemTime(new Date("2026-10-23T14:50:00Z"));
-  expect(issue({})).toContain("It works once, until 03:05 PM.");
+  expect(await issue({})).toContain("It works once, until 03:05 PM.");
   setSystemTime(new Date("2026-10-23T14:50:00Z"));
-  expect(issue({ TIME_ZONE: "Mars/Olympus" })).toContain("It works once, until 03:05 PM.");
+  expect(await issue({ TIME_ZONE: "Mars/Olympus" })).toContain("It works once, until 03:05 PM.");
 });
