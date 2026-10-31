@@ -59,7 +59,7 @@ export async function deviceState(): Promise<PushDevice | null> {
  * Asks permission when needed (a tap must start this on iOS), subscribes with the server's key (replacing a subscription
  * made for another key) and stores it on the server. Resolves the stored device, or the reason it could not.
  */
-export async function enablePush(csrfToken: string, kinds?: PushKinds): Promise<PushDevice | "denied" | "unsupported" | "unavailable"> {
+export async function enablePush(csrfToken: string, kinds?: PushKinds, hideContent?: boolean): Promise<PushDevice | "denied" | "unsupported" | "unavailable"> {
   if (pushSupport() !== "supported") return "unsupported";
   const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
   if (permission !== "granted") return "denied";
@@ -71,7 +71,7 @@ export async function enablePush(csrfToken: string, kinds?: PushKinds): Promise<
   // The browser's push service can refuse (AbortError "push service not available"); that is not a server failure.
   try { subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); }
   catch (error) { if (error instanceof DOMException) return "unavailable"; throw error; }
-  return await savePushSubscription(withLocale(subscription, getLocale()), kinds, csrfToken);
+  return await savePushSubscription({ ...withLocale(subscription, getLocale()), ...(hideContent === undefined ? {} : { hideContent }) }, kinds, csrfToken);
 }
 
 /** On every load with permission granted: hand an existing subscription back to the server, keeping its kinds. */

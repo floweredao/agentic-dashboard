@@ -30,12 +30,18 @@ export function zoneOffsetMs(at: number, zone: string): number {
   return local - Math.floor(at / 1000) * 1000;
 }
 
-/** The UTC instant at which local `time` (HH:MM) on `date` (YYYY-MM-DD) happens in `zone`. */
+const DAY_MS = 86_400_000;
+/**
+ * The UTC instant at which local `time` (HH:MM) on `date` (YYYY-MM-DD) happens in `zone`. A time the clocks repeat is its
+ * first occurrence; a time they skip reads as far past the change (00:00 on a day whose clocks jump to 01:00 is 01:00).
+ */
 export function zonedInstant(date: string, time: string, zone: string): number {
-  const guess = Date.parse(`${date}T${time}:00Z`);
-  // Two passes settle the offset even when the guess falls on the other side of a DST change.
-  const first = guess - zoneOffsetMs(guess, zone);
-  return guess - zoneOffsetMs(first, zone);
+  const local = Date.parse(`${date}T${time}:00Z`);
+  // The offsets a day either side; a DST change falls between them at most once.
+  const before = zoneOffsetMs(local - DAY_MS, zone);
+  const after = zoneOffsetMs(local + DAY_MS, zone);
+  const valid = [local - before, local - after].filter(at => zoneOffsetMs(at, zone) === local - at);
+  return valid.length ? Math.min(...valid) : local - before;
 }
 
 export const startOfZonedDay = (at: number, zone: string): number => zonedInstant(zonedDate(new Date(at), zone), "00:00", zone);

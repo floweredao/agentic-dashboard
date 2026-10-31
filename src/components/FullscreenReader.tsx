@@ -19,7 +19,12 @@ export function FullscreenReader({ title, closeLabel, onClose, wide, children }:
     const unlockScroll = lockDocumentScroll();
     element.showModal();
     element.querySelector<HTMLElement>(".reader-fullscreen-close")?.focus({ preventScroll: true });
+    // Sticky content inside (the digest's section bar) stops under the head, whose height grows with text size.
+    const head = element.querySelector<HTMLElement>(".reader-fullscreen-head");
+    const observer = new ResizeObserver(() => element.style.setProperty("--reader-fullscreen-head", `${head?.offsetHeight ?? 0}px`));
+    if (head) observer.observe(head);
     return () => {
+      observer.disconnect();
       element.close();
       unlockScroll();
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });

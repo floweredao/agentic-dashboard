@@ -1,14 +1,14 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { chmodSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { chmodSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { z } from "zod";
 import { createApp } from "../server/app";
 import { CredentialsSchema } from "../server/auth";
 import { bearer, fixture, origin, payload, recordResult, tokens } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 test("extreme nesting returns validation error rather than server error", async () => {
   let nested: unknown = 1;
@@ -18,9 +18,9 @@ test("extreme nesting returns validation error rather than server error", async 
 });
 
 test("credentials generate once with restricted mode and database stores only token hashes", async () => {
-  f.app.close();
+  (await f.app.close());
   unlinkSync(f.options.credentialsPath);
-  const app = createApp(f.options);
+  const app = (await createApp(f.options));
   const first = readFileSync(f.options.credentialsPath, "utf8");
   const credentials = CredentialsSchema.parse(JSON.parse(first));
   expect(Object.values(credentials).every(value => value.length >= 40)).toBe(true);
@@ -31,17 +31,32 @@ test("credentials generate once with restricted mode and database stores only to
     expect(rows.every(row => /^[a-f0-9]{64}$/.test(row.token_hash))).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(credentials.owner);
     expect(db.query("PRAGMA journal_mode").get()).toEqual({ journal_mode: "wal" });
-  } finally { db.close(); app.close(); }
+  } finally { db.close(); (await app.close()); }
   chmodSync(f.options.credentialsPath, 0o644);
-  const restarted = createApp(f.options);
+  const restarted = (await createApp(f.options));
   try {
     expect(readFileSync(f.options.credentialsPath, "utf8")).toBe(first);
     expect(statSync(f.options.credentialsPath).mode & 0o777).toBe(0o600);
-  } finally { restarted.close(); }
+  } finally { (await restarted.close()); }
+});
+
+test("an owner key file that still lists agent keys opens the dashboard as before", async () => {
+  // Given: the single-user predecessor's key file, which kept one key per agent beside the owner's.
+  (await f.app.close());
+  writeFileSync(f.options.credentialsPath, JSON.stringify({ owner: tokens.owner, omo: tokens.omo, codex: tokens.codex }), { mode: 0o600 });
+  const app = (await createApp(f.options));
+  try {
+    // When: the owner signs in with the key from that file.
+    const response = await app.fetch(new Request(`${origin}/api/v1/auth/session`, {
+      method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ token: tokens.owner }),
+    }));
+    // Then: the server started and granted the session; the agent entries are ignored, since agent keys authenticate from their hashes.
+    expect(response.status).toBe(200);
+  } finally { (await app.close()); }
 });
 
 test("session cookies protect HTTP and HTTPS and responses carry restrictive headers", async () => {
-  const secure = fixture(10000, Date.now, { privateOrigin: "https://dashboard.example.test" });
+  const secure = (await fixture(10000, Date.now, { privateOrigin: "https://dashboard.example.test" }));
   try {
   for (const [app, requestOrigin] of [[f, origin], [secure, "https://dashboard.example.test"]] as const) {
     const response = await app.call("/api/v1/auth/session", "POST", { token: tokens.owner }, { Origin: requestOrigin });
@@ -58,7 +73,7 @@ test("session cookies protect HTTP and HTTPS and responses carry restrictive hea
     expect(policy["img-src"]).toEqual(["'self'", "data:", "blob:", "https:"]);
     expect(policy["script-src"]).toEqual(["'self'"]);
   }
-  } finally { secure.close(); }
+  } finally { (await secure.close()); }
 });
 
 test("filters select archived, review, project, status and exclude archived by default", async () => {
