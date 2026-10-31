@@ -98,7 +98,7 @@ test("Items read as a list: an update prefix becomes one tag, the summary splits
   // The source is named once, in the meta line; no host line under the item.
   expect(await scan(html, "#item-local-a .digest-card-meta")).toEqual(["01Daily · 오전 7:04"]);
   expect(html).not.toContain("digest-card-foot");
-  expect(await scan(html, ".message-action")).toEqual(["바로 확인", "본인인지 확인"]);
+  expect(await scan(html, ".message-action")).toEqual([]);
   expect(await scan(html, ".digest-end")).toEqual(["다이제스트 끝 · 3건"]);
   // The section bar holds the section tabs, the first one current, and 제목만 보기 (off).
   expect(await scan(html, ".digest-bar .digest-jump .digest-tab")).toEqual(["Local1", "Inbox2"]);
@@ -116,11 +116,11 @@ test("The section bar is one row: section tabs with a count badge, then 제목�
   expect(html).not.toContain('class="chip');
 });
 
-test("Titles only hides every summary and keeps titles, sources and what each message asks to do; the choice is kept on this device", async () => {
+test("Titles only hides every summary and keeps titles and sources without message action lines; the choice is kept on this device", async () => {
   const html = renderView("titles");
   expect(await scan(html, ".digest-card-summary")).toEqual([]);
   expect(await scan(html, ".digest-card-title")).toEqual(["업데이트국내 첫 소식", "계정 확인", "접속 알림"]);
-  expect(await scan(html, ".message-action")).toEqual(["바로 확인", "본인인지 확인"]);
+  expect(await scan(html, ".message-action")).toEqual([]);
   expect(html).toContain('<button type="button" class="icon-btn digest-density" aria-pressed="true" aria-label="제목만 보기" title="제목만 보기">');
   expect(html).toContain('class="reader digest titles"');
   expect(DENSITY_KEY).toBe("agentic:digest-density");
@@ -134,6 +134,19 @@ test("The update tag, the titles-only toggle and the end line read in English wh
     expect(html).toContain('class="icon-btn digest-density" aria-pressed="false" aria-label="Titles only" title="Titles only"');
     expect(await scan(html, ".digest-end")).toEqual(["End of digest · 3 items"]);
   } finally { applyLocale("ko"); }
+});
+
+test("message action lines are omitted from both reading densities", async () => {
+  for (const density of ["summary", "titles"] as const) {
+    const html = renderView(density);
+    expect(await scan(html, ".message-action")).toEqual([]);
+    expect(html).not.toContain("본인인지 확인");
+  }
+});
+
+test("digest detail offers full screen beside its actions", () => {
+  const html = renderView();
+  expect(html).toMatch(/<button[^>]*reader-fullscreen-button[^>]*aria-label="전체화면"/);
 });
 
 test("splitUpdate takes an update prefix off the front in either language; splitLede cuts at the first sentence end", () => {
