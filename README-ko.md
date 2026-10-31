@@ -68,7 +68,7 @@ Bun이 없으면 설치하고 앱을 `~/.agentic-dashboard`, 명령을 `~/.local
 
 ### 저장소에서 실행
 
-Bun 1.3 이상이 필요합니다.
+macOS나 Linux에서 [Bun](https://bun.sh) 1.3 이상과 git이 필요합니다. ffmpeg는 선택이며 오디오 파일을 작게 만듭니다.
 
 ```sh
 git clone https://github.com/floweredao/agentic-dashboard.git
@@ -158,7 +158,34 @@ bun run agent --digest digest.json
 
 ## 설정과 보안
 
-로컬에서는 `.env.example`을 `.env`로 복사합니다. Bun이 자동으로 읽습니다. 기본값은 `AUTH_MODE=local`, `HOST=127.0.0.1`, `PORT=4310`, `DATA_DIR=data`입니다. 외부로 노출하기 전에 `APP_ORIGIN`을 정확한 HTTPS origin으로 설정하세요.
+로컬에서는 `.env.example`을 `.env`로 복사합니다. Bun이 자동으로 읽습니다. 로컬 설치에서는 모든 설정이 선택입니다. 외부로 노출하기 전에 `APP_ORIGIN`을 정확한 HTTPS origin으로 설정하세요.
+
+| 변수 | 기본값 | 역할 |
+|---|---|---|
+| `HOST`, `PORT` | `127.0.0.1`, `4310` | 대시보드가 듣는 주소 |
+| `AUTH_MODE` | `local` | `local`(소유자 키) 또는 `google`(호스팅 계정) |
+| `APP_ORIGIN` | `http://127.0.0.1:<PORT>` | 사람들이 여는 정확한 origin |
+| `APP_NAME` | `Agentic Dashboard` | 표시 이름, 최대 60자 |
+| `DATA_DIR` | `data` | 데이터베이스, 소유자 키, 푸시 키, 오디오 |
+| `DATABASE_PATH`, `CREDENTIALS_PATH`, `AUDIO_DIR` | `DATA_DIR/dashboard.sqlite`, `DATA_DIR/credentials.json`, 데이터베이스 옆 `audio` | 개별 경로 덮어쓰기 |
+| `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | 없음(로컬 SQLite) | 선택형 libSQL 백엔드 |
+| `STATIC_DIR` | `dist` | 빌드된 웹 앱 |
+| `TIME_ZONE` | 호스트 시간대 | 날짜, 다이제스트, 일일 한도에 쓰는 IANA 시간대 |
+| `LOCALE` | `en` | 푸시 알림 언어(`en` 또는 `ko`) |
+| `TRUSTED_USER_HEADER`, `OWNER_LOGIN` | 없음 | 신원 확인 프록시를 통한 로그인, 둘 다 설정하거나 둘 다 비움 |
+| `PUSH`, `VAPID_PATH`, `VAPID_SUBJECT` | `on`, `DATA_DIR/vapid.json`, HTTPS origin 또는 `mailto:admin@localhost` | 웹 푸시 |
+| `DIGEST` | `on` | 다이제스트 업로드와 다이제스트 탭 |
+| `NARRATION`, `GEMINI_API_KEY` | `on`, 없음 | 듣기, 오디오를 만들려면 키나 Vertex가 필요 |
+| `NARRATION_VOICE`, `NARRATION_PODCAST_VOICE` | `Kore`, `Puck` | 기본 음성 |
+| `NARRATION_RECORD_AUTO`, `NARRATION_DIGEST_AUTO` | `read`, `off` | 기록과 다이제스트 자동 오디오 |
+| `NARRATION_DAILY_LIMIT`, `NARRATION_GLOBAL_DAILY_LIMIT`, `NARRATION_CONCURRENCY` | `20`, `60`, `2` | 오디오 생성 한도 |
+| `NARRATION_TTS_PROVIDER`, `NARRATION_VERTEX_PROJECT`, `NARRATION_VERTEX_LOCATION` | `gemini`, 없음, `global` | 키 대신 Vertex AI 사용 |
+| `AI_FILL_COMMAND`, `AI_FILL_SOURCES` | 없음 | 수집한 링크 제목을 다듬는 로컬 명령 |
+| `ENABLE_AGENT_INGRESS`, `AGENT_PORT`, `PUBLIC_API_BASE_URL` | `off`, `4312`, 없음 | 127.0.0.1의 에이전트 전용 리스너 |
+| `ENABLE_MCP`, `MCP_PORT`, `MCP_AGENT` | `off`, `4313`, 없음 | 로컬 MCP 리스너, 등록된 에이전트 이름 필요 |
+| `DEMO` | `off` | 읽기 전용 공개 데모 |
+
+호스팅 전용 설정(`APP_SECRETS`, `MAX_USERS`, `CONTACT_EMAIL`, 프록시 신뢰, Cloud Tasks 등)과 모델 이름 덮어쓰기는 [런타임 환경 변수 목록](docs/hosted-auth.md#runtime-environment-reference)에 있습니다. 서버는 시작할 때 설정 전체를 검사하고, 잘못된 값이 있으면 메시지를 출력하고 종료합니다.
 
 로컬 오디오는 `GEMINI_API_KEY` 또는 선택형 Vertex·공급자 설정을 사용합니다. 호스팅 오디오는 계정별 암호화 개인 키를 사용하며 자동 생성은 처음에 꺼져 있습니다. 모드별 설정은 [호스팅 인증](docs/hosted-auth.md), [배포](docs/deploy.md), [.env.example](.env.example)에 있습니다. 공급자 키·자격 증명·데이터 폴더·비공개 백업은 커밋하지 마세요.
 

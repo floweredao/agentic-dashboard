@@ -1,6 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 export type Hit = { entry: string; where: string };
 
@@ -41,8 +39,8 @@ export function scanRepository(repo: string, entries: string[]): Hit[] {
 }
 
 if (import.meta.main) {
-  const path = process.env.PRIVACY_DENYLIST ?? join(homedir(), ".config", "dash-web", "denylist.txt");
-  const entries = readDenylist(path);
+  const path = process.env.PRIVACY_DENYLIST;
+  const entries = path ? readDenylist(path) : null;
   if (entries === null) {
     console.log("privacy-scan: no denylist, skipped");
     process.exit(0);
