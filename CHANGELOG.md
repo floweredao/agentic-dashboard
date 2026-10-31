@@ -10,6 +10,7 @@
 - Separate Vertex and key script models, improve listening scripts, remove work logs and source lists, and add ffmpeg encoding plus portable storage documentation.
 - Call the app Agentic Dashboard everywhere users see a name (push titles, export file and its README, terms), and fix phone layout: tab badges on the glyph corner, one-line digest filter, a one-row reader toolbar, the full sidebar name and settings cards on the page gutter.
 - `--briefing` reads the digest date and slot in `--time-zone`, `TIME_ZONE` or the computer's own zone instead of a fixed UTC+09:00.
+- The agent token dialog starts with `codex` and offers a `claude-code` preset beside `chatgpt` and `omo`.
 - Rewrite both READMEs around what the app does and why, with fresh desktop and phone screenshots of the fixed layout, and add the Google OAuth client steps.
 
 All notable changes to this project are documented here.

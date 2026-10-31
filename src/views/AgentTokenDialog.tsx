@@ -11,7 +11,7 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
 }) {
   const t = agentText();
   const { csrfToken } = useCredentials();
-  const [name, setName] = useState("omo");
+  const [name, setName] = useState("codex");
   const [capture, setCapture] = useState(false);
   const [issued, setIssued] = useState(initial);
   const [invitation, setInvitation] = useState<Awaited<ReturnType<typeof inviteAgent>> | null>(null);
@@ -45,9 +45,9 @@ export function AgentTokenDialog({ initial, onClose, onChanged }: {
       {!issued && !invitation && <form className="account-stack" onSubmit={event => {
         event.preventDefault(); void run(async () => { setIssued(await createAgent({ name, capture }, csrfToken)); await onChanged(); });
       }}>
-        <label className="field"><span>{t.preset}</span><select value={["omo", "codex", "chatgpt"].includes(name) ? name : "custom"}
+        <label className="field"><span>{t.preset}</span><select value={["codex", "claude-code", "chatgpt", "omo"].includes(name) ? name : "custom"}
           onChange={event => setName(event.target.value === "custom" ? "" : event.target.value)}>
-          {["omo", "codex", "chatgpt"].map(preset => <option key={preset} value={preset}>{preset}</option>)}<option value="custom">{t.custom}</option>
+          {["codex", "claude-code", "chatgpt", "omo"].map(preset => <option key={preset} value={preset}>{preset}</option>)}<option value="custom">{t.custom}</option>
         </select></label>
         <label className="field"><span>{t.name}</span><input value={name} onChange={event => setName(event.target.value)}
           pattern="[a-z][a-z0-9-]{0,31}" maxLength={32} required autoComplete="off" /></label>
