@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { NarrationAutoSchema, NarrationVoicesSchema } from "../shared/contracts";
@@ -95,11 +95,19 @@ export function createNarrationSettings(options: NarrationOptions) {
         throw error;
       }
       mkdirSync(previewDir, { recursive: true, mode: 0o700 });
-      const part = join(previewDir, `${voice}.wav`);
-      writeFileSync(part, wav(pcm), { mode: 0o600 });
-      const encoded = await encode(part, AbortSignal.timeout(timeoutMs));
-      chmodSync(encoded.path, 0o600);
-      return encoded;
+      // Written and encoded under a part name and renamed when whole, so a half-written or failed sample is never served.
+      const part = join(previewDir, `${voice}.part.wav`);
+      try {
+        writeFileSync(part, wav(pcm), { mode: 0o600 });
+        const encoded = await encode(part, AbortSignal.timeout(timeoutMs));
+        const path = join(previewDir, `${voice}.${encoded.mime === "audio/wav" ? "wav" : "m4a"}`);
+        renameSync(encoded.path, path);
+        chmodSync(path, 0o600);
+        return { path, mime: encoded.mime };
+      } finally {
+        rmSync(part, { force: true });
+        rmSync(part.replace(/\.wav$/, ".m4a"), { force: true });
+      }
     })().finally(() => previews.delete(voice));
     previews.set(voice, made);
     return made;
