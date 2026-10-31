@@ -60,10 +60,10 @@ test("the reader hides the version and shows legacy fields only when filled", ()
   expect(html).not.toContain("<h3>더 알아볼 점</h3>");
   expect(html).not.toMatch(/v3\b/);
   expect(html).toContain("저장 9월 28일</p>");
-  // And: the secondary commands sit behind one menu button.
+  // And: the other secondary commands sit behind one menu button (7일 뒤 다시 보기 also has its own button in the bar).
   expect(html).toContain('aria-haspopup="menu"');
   expect(html).toContain('aria-expanded="false"');
-  expect(html).not.toContain("7일 뒤");
+  expect(html).not.toContain("후속 할 일");
 });
 
 test("the reader shows the edit date only when it falls on another Seoul day", () => {
@@ -97,7 +97,7 @@ test("the reader lists links by address and names a finished confirmation", () =
   // And: every link is a whole-card block opening in a new tab, followed by the inline 링크 추가 button.
   expect(html.match(/<a class="link-card" href="https:\/\/example\.(com|net)[^"]*" target="_blank" rel="noopener noreferrer">/g)).toHaveLength(2);
   expect(html).toMatch(/<button[^>]*inline-add[^>]*>.*?링크 추가<\/button>/);
-  expect(html).toMatch(/disabled=""[^>]*>.*?확인함<\/button>/);
+  expect(html).toMatch(/disabled=""[^>]*>.*?<span class="btn-label">확인함<\/span><\/button>/);
 });
 
 test("task rows show status and due date without the channel and kind", async () => {
@@ -140,6 +140,24 @@ test("a task shows its timeline with each owner comment's state, and its row cou
   expect(row).toContain("답 대기 2");
 });
 
+test("a reply to a reply shows in its thread, under the owner comment it started from, in the order it came", () => {
+  // Given: an owner comment, OmO's reply, and OmO's follow-up sent as a reply to that reply (bun run agent --reply <reply-id>).
+  const task = make({ kind: "task", status: "active", source: "omo", createdBy: "omo", reviewState: "pending", title: "작업" });
+  const entry = (id: string, patch: Record<string, unknown>) => ({ id: `00000000-0000-4000-8000-0000000003${id}`, recordId: task.id,
+    author: "owner", source: "manual" as const, body: "", replyTo: null, status: null, createdAt: "2026-09-28T03:00:00Z",
+    seenAt: null, seenBy: null, doneAt: null, doneBy: null, ...patch });
+  const comments = [
+    entry("01", { body: "배포해 줘" }),
+    entry("02", { author: "omo", source: "omo", body: "준비할게요", replyTo: "00000000-0000-4000-8000-000000000301", createdAt: "2026-09-28T03:01:00Z" }),
+    entry("03", { author: "omo", source: "omo", body: "배포 끝났어요", replyTo: "00000000-0000-4000-8000-000000000302", createdAt: "2026-09-28T03:02:00Z" }),
+  ];
+  // When: its reader is rendered.
+  const reader = renderToStaticMarkup(
+    <DashboardContext.Provider value={fakeDashboard([task], { view: "work", id: task.id }, { comments })}><Reader record={task} /></DashboardContext.Provider>);
+  // Then: the follow-up is there too, after the first reply in the same thread.
+  expect(reader).toMatch(/배포해 줘[\s\S]*class="timeline-replies"[\s\S]*준비할게요[\s\S]*배포 끝났어요/);
+});
+
 test("an empty search offers to clear it", () => {
   const html = renderToStaticMarkup(<DashboardContext.Provider value={fakeDashboard([make({ reviewState: "approved" })], { view: "library", params: { q: "zzzz" } })}>
     <LibraryPane />
@@ -154,7 +172,7 @@ test("a pending item's primary button reads 확인 for every material kind", () 
   const report = withDashboard(<Reader record={make({ reviewState: "pending" })} />);
   // Then: both use the one vocabulary, with no read/unread wording or check mark.
   for (const html of [link, report]) {
-    expect(html).toMatch(/<button[^>]*btn-primary[^>]*>확인<\/button>/);
+    expect(html).toMatch(/<button[^>]*btn-primary[^>]*><span class="btn-label">확인<\/span><\/button>/);
     expect(html).toContain("미확인</span>");
     expect(html).not.toContain("읽음");
   }
@@ -167,7 +185,7 @@ test("an approved record with a due revisit keeps 확인함 and shows the separa
   expect(html).toContain(">확인함</span>");
   expect(html).toContain(">다시 볼 날</span>");
   expect(html).toMatch(/<button[^>]*>.*?다시 봤어요<\/button>/);
-  expect(html).toMatch(/disabled=""[^>]*>.*?확인함<\/button>/);
+  expect(html).toMatch(/disabled=""[^>]*>.*?<span class="btn-label">확인함<\/span><\/button>/);
 });
 
 test("Full screen shows only its icon, named for assistive tech and the pointer tooltip", () => {

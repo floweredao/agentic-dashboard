@@ -112,3 +112,37 @@ test("bare URLs become external links without trailing punctuation", () => {
   // Then: punctuation stays outside the safe external link.
   expect(out).toBe("<p>참고: <a href=\"https://bun.com/docs\" target=\"_blank\" rel=\"noopener noreferrer\">https://bun.com/docs</a>.</p>");
 });
+
+test("a heading keeps a # that ends a word and drops only a closing run after a space", () => {
+  // Given: headings about C# and F#, one with a closing run of # and one that is only a closing run.
+  // When/Then: the # in a word stays, the closing run goes.
+  expect(html("# C# 비동기 정리")).toBe("<h3>C# 비동기 정리</h3>");
+  expect(html("## F#")).toBe("<h3>F#</h3>");
+  expect(html("### 결론 ###")).toBe("<h4>결론</h4>");
+  expect(html("# #")).toBe("<h3></h3>");
+});
+
+test("an ordered list that starts at 0 keeps its start", () => {
+  // Given / When: a zero-based step list and one that starts at 3.
+  // Then: each list starts where its first item does.
+  expect(html("0. 준비\n1. 실행")).toBe("<ol start=\"0\"><li>준비</li><li>실행</li></ol>");
+  expect(html("3. 셋\n4. 넷")).toBe("<ol start=\"3\"><li>셋</li><li>넷</li></ol>");
+});
+
+test("a fence line with an info string inside a code block is code, and only a bare fence closes it", () => {
+  // Given: a Markdown example in a code block that shows its own fenced block, and a longer outer fence.
+  const out = html("```\n예시:\n```js\nconst a = 1;\n```\n\n뒤 문단");
+  const longer = html("````md\n```\n안쪽\n```\n````");
+  // Then: the inner fence lines stay inside the block and the text after it is a paragraph.
+  expect(out).toBe("<pre><code>예시:\n```js\nconst a = 1;</code></pre><p>뒤 문단</p>");
+  expect(longer).toBe("<pre data-lang=\"md\"><code>```\n안쪽\n```</code></pre>");
+});
+
+test("links whose address holds balanced parentheses keep the whole address", () => {
+  // Given: a Markdown link and a bare URL to a Wikipedia-style page, and a bare URL closed by a parenthesis.
+  const out = html("[위키](https://en.wikipedia.org/wiki/Bun_(software)) https://en.wikipedia.org/wiki/Mercury_(planet). (https://example.com/a)");
+  // Then: both page addresses are whole, and a parenthesis around a URL stays outside it.
+  expect(out).toContain("<a href=\"https://en.wikipedia.org/wiki/Bun_(software)\" target=\"_blank\" rel=\"noopener noreferrer\">위키</a> ");
+  expect(out).toContain("<a href=\"https://en.wikipedia.org/wiki/Mercury_(planet)\" target=\"_blank\" rel=\"noopener noreferrer\">https://en.wikipedia.org/wiki/Mercury_(planet)</a>. ");
+  expect(out).toContain("(<a href=\"https://example.com/a\" target=\"_blank\" rel=\"noopener noreferrer\">https://example.com/a</a>)</p>");
+});

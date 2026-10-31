@@ -2,9 +2,9 @@ import { afterAll, afterEach, expect, test } from "bun:test";
 import { z } from "zod";
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
-let f = fixture();
-afterEach(() => { f.close(); f = fixture(); });
-afterAll(() => f.close());
+let f = (await fixture());
+afterEach(async () => { (await f.close()); f = (await fixture()); });
+afterAll(async () => (await f.close()));
 
 const errorBody = z.object({ error: z.object({ code: z.string(), message: z.string() }) });
 const listBody = z.object({ items: z.array(recordResult.shape.record), nextCursor: z.string().nullable() });

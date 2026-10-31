@@ -30,7 +30,7 @@ async function connectCommand() {
     "key-store": { type: "string" }, skills: { type: "string" }, yes: { type: "boolean", short: "y" },
   } });
   const keyStore = values["key-store"];
-  if (keyStore !== undefined && keyStore !== "keychain" && keyStore !== "file") throw new CliError("--key-store is keychain or file");
+  if (keyStore !== undefined && keyStore !== "keychain" && keyStore !== "file") throw new CliError(t("connectKeyStoreInvalid"));
   await connect(p, { url: str(values.url), code: str(values.code), agent: str(values.agent), keyStdin: values["key-stdin"] === true,
     keyStore, skills: str(values.skills), yes: values.yes === true });
 }

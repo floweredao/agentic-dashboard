@@ -12,9 +12,9 @@ const origin = "http://127.0.0.1:4310";
 const options = { databasePath: join(dir, "db.sqlite"), credentialsPath: join(dir, "credentials.json"), staticRoot: join(dir, "dist") };
 mkdirSync(options.staticRoot);
 writeFileSync(join(options.staticRoot, "index.html"), "<!doctype html><html><body>static-root-smoke</body></html>");
-let app = createApp(options);
+let app = (await createApp(options));
 const agentKeys = { chatgpt: secret(), codex: secret(), omo: secret() };
-for (const [name, key] of Object.entries(agentKeys)) app.agents.add(name, key);
+for (const [name, key] of Object.entries(agentKeys)) (await app.agents.add(name, key));
 let server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.fetch });
 const ingress = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.publicFetch });
 const credentials = CredentialsSchema.parse(JSON.parse(readFileSync(options.credentialsPath, "utf8")));
@@ -71,8 +71,8 @@ try {
   assert.equal((await request("/api/v1/records?archived=all", { headers: ownerHeaders })).response.status, 200);
   await server.stop(true);
   await ingress.stop(true);
-  app.close();
-  app = createApp(options);
+  (await app.close());
+  app = (await createApp(options));
   server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.fetch });
   const restart = await request(`/api/v1/records/${first.record.id}`, { headers: ownerHeaders });
   assert.equal(restart.response.status, 200);
@@ -112,7 +112,7 @@ try {
 } finally {
   await server.stop(true);
   await ingress.stop(true);
-  app.close();
+  (await app.close());
   rmSync(dir, { recursive: true, force: true });
   assert.equal(existsSync(dir), false);
   console.log(`cleanup: both ephemeral listeners stopped; database, credentials and static fixture removed (${dir}).`);

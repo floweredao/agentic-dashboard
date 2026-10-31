@@ -107,7 +107,8 @@ export function createPlayback({ read, write, remove, media }: Partial<Storage> 
     pause: () => {
       set({ playing: false });
       if (session) session.playbackState = "paused";
-      if (element) save(element.currentTime);
+      // A browser delivers the pause after start() has moved on; until the new file's length is known its time is not a position.
+      if (element && pendingAt === null) save(element.currentTime);
     },
     timeupdate: () => {
       if (!element || !state.track) return;
@@ -185,7 +186,11 @@ export function createPlayback({ read, write, remove, media }: Partial<Storage> 
         if (autoplay) play();
         return;
       }
-      if (!element.paused) element.pause();
+      if (!element.paused) {
+        // Saved here: the pause event arrives only after the switch.
+        if (pendingAt === null) save(element.currentTime);
+        element.pause();
+      }
       pendingAt = at ?? savedPosition(track.recordId, track.src, storage.read);
       savedAt = pendingAt;
       set({ track, playing: false, time: pendingAt, duration: track.durationMs / 1000, shown: shownFor(track) });

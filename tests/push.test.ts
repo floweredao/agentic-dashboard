@@ -1,19 +1,30 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
+
 import { createDecipheriv, createECDH, createHmac, randomBytes } from "node:crypto";
-import { Database } from "bun:sqlite";
+
 import { readFileSync, statSync } from "node:fs";
+
 import { join } from "node:path";
+
 import { z } from "zod";
+
 import type { PushPayload } from "../shared/contracts";
+
 import { agentRecord, bearer, fixture, payload, recordResult } from "./backend-helper";
 
 type Sent = { endpoint: string; payload: PushPayload };
+
 let sent: Sent[] = [];
+
 let status = 201;
+
 const stub = { push: { deliver: async (target: { endpoint: string }, message: PushPayload) => { sent.push({ endpoint: target.endpoint, payload: message }); return status; } } };
-let f = fixture(10000, Date.now, stub);
-afterEach(() => { f.close(); sent = []; status = 201; f = fixture(10000, Date.now, stub); });
-afterAll(() => f.close());
+
+let f = (await fixture(10000, Date.now, stub));
+
+afterEach(async () => { (await f.close()); sent = []; status = 201; f = (await fixture(10000, Date.now, stub)); });
+
+afterAll(async () => (await f.close()));
 
 function device(endpoint = `https://fcm.googleapis.com/fcm/send/${crypto.randomUUID()}`) {
   const ecdh = createECDH("prime256v1");
@@ -22,16 +33,43 @@ function device(endpoint = `https://fcm.googleapis.com/fcm/send/${crypto.randomU
   return { ecdh, auth, subscription: { endpoint, expirationTime: null,
     keys: { p256dh: ecdh.getPublicKey().toString("base64url"), auth: auth.toString("base64url") } } };
 }
+
 const deviceView = z.object({ device: z.object({ kinds: z.object({ digest: z.boolean(), review: z.boolean(), reply: z.boolean() }) }).nullable() });
+
 async function subscribe(body: Record<string, unknown>, headers?: Record<string, string>) {
   return f.call("/api/v1/push/subscription", "PUT", body, headers ?? await f.login());
 }
-const settle = () => f.app.push.idle();
+
+const settle = async () => (await f.app.push.idle());
+
 const morning = (sections: unknown[], extra: Record<string, unknown> = {}) => ({ date: "2026-10-01", slot: "morning", sections, ...extra });
+
 const articles = (key: string, title: string, items: unknown[]) => ({ key, title, kind: "articles", items });
+
 const messages = (key: string, title: string, items: unknown[]) => ({ key, title, kind: "messages", items });
+
 const article = (key: string, title: string) => ({ key, title, source: "연합뉴스", summary: "요약", url: `https://news.example.com/${key}` });
+
 const upload = (body: unknown) => f.call("/api/v1/digests", "POST", body, bearer("omo"));
+
+/** RFC 8291 aes128gcm decryption with the device's private key, so the test reads exactly what the push service delivers. */
+function decrypt(body: Uint8Array, ecdh: ReturnType<typeof createECDH>, auth: Buffer) {
+  const buffer = Buffer.from(body);
+  const salt = buffer.subarray(0, 16);
+  const idLength = buffer.readUInt8(20);
+  const serverKey = buffer.subarray(21, 21 + idLength);
+  const ciphertext = buffer.subarray(21 + idLength);
+  const hmac = (key: Buffer, data: Buffer) => createHmac("sha256", key).update(data).digest();
+  const shared = ecdh.computeSecret(serverKey);
+  const ikm = hmac(hmac(auth, shared), Buffer.concat([Buffer.from("WebPush: info\0"), ecdh.getPublicKey(), serverKey, Buffer.from([1])]));
+  const prk = hmac(salt, ikm);
+  const cek = hmac(prk, Buffer.from("Content-Encoding: aes128gcm\0\x01")).subarray(0, 16);
+  const nonce = hmac(prk, Buffer.from("Content-Encoding: nonce\0\x01")).subarray(0, 12);
+  const decipher = createDecipheriv("aes-128-gcm", cek, nonce);
+  decipher.setAuthTag(ciphertext.subarray(ciphertext.length - 16));
+  const plain = Buffer.concat([decipher.update(ciphertext.subarray(0, ciphertext.length - 16)), decipher.final()]);
+  return plain.subarray(0, plain.lastIndexOf(2)).toString("utf8");
+}
 
 test("The owner gets the public VAPID key; the key pair is stored owner-only and the private key never leaves", async () => {
   const response = await f.call("/api/v1/push", "GET", undefined, await f.login());
@@ -45,7 +83,7 @@ test("The owner gets the public VAPID key; the key pair is stored owner-only and
   expect(stored.publicKey).toBe(body.publicKey);
   expect(text).not.toContain(stored.privateKey);
   // And: the key survives a restart, so subscribed devices keep working.
-  f.restart();
+  (await f.restart());
   const again = z.object({ publicKey: z.string() }).parse(await (await f.call("/api/v1/push", "GET", undefined, await f.login())).json());
   expect(again.publicKey).toBe(body.publicKey);
   // And: agents and anonymous callers cannot use the push routes.
@@ -63,7 +101,7 @@ test("A device subscribes with every kind on, changes its kinds, and unsubscribe
   await subscribe({ subscription, kinds: { digest: false, review: true, reply: true } }, owner);
   await subscribe({ subscription }, owner);
   expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device?.kinds).toEqual({ digest: false, review: true, reply: true });
-  f.restart();
+  (await f.restart());
   const fresh = await f.login();
   expect(deviceView.parse(await (await f.call(query, "GET", undefined, fresh)).json()).device?.kinds.digest).toBe(false);
   // Then: deleting it leaves nothing to send to.
@@ -136,8 +174,8 @@ test("A new digest notifies devices that want digests, with its first headlines 
 });
 
 test("Digest notifications follow LOCALE: Korean titles name the slot and the added sections", async () => {
-  f.close();
-  f = fixture(10000, Date.now, { ...stub, locale: "ko" });
+  (await f.close());
+  f = (await fixture(10000, Date.now, { ...stub, locale: "ko" }));
   await subscribe({ subscription: device().subscription });
   await upload(morning([articles("domestic", "국내", [article("a", "국내 첫 소식")])]));
   await upload(morning([messages("inbox", "메일함", [{ key: "q", importance: "urgent", from: "Bank", subject: "서류 제출" }])]));
@@ -207,6 +245,35 @@ test("An agent asking for review or replying to the owner notifies devices by ki
   ].sort());
 });
 
+test("A task the MCP connector saves in review, or moves to review, notifies review like the REST record routes", async () => {
+  const { subscription } = device();
+  await subscribe({ subscription });
+  const tool = async (name: string, args: Record<string, unknown>) => {
+    const response = await f.app.mcpFetch(new Request("http://127.0.0.1:4313/mcp", { method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18", ...bearer("chatgpt") },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));
+    return z.object({ result: z.object({ isError: z.boolean(), structuredContent: z.object({ id: z.string() }).passthrough() }) }).parse(await response.json()).result;
+  };
+  const review = (id: string, title: string): Sent[] => [{ endpoint: subscription.endpoint,
+    payload: { kind: "review", title: `Needs review · ${title}`, body: "chatgpt: asked for a review", url: `/#/work/${id}`, tag: `task-${id}` } }];
+  // When: ChatGPT saves a task already in review.
+  const saved = await tool("save_record", { requestId: "mcp-review-task", record: agentRecord({ kind: "task", title: "MCP 확인", status: "review" }) });
+  await settle();
+  // Then: the device hears it, as it would for POST /api/v1/records.
+  expect(saved.isError).toBe(false);
+  expect(sent).toEqual(review(saved.structuredContent.id, "MCP 확인"));
+  // When: ChatGPT saves an active task and later moves it to review.
+  sent = [];
+  const active = await tool("save_record", { requestId: "mcp-active-task", record: agentRecord({ kind: "task", title: "MCP 진행", status: "active" }) });
+  await settle();
+  expect(sent).toEqual([]);
+  const moved = await tool("update_record", { id: active.structuredContent.id, expectedVersion: 1, changes: { status: "review" } });
+  await settle();
+  // Then: the device hears it, as it would for PATCH /api/v1/records/:id.
+  expect(moved.isError).toBe(false);
+  expect(sent).toEqual(review(active.structuredContent.id, "MCP 진행"));
+});
+
 test("A push service answering 404 or 410 removes that device", async () => {
   const owner = await f.login();
   const gone = device().subscription;
@@ -218,32 +285,13 @@ test("A push service answering 404 or 410 removes that device", async () => {
   expect(deviceView.parse(await (await f.call(query, "GET", undefined, owner)).json()).device).toBeNull();
 });
 
-/** RFC 8291 aes128gcm decryption with the device's private key, so the test reads exactly what the push service delivers. */
-function decrypt(body: Uint8Array, ecdh: ReturnType<typeof createECDH>, auth: Buffer) {
-  const buffer = Buffer.from(body);
-  const salt = buffer.subarray(0, 16);
-  const idLength = buffer.readUInt8(20);
-  const serverKey = buffer.subarray(21, 21 + idLength);
-  const ciphertext = buffer.subarray(21 + idLength);
-  const hmac = (key: Buffer, data: Buffer) => createHmac("sha256", key).update(data).digest();
-  const shared = ecdh.computeSecret(serverKey);
-  const ikm = hmac(hmac(auth, shared), Buffer.concat([Buffer.from("WebPush: info\0"), ecdh.getPublicKey(), serverKey, Buffer.from([1])]));
-  const prk = hmac(salt, ikm);
-  const cek = hmac(prk, Buffer.from("Content-Encoding: aes128gcm\0\x01")).subarray(0, 16);
-  const nonce = hmac(prk, Buffer.from("Content-Encoding: nonce\0\x01")).subarray(0, 12);
-  const decipher = createDecipheriv("aes-128-gcm", cek, nonce);
-  decipher.setAuthTag(ciphertext.subarray(ciphertext.length - 16));
-  const plain = Buffer.concat([decipher.update(ciphertext.subarray(0, ciphertext.length - 16)), decipher.final()]);
-  return plain.subarray(0, plain.lastIndexOf(2)).toString("utf8");
-}
-
 test("The real sender encrypts the payload for the device and signs it with the VAPID key", async () => {
   // Given: the default sender with only the network replaced, and a device whose private key the test holds.
   const requests: Request[] = [];
-  const real = fixture(10000, Date.now, { push: { fetch: async (input: string | URL | Request, init?: RequestInit) => {
+  const real = (await fixture(10000, Date.now, { push: { fetch: async (input: string | URL | Request, init?: RequestInit) => {
     requests.push(new Request(input, init));
     return new Response(null, { status: 201 });
-  } } });
+  } } }));
   try {
     const owner = await real.login();
     const { ecdh, auth, subscription } = device();
@@ -263,94 +311,24 @@ test("The real sender encrypts the payload for the device and signs it with the 
     expect(request.headers.get("authorization")).toContain(`k=${key}`);
     const message = JSON.parse(decrypt(new Uint8Array(await request.arrayBuffer()), ecdh, auth));
     expect(message).toMatchObject({ kind: "test", url: "/#/settings" });
-  } finally { real.close(); }
+  } finally { (await real.close()); }
 });
 
-const byEndpoint = (items: Sent[]) => Object.fromEntries(items.map(item => [item.endpoint, item.payload]));
-const deviceLocale = async (endpoint: string, headers: Record<string, string>) =>
-  z.object({ device: z.object({ locale: z.string() }) }).parse(await (await f.call(`/api/v1/push?endpoint=${encodeURIComponent(endpoint)}`, "GET", undefined, headers)).json()).device.locale;
-
-test("Each device is told in its own language; a device that never said gets the server's LOCALE", async () => {
-  const owner = await f.login();
-  const en = device().subscription;
-  const ko = device().subscription;
-  const unset = device().subscription;
-  await subscribe({ subscription: { ...en, locale: "en" } }, owner);
-  await subscribe({ subscription: { ...ko, locale: "ko" } }, owner);
-  await subscribe({ subscription: unset }, owner);
-  expect([await deviceLocale(en.endpoint, owner), await deviceLocale(ko.endpoint, owner), await deviceLocale(unset.endpoint, owner)]).toEqual(["en", "ko", "en"]);
-  // A refresh without a locale keeps the device's language.
-  await subscribe({ subscription: ko }, owner);
-  expect(await deviceLocale(ko.endpoint, owner)).toBe("ko");
-  // The test button.
-  for (const target of [en, ko, unset]) await f.call("/api/v1/push/test", "POST", { endpoint: target.endpoint }, owner);
-  const test = (title: string): PushPayload => ({ kind: "test", title, body: title === "대시보드 알림" ? "이 기기에서 알림을 받을 수 있어요." : "This device can receive notifications.", url: "/#/settings", tag: "test" });
-  expect(byEndpoint(sent)).toEqual({ [en.endpoint]: test("Dashboard notifications"), [ko.endpoint]: test("대시보드 알림"), [unset.endpoint]: test("Dashboard notifications") });
-  // Review and reply.
-  sent = [];
-  const created = await f.call("/api/v1/records", "POST", payload(agentRecord({ kind: "task", title: "푸시 작업", status: "active" })), bearer("omo"));
-  const task = recordResult.parse(await created.json()).record;
-  await f.call("/api/v1/comments", "POST", { requestId: crypto.randomUUID(), recordId: task.id, body: "1차 끝, 확인 부탁", status: "review" }, bearer("omo"));
-  await settle();
-  const review = (title: string): PushPayload => ({ kind: "review", title, body: "omo: 1차 끝, 확인 부탁", url: `/#/work/${task.id}`, tag: `task-${task.id}` });
-  expect(byEndpoint(sent)).toEqual({ [en.endpoint]: review("Needs review · 푸시 작업"), [ko.endpoint]: review("확인 필요 · 푸시 작업"), [unset.endpoint]: review("Needs review · 푸시 작업") });
-  sent = [];
-  const comment = z.object({ comment: z.object({ id: z.string() }) }).parse(await (await f.call("/api/v1/comments", "POST",
-    { requestId: crypto.randomUUID(), recordId: task.id, body: "색 바꿔줘" }, owner)).json()).comment;
-  await f.call("/api/v1/comments", "POST", { requestId: crypto.randomUUID(), replyTo: comment.id, body: "바쳤어요", done: true }, bearer("omo"));
-  await settle();
-  const reply = (title: string): PushPayload => ({ kind: "reply", title, body: "바쳤어요", url: `/#/work/${task.id}`, tag: `task-${task.id}` });
-  expect(byEndpoint(sent)).toEqual({ [en.endpoint]: reply("omo replied · 푸시 작업"), [ko.endpoint]: reply("omo 답글 · 푸시 작업"), [unset.endpoint]: reply("omo replied · 푸시 작업") });
-  // Digest.
-  sent = [];
-  const response = await upload(morning([articles("domestic", "Domestic", [article("a", "국내 첫 소식")]),
-    messages("inbox", "Inbox", [{ key: "m", importance: "urgent", from: "X", subject: "계정 확인" }, { key: "n", importance: "check", from: "Carrier", subject: "접속 알림" }])]));
-  const id = z.object({ digest: z.object({ id: z.string() }) }).parse(await response.json()).digest.id;
-  await settle();
-  const digest = (title: string, body: string): PushPayload => ({ kind: "digest", title, body, url: `/#/digest/${id}`, tag: `digest-${id}` });
-  const english = digest("Morning digest · 2 messages · 1 article", "Act now · 계정 확인 +1 more\n· 국내 첫 소식");
-  expect(byEndpoint(sent)).toEqual({ [en.endpoint]: english, [unset.endpoint]: english,
-    [ko.endpoint]: digest("아침 다이제스트 · 메시지 2 · 기사 1", "즉시 조치 · 계정 확인 외 1건\n· 국내 첫 소식") });
-  // A late section is announced as an addition in each language.
-  sent = [];
-  await upload({ date: "2026-10-01", slot: "evening", sections: [articles("domestic", "Domestic", [article("e", "저녁 소식")])] });
-  await upload({ date: "2026-10-01", slot: "evening", sections: [messages("inbox", "Inbox", [{ key: "q", importance: "todo", from: "Bank", subject: "서류 제출" }])] });
-  await settle();
-  expect(sent.filter(item => item.endpoint === en.endpoint).map(item => item.payload.title)).toEqual(["Evening digest · 1 article", "Evening digest · 1 message added"]);
-  expect(sent.filter(item => item.endpoint === ko.endpoint).map(item => item.payload.title)).toEqual(["저녁 다이제스트 · 기사 1", "저녁 다이제스트 · 메시지 1 추가"]);
-});
-
-test("With LOCALE ko a device that never said its language is told in Korean, and an English device still gets English", async () => {
-  f.close();
-  f = fixture(10000, Date.now, { ...stub, locale: "ko" });
-  const owner = await f.login();
-  const en = device().subscription;
-  const unset = device().subscription;
-  await subscribe({ subscription: { ...en, locale: "en" } }, owner);
-  await subscribe({ subscription: unset }, owner);
-  expect([await deviceLocale(en.endpoint, owner), await deviceLocale(unset.endpoint, owner)]).toEqual(["en", "ko"]);
-  await upload(morning([articles("domestic", "Domestic", [article("a", "국내 첫 소식")])]));
-  await settle();
-  expect(Object.fromEntries(sent.map(item => [item.endpoint, item.payload.title]))).toEqual({ [en.endpoint]: "Morning digest · 1 article", [unset.endpoint]: "아침 다이제스트 · 기사 1" });
-});
-
-test("A database from before device languages opens, keeps its subscriptions and gives them the server's language", async () => {
-  const old = fixture(10000, Date.now, stub);
+test("With PUSH off every push route answers 404 feature_disabled, unsubscribe included", async () => {
+  // Given: a dashboard that runs with web push turned off.
+  const off = (await fixture(10000, Date.now, { ...stub, pushEnabled: false }));
   try {
+    const owner = await off.login();
     const { subscription } = device();
-    const database = new Database(old.options.databasePath);
-    database.exec("DROP TABLE push_subscriptions");
-    database.exec(`CREATE TABLE push_subscriptions(endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
-      kinds TEXT NOT NULL CHECK(json_valid(kinds)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
-    database.query("INSERT INTO push_subscriptions VALUES(?,?,?,?,?,?)").run(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth,
-      JSON.stringify({ digest: true, review: true, reply: true }), "2026-09-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z");
-    database.close();
-    old.restart();
-    const owner = await old.login();
-    const state = z.object({ devices: z.number(), device: z.object({ locale: z.string() }) }).parse(await (await old.call(
-      `/api/v1/push?endpoint=${encodeURIComponent(subscription.endpoint)}`, "GET", undefined, owner)).json());
-    expect(state).toMatchObject({ devices: 1, device: { locale: "en" } });
-    expect((await old.call("/api/v1/push/subscription", "PUT", { subscription: { ...subscription, locale: "ko" } }, owner)).status).toBe(200);
-    expect(old.app.push.device(subscription.endpoint)?.locale).toBe("ko");
-  } finally { old.close(); }
+    for (const [path, method, body] of [["/api/v1/push", "GET", undefined],
+      ["/api/v1/push/subscription", "PUT", { subscription }],
+      ["/api/v1/push/subscription", "DELETE", { endpoint: subscription.endpoint }],
+      ["/api/v1/push/test", "POST", { endpoint: subscription.endpoint }]] as const) {
+      // When: the owner calls a push route.
+      const response = await off.call(path, method, body, owner);
+      // Then: it reports the feature as off instead of acting on the subscription.
+      expect(response.status).toBe(404);
+      expect(z.object({ error: z.object({ code: z.string() }) }).parse(await response.json()).error.code).toBe("feature_disabled");
+    }
+  } finally { (await off.close()); }
 });

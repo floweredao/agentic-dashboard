@@ -55,3 +55,14 @@ test("a tap tells an open window where to go and brings it forward, or opens the
   await closed.fire("notificationclick", { notification });
   expect(closed.opened).toEqual(["/#/work/t1"]);
 });
+
+test("a push address that leaves the app (protocol-relative or with a backslash) opens the app's start instead", async () => {
+  const { fire, shown, opened } = await worker([]);
+  for (const url of ["//evil.example/#/home", "/\\evil.example/#/home"]) {
+    await fire("push", { data: { json: () => ({ title: "x", url }), text: () => "" } });
+  }
+  expect(shown.map(item => item.options.data.url)).toEqual(["/", "/"]);
+  // A notification shown before this worker took over still carries its own address; a tap keeps to the app too.
+  await fire("notificationclick", { notification: { close: () => undefined, data: { url: "//evil.example/" } } });
+  expect(opened).toEqual(["/"]);
+});

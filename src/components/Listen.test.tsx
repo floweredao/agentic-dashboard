@@ -111,6 +111,14 @@ test("a job that just finished holds the row at 100% before the player takes its
   expect(bar(state)).toContain('class="listen-folded"');
 });
 
+test("the folded player's length reads in whole seconds under a minute and never says 60 seconds", () => {
+  const length = (durationMs: number) => /듣기 · (\S+)/.exec(text(bar({ narration: { ...base, status: "ready" as const, audio: { ...audio, durationMs } }, available: true })))?.[1];
+  // Given audio a few hundred milliseconds short of a minute, and audio on either side of it
+  // Then it reads as a minute, like a minute and a half rounds to two
+  expect([length(400), length(59_000), length(59_499), length(59_500), length(59_999), length(60_000), length(90_000)])
+    .toEqual(["1초", "59초", "59초", "1분", "1분", "1분", "2분"]);
+});
+
 test("finished audio shows a folded player, and the menu offers 듣기, 다시 만들기, 원고 보기 and 음성 삭제", () => {
   // Given finished audio with a script
   const state = { narration: { ...base, status: "ready" as const, audio, script: "첫 문단.\n\n둘째 문단." }, available: true };

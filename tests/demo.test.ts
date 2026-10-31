@@ -3,8 +3,8 @@ import { z } from "zod";
 import { createApp } from "../server/app";
 import { bearer, fixture, origin, recordResult } from "./backend-helper";
 
-let f: ReturnType<typeof fixture>;
-let demo: ReturnType<typeof createApp>;
+let f: Awaited<ReturnType<typeof fixture>>;
+let demo: Awaited<ReturnType<typeof createApp>>;
 let recordId = "";
 const list = z.object({ items: z.array(z.object({ id: z.string() })) });
 const call = (path: string, method = "GET", body?: unknown, headers: Record<string, string> = {}) => demo.fetch(new Request(`${origin}${path}`, {
@@ -14,12 +14,12 @@ const call = (path: string, method = "GET", body?: unknown, headers: Record<stri
 
 beforeEach(async () => {
   // Given: a database the owner filled normally, then served by a demo app.
-  f = fixture();
+  f = (await fixture());
   const response = await f.call("/api/v1/records", "POST", { requestId: "demo-1", record: { kind: "note", title: "Seeded" } }, await f.login());
   recordId = recordResult.parse(await response.json()).record.id;
-  demo = createApp({ ...f.options, demo: true });
+  demo = (await createApp({ ...f.options, demo: true }));
 });
-afterEach(() => { demo.close(); f.close(); });
+afterEach(async () => { (await demo.close()); (await f.close()); });
 
 test("a demo reads as the owner without a key or cookie", async () => {
   const session = await call("/api/v1/auth/session");

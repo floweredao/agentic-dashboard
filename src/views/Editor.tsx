@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from "react";
 import { RECORD_LIMITS } from "../../shared/contracts";
 import type { DashboardRecord, JSONValue, RecordInput, RecordKind } from "../../shared/contracts";
 import { errorMessage } from "../api";
+import { useRateLimited } from "../rate-limit";
 import { LinkFields, TagFields } from "../components/LinkTagFields";
 import { Dialog } from "../components/primitives";
 import { isRecord, kindLabels, projectStatuses, taskStatuses, textField } from "../model";
@@ -63,6 +64,7 @@ export function Editor({ initial, existing, requestId, onClose }: {
   const [tags, setTags] = useState(() => [...initial.tags]);
   const [tagDraft, setTagDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const limited = useRateLimited();
   const [error, setError] = useState("");
   const [linkErrors, setLinkErrors] = useState<ReadonlySet<string>>(new Set());
   const linkIds = useId();
@@ -82,7 +84,7 @@ export function Editor({ initial, existing, requestId, onClose }: {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving) return;
+    if (saving || limited) return;
     const { links, invalid } = linksFromBlocks(blocks, initial.links, input.kind);
     if (material && invalid.length) {
       setLinkErrors(new Set(invalid));
@@ -171,7 +173,7 @@ export function Editor({ initial, existing, requestId, onClose }: {
       <div className="dialog-actions">
         {error && <p className="form-error" role="alert">{error}</p>}
         <button type="button" className="btn btn-outline" onClick={close} disabled={saving}>{t.cancel}</button>
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? t.saving : t.save}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving || limited}>{saving ? t.saving : t.save}</button>
       </div>
     </form>
   </Dialog>;
