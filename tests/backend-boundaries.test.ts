@@ -1,6 +1,6 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { chmodSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { chmodSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { z } from "zod";
 import { createApp } from "../server/app";
 import { CredentialsSchema } from "../server/auth";
@@ -38,6 +38,21 @@ test("credentials generate once with restricted mode and database stores only to
     expect(readFileSync(f.options.credentialsPath, "utf8")).toBe(first);
     expect(statSync(f.options.credentialsPath).mode & 0o777).toBe(0o600);
   } finally { (await restarted.close()); }
+});
+
+test("an owner key file that still lists agent keys opens the dashboard as before", async () => {
+  // Given: the single-user predecessor's key file, which kept one key per agent beside the owner's.
+  (await f.app.close());
+  writeFileSync(f.options.credentialsPath, JSON.stringify({ owner: tokens.owner, omo: tokens.omo, codex: tokens.codex }), { mode: 0o600 });
+  const app = (await createApp(f.options));
+  try {
+    // When: the owner signs in with the key from that file.
+    const response = await app.fetch(new Request(`${origin}/api/v1/auth/session`, {
+      method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ token: tokens.owner }),
+    }));
+    // Then: the server started and granted the session; the agent entries are ignored, since agent keys authenticate from their hashes.
+    expect(response.status).toBe(200);
+  } finally { (await app.close()); }
 });
 
 test("session cookies protect HTTP and HTTPS and responses carry restrictive headers", async () => {
