@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ArchiveRestore, Trash2 } from "lucide-react";
 import { TRASH_RETENTION_DAYS } from "../../shared/contracts";
 import { BackButton, Empty, SidebarOpen } from "../components/primitives";
@@ -38,13 +38,27 @@ export function TrashPane({ now = Date.now() }: { readonly now?: number }) {
   /** The button says what it is doing until the server answers (the confirm dialog comes first, inside emptyTrash). */
   const [emptying, setEmptying] = useState(false);
   const empty = async () => { setEmptying(true); try { await emptyTrash(); } finally { setEmptying(false); } };
+  const list = useRef<HTMLUListElement>(null);
+  /** The position of the row a restore, permanent delete or empty is acting on. */
+  const leaving = useRef<number | null>(null);
+  // Once it is done the row has taken the focused button with it: focus goes to the row now in its place, or to main when none is left.
+  // WebKit does not focus a clicked button; the click lands focus on main instead, so focus on main counts as lost too.
+  useLayoutEffect(() => {
+    const index = leaving.current;
+    if (index === null || busy) return;
+    leaving.current = null;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.id !== "main" && active.isConnected && !active.matches(":disabled")) return;
+    (list.current?.children[Math.min(index, items.length - 1)]?.querySelector("button") ?? document.getElementById("main"))?.focus({ preventScroll: true });
+  });
+  const act = (index: number, run: () => Promise<void>) => { leaving.current = index; void run(); };
 
   return <div className="trash-page">
     <header className="trash-head">
       <BackButton place="list" />
       <div className="pane-title-row"><SidebarOpen />
         <h1 className="pane-title">{t.title} <span className="count">{items.length}</span></h1>
-        <button type="button" className="btn btn-quiet btn-danger trash-empty" onClick={() => { void empty(); }} disabled={busy || items.length === 0}
+        <button type="button" className="btn btn-quiet btn-danger trash-empty" onClick={() => act(0, empty)} disabled={busy || items.length === 0}
           aria-busy={emptying && busy}>
           {emptying && busy ? t.emptying : t.emptyTrash}
         </button>
@@ -53,16 +67,16 @@ export function TrashPane({ now = Date.now() }: { readonly now?: number }) {
     </header>
     {items.length === 0
       ? <Empty icon={<Trash2 size={20} aria-hidden="true" />}>{t.empty}</Empty>
-      : <ul className="trash-list">{items.map(item => <li key={item.record.id} className="trash-item">
+      : <ul ref={list} className="trash-list">{items.map((item, index) => <li key={item.record.id} className="trash-item">
         <div className="trash-main">
           <span className="trash-title">{item.record.title}</span>
           <span className="trash-meta">{channelLabel(channelOf(item.record))} · {kindLabels[item.record.kind]} · <span className="trash-purge-at">{purgeLabel(item.purgeAt, now)}</span></span>
         </div>
         <div className="trash-actions">
-          <button type="button" className="btn btn-outline" onClick={() => { void restore(item); }} disabled={busy}>
+          <button type="button" className="btn btn-outline" onClick={() => act(index, () => restore(item))} disabled={busy}>
             <ArchiveRestore size={16} aria-hidden="true" />{t.restore}
           </button>
-          <button type="button" className="icon-btn trash-purge" onClick={() => { void purge(item); }} disabled={busy} aria-label={t.purge} title={t.purge}>
+          <button type="button" className="icon-btn trash-purge" onClick={() => act(index, () => purge(item))} disabled={busy} aria-label={t.purge} title={t.purge}>
             <Trash2 size={16} aria-hidden="true" />
           </button>
         </div>
