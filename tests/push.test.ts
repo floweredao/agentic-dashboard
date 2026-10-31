@@ -245,6 +245,35 @@ test("An agent asking for review or replying to the owner notifies devices by ki
   ].sort());
 });
 
+test("A task the MCP connector saves in review, or moves to review, notifies review like the REST record routes", async () => {
+  const { subscription } = device();
+  await subscribe({ subscription });
+  const tool = async (name: string, args: Record<string, unknown>) => {
+    const response = await f.app.mcpFetch(new Request("http://127.0.0.1:4313/mcp", { method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18", ...bearer("chatgpt") },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));
+    return z.object({ result: z.object({ isError: z.boolean(), structuredContent: z.object({ id: z.string() }).passthrough() }) }).parse(await response.json()).result;
+  };
+  const review = (id: string, title: string): Sent[] => [{ endpoint: subscription.endpoint,
+    payload: { kind: "review", title: `Needs review · ${title}`, body: "chatgpt: asked for a review", url: `/#/work/${id}`, tag: `task-${id}` } }];
+  // When: ChatGPT saves a task already in review.
+  const saved = await tool("save_record", { requestId: "mcp-review-task", record: agentRecord({ kind: "task", title: "MCP 확인", status: "review" }) });
+  await settle();
+  // Then: the device hears it, as it would for POST /api/v1/records.
+  expect(saved.isError).toBe(false);
+  expect(sent).toEqual(review(saved.structuredContent.id, "MCP 확인"));
+  // When: ChatGPT saves an active task and later moves it to review.
+  sent = [];
+  const active = await tool("save_record", { requestId: "mcp-active-task", record: agentRecord({ kind: "task", title: "MCP 진행", status: "active" }) });
+  await settle();
+  expect(sent).toEqual([]);
+  const moved = await tool("update_record", { id: active.structuredContent.id, expectedVersion: 1, changes: { status: "review" } });
+  await settle();
+  // Then: the device hears it, as it would for PATCH /api/v1/records/:id.
+  expect(moved.isError).toBe(false);
+  expect(sent).toEqual(review(active.structuredContent.id, "MCP 진행"));
+});
+
 test("A push service answering 404 or 410 removes that device", async () => {
   const owner = await f.login();
   const gone = device().subscription;

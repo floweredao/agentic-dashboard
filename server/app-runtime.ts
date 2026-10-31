@@ -213,7 +213,8 @@ export async function createRuntime(options: AppOptions & { readonly audioStore:
     port: options.mcpPort ?? 4313, rateLimit: limit, now,
     allowedHosts: options.hosted ? hosts : new Set([...hosts, `127.0.0.1:${options.mcpPort ?? 4313}`, `localhost:${options.mcpPort ?? 4313}`]),
     resolveAgent: request => auth.authenticate(request, true),
-    onCreate: async id => { const record = await store.get(id); await newRecord(record, aiFillSources.has(record.source), true); }, onUpdate: editedRecord });
+    onCreate: async id => { const record = await store.get(id); await newRecord(record, aiFillSources.has(record.source), true); await notifyReview(null, record); },
+    onUpdate: async (before, after) => { await editedRecord(before, after); await notifyReview(before, after); } });
 
   await store.purgeTrash();
 
