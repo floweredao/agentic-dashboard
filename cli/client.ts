@@ -128,8 +128,9 @@ export async function connect(p: Paths, flags: ConnectFlags) {
         ({ agent, key } = z.object({ agent: z.string(), key: z.string() }).parse(await response.json()));
         break;
       }
-      const message = response.status === 404 ? t("connectBadCode")
-        : z.object({ error: z.object({ message: z.string() }) }).safeParse(await response.json().catch(() => null)).data?.error.message ?? `HTTP ${response.status}`;
+      // The server's messages are English; a malformed code (400) is as unknown as an expired one (404).
+      const message = response.status === 404 || response.status === 400 ? t("connectBadCode")
+        : response.status === 429 ? t("connectRateLimited") : t("connectCodeFailed", { status: response.status });
       if (!prompting || flags.code) throw new CliError(message);
       say(message);
       continue;

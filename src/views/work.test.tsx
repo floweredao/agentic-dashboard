@@ -59,7 +59,7 @@ test("with no agents the channels page explains how to register one", () => {
   // Then: only the manual card renders, with the registration command.
   const html = renderChannels([]);
   expect(html.match(/class="channel-card"/g)).toHaveLength(1);
-  expect(html).toContain("bun run agents add &lt;name&gt;");
+  expect(html).toContain("bun run agents add &lt;이름&gt;");
 });
 
 test("work done filter lists only completed tasks", () => {
