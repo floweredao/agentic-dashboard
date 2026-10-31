@@ -128,7 +128,8 @@ test("keeps repository metadata when README is unavailable", async () => {
 });
 
 test.each(["https://github.com/owner/repo/issues/1", "https://github.com/owner/repo%3Bcommand",
-  "https://github.com/owner/repo/contents", "https://github.com.evil.com/owner/repo", "https://github.com:8443/owner/repo"])(
+  "https://github.com/owner/repo/contents", "https://github.com.evil.com/owner/repo", "https://github.com:8443/owner/repo",
+  "https://github.com/owner/..git", "https://github.com/owner/...git"])(
   "never selects an arbitrary authenticated GitHub endpoint for %s", async value => {
     // Given: a URL outside the root-repository grammar.
     let github = 0;
