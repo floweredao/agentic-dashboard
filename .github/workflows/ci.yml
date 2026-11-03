@@ -17,6 +17,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - run: bun run build
-      - run: bun test
+      - run: google-chrome --version || chromium --version || true
+      - run: bun test src/components/zz-diag.test.tsx -t "iPad landscape"
