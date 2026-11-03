@@ -31,5 +31,5 @@ All three must exit 0. Don't skip, delete or loosen a failing test to get there.
 - Server errors are `ApiError(status, code, message)`; never log request bodies, cookies or credentials.
 - UI strings exist in English and Korean.
 - Keep diffs small and focused. Don't add dependencies without a clear reason.
-- Don't add CI workflows.
+- CI is one PR-only workflow (`.github/workflows/ci.yml`: typecheck, build, test). Don't add release, deploy, scheduled or push-triggered workflows.
 - 한국어 문서 이름은 README-ko.md로 통일한다.
