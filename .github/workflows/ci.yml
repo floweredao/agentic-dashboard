@@ -19,4 +19,8 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run build
+      # The UI tests drive Bun.WebView, which uses Chrome on Linux. The runner's full Chrome
+      # reports a viewport shorter than requested (733px for 820px), so use the headless shell.
+      - run: bunx playwright install chromium-headless-shell
+      - run: echo "BUN_CHROME_PATH=$(find ~/.cache/ms-playwright -name chrome-headless-shell -type f | head -1)" >> "$GITHUB_ENV"
       - run: bun test
